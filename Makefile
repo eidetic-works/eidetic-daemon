@@ -1,5 +1,5 @@
 .PHONY: build build-all build-darwin-arm64 build-linux-amd64 build-windows-amd64 \
-        test bench tidy clean verify-cross-compile
+        test bench smoke tidy clean verify-cross-compile
 
 GO ?= go
 BIN_DIR := bin
@@ -26,6 +26,9 @@ verify-cross-compile:
 
 test:
 	$(GO) test ./...
+
+smoke: build
+	@./scripts/smoke.sh
 
 bench:
 	$(GO) test -bench=. -benchtime=10s ./bench
