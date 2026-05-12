@@ -130,7 +130,7 @@ func TestRetrieveLimitClamps(t *testing.T) {
 	}
 }
 
-func TestInsertRejectsEmptySurfaceOrZeroTS(t *testing.T) {
+func TestInsertRejectsEmptySurfaceOrZeroTSOrEmptyPayload(t *testing.T) {
 	s := tempStore(t)
 	ctx := context.Background()
 	if _, err := s.Insert(ctx, engram.Engram{Surface: "", TS: 1, Payload: "p"}); err == nil {
@@ -138,6 +138,44 @@ func TestInsertRejectsEmptySurfaceOrZeroTS(t *testing.T) {
 	}
 	if _, err := s.Insert(ctx, engram.Engram{Surface: "x", TS: 0, Payload: "p"}); err == nil {
 		t.Fatal("want error for zero ts")
+	}
+	// cc-peer PR#1 concern #1: schema NOT NULL is no-op on Go's "" — enforce here.
+	if _, err := s.Insert(ctx, engram.Engram{Surface: "x", TS: 1, Payload: ""}); err == nil {
+		t.Fatal("want error for empty payload")
+	}
+}
+
+func TestInsertRejectsOversizePayload(t *testing.T) {
+	// cc-peer PR#1 concern #3: oversize payload blocks single-writer pool.
+	s := tempStore(t)
+	ctx := context.Background()
+	big := strings.Repeat("x", store.MaxPayloadBytes+1)
+	_, err := s.Insert(ctx, engram.Engram{Surface: "cursor", TS: time.Now().UnixNano(), Payload: big})
+	if err == nil {
+		t.Fatalf("want error for payload > MaxPayloadBytes (%d)", store.MaxPayloadBytes)
+	}
+	if !strings.Contains(err.Error(), "MaxPayloadBytes") {
+		t.Fatalf("error should reference MaxPayloadBytes, got: %v", err)
+	}
+}
+
+func TestRetrieveSinceZeroReturnsAllRows(t *testing.T) {
+	// cc-peer PR#1 concern #2 regression guard: since=0 must return ALL rows,
+	// not zero. Two-branch refactor must not flip this case.
+	s := tempStore(t)
+	ctx := context.Background()
+	now := time.Now().UnixNano()
+	for i := 0; i < 3; i++ {
+		if _, err := s.Insert(ctx, engram.Engram{Surface: "cowork", TS: now + int64(i), Payload: "x"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.Retrieve(ctx, "cowork", 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("since=0 should return all 3 rows, got %d", len(got))
 	}
 }
 
