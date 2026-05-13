@@ -7,6 +7,19 @@ import (
 	"strconv"
 )
 
+// handleHealthz serves GET /healthz. Returns 200 + {"status":"ok"}. Used by
+// the README quickstart + service managers (launchd / systemd) for liveness
+// detection. No store touch — answers from the listener thread, so a stuck
+// writer pool doesn't tip the readiness signal.
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
 // handleEngramsGET serves GET /engrams?surface=X&limit=N&since=unix-ns.
 // Returns 200 + JSON array on success, 400 on missing surface, 405 on
 // non-GET, 500 on store error. Param parse failures map to store defaults

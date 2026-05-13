@@ -80,6 +80,7 @@ func New(s *store.Store, opts Options) (*Server, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/engrams", srv.handleEngramsGET)
+	mux.HandleFunc("/healthz", srv.handleHealthz)
 
 	srv.httpSrv = &http.Server{
 		Handler:           mux,
