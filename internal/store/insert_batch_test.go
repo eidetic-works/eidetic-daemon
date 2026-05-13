@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/eidetic-works/eidetic-daemon/internal/engram"
+	"github.com/eidetic-works/eidetic-daemon/internal/store"
 )
 
 func TestInsertBatchTransactional(t *testing.T) {
@@ -62,7 +63,9 @@ func TestInsertBatchValidationRejectsAtomically(t *testing.T) {
 
 func TestInsertBatchMaxPayloadEnforced(t *testing.T) {
 	s := tempStore(t)
-	huge := strings.Repeat("x", (1<<20)+1)
+	// Use store.MaxPayloadBytes + 1 so the test tracks the constant if it
+	// moves again (currently 8 MiB per ADR-017; was 1 MiB pre-spike).
+	huge := strings.Repeat("x", store.MaxPayloadBytes+1)
 	batch := []engram.Engram{{Surface: "cursor", TS: 1, Payload: huge}}
 	if err := s.InsertBatch(context.Background(), batch); err == nil {
 		t.Errorf("expected MaxPayloadBytes rejection")

@@ -35,11 +35,16 @@ const readerPragmas = "_pragma=busy_timeout(5000)&_pragma=cache_size(-64000)"
 const readerPoolSize = 8
 
 // MaxPayloadBytes caps Insert payload to prevent a single oversized engram
-// (e.g., a 10MB Cursor JSONL chunk from a Phase-3 parser bug) from blocking
+// (e.g., a 50MB Cursor JSONL chunk from a Phase-3 parser bug) from blocking
 // ALL writers under the SetMaxOpenConns(1) writer-pool shape per cc-peer
-// PR#1 concern #3. 1 MiB covers realistic engram size with ~10× headroom over
-// typical surface payloads (300-5KB observed).
-const MaxPayloadBytes = 1 << 20
+// PR#1 concern #3.
+//
+// 8 MiB cap covers real Claude Code session-JSONL chunks measured by cc-tb
+// runtime spike on 2026-05-13 (largest observed: 2.41 MiB; 1 MiB original
+// cap dropped 8+ engrams in the first 1s of capture). 8 MiB = ~3.3× over the
+// measured ceiling — still bounded against the parser-bug failure mode.
+// See ADR-017 (docs/DECISIONS.md) + memory rule feedback_static_audit_needs_runtime_pair.md.
+const MaxPayloadBytes = 8 << 20
 
 // Store owns the writer + reader pool pair. Always opened together against
 // the same DB file. Callers MUST Close() to release both pools.

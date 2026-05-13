@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/eidetic-works/eidetic-daemon/internal/engram"
@@ -48,8 +49,22 @@ type Watcher struct {
 	// the per-path mutex itself.
 	parseMu sync.Map
 
+	// skippedPayloadTooLarge counts engrams dropped because their payload
+	// exceeded store.MaxPayloadBytes. Updated atomically by parseAndCommit;
+	// read via SkippedPayloadTooLarge() for telemetry/test assertions.
+	// Per cc-tb runtime spike 2026-05-13: real Claude Code session JSONLs
+	// produce chunks up to 2.41 MiB; cap raised to 8 MiB but skips still
+	// possible on outliers — surface count so users see data loss.
+	skippedPayloadTooLarge uint64
+
 	// instrumentation for tests / observability
 	parseDoneCh chan ParseDone
+}
+
+// SkippedPayloadTooLarge returns the count of engrams skipped this session
+// due to payload exceeding store.MaxPayloadBytes. Atomic read.
+func (w *Watcher) SkippedPayloadTooLarge() uint64 {
+	return atomic.LoadUint64(&w.skippedPayloadTooLarge)
 }
 
 // ParseDone is emitted on parseDoneCh after each successful parse + commit
@@ -233,9 +248,32 @@ func (w *Watcher) parseAndCommit(ctx context.Context, surface, path string) {
 		return
 	}
 	if len(engrams) > 0 {
-		if err := w.sink.InsertBatch(ctx, engrams); err != nil {
-			log.Printf("capture: insert %s: %v", surface, err)
-			return
+		// Pre-filter oversized payloads so one too-large record doesn't fail
+		// the entire batch (InsertBatch validates pre-tx and rolls back on any
+		// row violation). Surface the skip count via log + Watcher counter so
+		// users see the data loss they're getting. Cap value tracked in
+		// store.MaxPayloadBytes; capture mirrors the gate to avoid one-row
+		// batch poisoning. See ADR-017 (cc-tb runtime spike 2026-05-13).
+		filtered := engrams[:0]
+		skipped := 0
+		for _, e := range engrams {
+			if len(e.Payload) > store.MaxPayloadBytes {
+				skipped++
+				continue
+			}
+			filtered = append(filtered, e)
+		}
+		if skipped > 0 {
+			atomic.AddUint64(&w.skippedPayloadTooLarge, uint64(skipped))
+			log.Printf("capture: %s %s: skipped %d oversized engrams (>%d bytes); total skipped this session: %d",
+				surface, path, skipped, store.MaxPayloadBytes,
+				atomic.LoadUint64(&w.skippedPayloadTooLarge))
+		}
+		if len(filtered) > 0 {
+			if err := w.sink.InsertBatch(ctx, filtered); err != nil {
+				log.Printf("capture: insert %s: %v", surface, err)
+				return
+			}
 		}
 	}
 	if newOffset != from {
