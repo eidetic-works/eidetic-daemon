@@ -97,22 +97,10 @@ func (s *Store) Close() error {
 
 // Insert appends a single engram via the writer pool. Higher-throughput
 // bulk paths should batch via prepared statement + single transaction
-// per ADR-014 pattern #4 (out of Phase 1 scope; lands in capture layer).
+// per ADR-014 pattern #4 — see InsertBatch.
 func (s *Store) Insert(ctx context.Context, e engram.Engram) (int64, error) {
-	if e.Surface == "" {
-		return 0, errors.New("engram surface required")
-	}
-	if e.TS == 0 {
-		return 0, errors.New("engram ts required")
-	}
-	if e.Payload == "" {
-		// Schema declares payload TEXT NOT NULL but SQLite treats empty
-		// string as satisfying NOT NULL. Enforce semantic-required at the
-		// Go boundary per cc-peer PR#1 concern #1.
-		return 0, errors.New("engram payload required")
-	}
-	if len(e.Payload) > MaxPayloadBytes {
-		return 0, fmt.Errorf("engram payload %d bytes exceeds MaxPayloadBytes %d", len(e.Payload), MaxPayloadBytes)
+	if err := validateEngram(e); err != nil {
+		return 0, err
 	}
 	res, err := s.writer.ExecContext(ctx,
 		`INSERT INTO engrams (surface, ts, payload, meta) VALUES (?, ?, ?, ?)`,
@@ -122,6 +110,67 @@ func (s *Store) Insert(ctx context.Context, e engram.Engram) (int64, error) {
 		return 0, fmt.Errorf("insert engram: %w", err)
 	}
 	return res.LastInsertId()
+}
+
+// InsertBatch wraps a slice of inserts in a single transaction with a shared
+// prepared statement (ADR-014 pattern #4). Required by the Phase-3 capture
+// layer where one fsnotify file-event-batch produces N engrams that must
+// land atomically (or roll back together if mid-batch validation fails).
+//
+// Caller is responsible for chunking very large batches; we apply
+// MaxPayloadBytes per row and rely on SQLite's per-tx limit otherwise.
+// Empty batch is a no-op (returns nil without opening a transaction).
+func (s *Store) InsertBatch(ctx context.Context, batch []engram.Engram) error {
+	if len(batch) == 0 {
+		return nil
+	}
+	for i, e := range batch {
+		if err := validateEngram(e); err != nil {
+			return fmt.Errorf("batch[%d]: %w", i, err)
+		}
+	}
+	tx, err := s.writer.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin batch tx: %w", err)
+	}
+	stmt, err := tx.PrepareContext(ctx,
+		`INSERT INTO engrams (surface, ts, payload, meta) VALUES (?, ?, ?, ?)`,
+	)
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("prepare batch stmt: %w", err)
+	}
+	defer stmt.Close()
+	for i, e := range batch {
+		if _, err := stmt.ExecContext(ctx, e.Surface, e.TS, e.Payload, e.Meta); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("batch[%d] exec: %w", i, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit batch tx: %w", err)
+	}
+	return nil
+}
+
+// validateEngram enforces semantic-required at the Go boundary (per cc-peer
+// PR#1 concern #1) + payload size cap (per cc-peer PR#1 concern #3).
+// Centralized so Insert + InsertBatch can't drift.
+func validateEngram(e engram.Engram) error {
+	if e.Surface == "" {
+		return errors.New("engram surface required")
+	}
+	if e.TS == 0 {
+		return errors.New("engram ts required")
+	}
+	if e.Payload == "" {
+		return errors.New("engram payload required")
+	}
+	if len(e.Payload) > MaxPayloadBytes {
+		return fmt.Errorf("engram payload %d bytes exceeds MaxPayloadBytes %d",
+			len(e.Payload), MaxPayloadBytes)
+	}
+	return nil
 }
 
 // Retrieve runs the canonical lookup: surface + optional since (unix ns)
@@ -177,6 +226,33 @@ func (s *Store) Retrieve(ctx context.Context, surface string, since int64, limit
 		return nil, fmt.Errorf("row iter: %w", err)
 	}
 	return out, nil
+}
+
+// ExplainQuery returns SQLite EXPLAIN QUERY PLAN output for the canonical
+// Retrieve shape. Test helper (used by store_test.go to assert idx_surface_ts
+// is hit so a future schema change can't silently degrade the hot path to
+// a table scan). Not part of the runtime API surface.
+func (s *Store) ExplainQuery(ctx context.Context) (string, error) {
+	rows, err := s.reader.QueryContext(ctx,
+		`EXPLAIN QUERY PLAN
+		 SELECT id, surface, ts, payload, meta
+		 FROM engrams WHERE surface = ? ORDER BY ts DESC LIMIT ?`,
+		"any", 50,
+	)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	var out string
+	for rows.Next() {
+		var id, parent, notUsed int
+		var line string
+		if err := rows.Scan(&id, &parent, &notUsed, &line); err != nil {
+			return "", err
+		}
+		out += line + "\n"
+	}
+	return out, rows.Err()
 }
 
 // defaultDBPath resolves $EIDETIC_DATA_DIR or ~/.eidetic/engrams.db
