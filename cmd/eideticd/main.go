@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -28,10 +29,22 @@ const (
 	defaultTCPAddr = "127.0.0.1:9876"
 )
 
+// Version is set at build time via -ldflags "-X main.Version=vX.Y.Z" or
+// defaults to "dev" for unreleased local builds. Single source of truth for
+// the `-version` flag + any future telemetry/log-line that needs to identify
+// the running binary.
+var Version = "dev"
+
 func main() {
 	udsPath := flag.String("uds", "", "Unix domain socket path (overrides default)")
 	tcpAddr := flag.String("tcp", "", "TCP listen address (overrides default; opt-in via EIDETIC_TCP=1)")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("eideticd", Version)
+		return
+	}
 
 	dataDir := os.Getenv("EIDETIC_DATA_DIR")
 	if dataDir == "" {

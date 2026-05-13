@@ -6,17 +6,23 @@ BIN_DIR := bin
 DIST_DIR := dist
 PKG := ./cmd/eideticd
 
+# Inject Version from the most recent git tag (or `dev` for unreleased builds).
+# Visible via `eideticd -version`. Single source of truth for the binary's
+# self-identification per cc-tb SPIKE-RESULT 2026-05-13 finding #1.
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -X main.Version=$(VERSION)
+
 build:
-	$(GO) build -o $(BIN_DIR)/eideticd $(PKG)
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/eideticd $(PKG)
 
 build-darwin-arm64:
-	GOOS=darwin GOARCH=arm64 $(GO) build -o $(DIST_DIR)/eideticd-darwin-arm64 $(PKG)
+	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/eideticd-darwin-arm64 $(PKG)
 
 build-linux-amd64:
-	GOOS=linux GOARCH=amd64 $(GO) build -o $(DIST_DIR)/eideticd-linux-amd64 $(PKG)
+	GOOS=linux GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/eideticd-linux-amd64 $(PKG)
 
 build-windows-amd64:
-	GOOS=windows GOARCH=amd64 $(GO) build -o $(DIST_DIR)/eideticd-windows-amd64.exe $(PKG)
+	GOOS=windows GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/eideticd-windows-amd64.exe $(PKG)
 
 build-all: build-darwin-arm64 build-linux-amd64 build-windows-amd64
 	@./scripts/verify-cross-compile.sh
