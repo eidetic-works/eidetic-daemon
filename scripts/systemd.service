@@ -1,0 +1,14 @@
+[Unit]
+Description=Eidetic engram daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/eideticd
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/eideticd.log
+StandardError=append:/var/log/eideticd.err.log
+
+[Install]
+WantedBy=default.target

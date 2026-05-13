@@ -1,0 +1,41 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Build all targets
+        run: make build-all
+
+      - name: Tarball each target
+        run: |
+          mkdir -p release
+          for target in darwin-arm64 linux-amd64; do
+            cp dist/eideticd-${target} release/eideticd
+            ( cd release && tar -czf eideticd-${target}.tar.gz eideticd && rm eideticd )
+          done
+          # Windows ships as a zipped exe rather than tarball.
+          ( cd dist && zip -j ../release/eideticd-windows-amd64.zip eideticd-windows-amd64.exe )
+          ls -la release/
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/eideticd-darwin-arm64.tar.gz
+            release/eideticd-linux-amd64.tar.gz
+            release/eideticd-windows-amd64.zip
+          generate_release_notes: true

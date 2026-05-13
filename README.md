@@ -22,15 +22,38 @@ Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + win
 curl -fsSL https://nucleusos.dev/install.sh | sh
 ```
 
-Not yet shipped. See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for W1 build progress.
+Not yet shipped publicly. See `scripts/install.sh` for what runs locally.
+
+After install, the daemon spawns at login via launchd / systemd-user. To verify:
+
+```sh
+# Confirm the daemon is alive.
+curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/healthz
+# → {"status":"ok"}
+
+# Open Cursor or Claude Code, write something. Then read it back.
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams?surface=claude_code&limit=5'
+```
 
 ---
 
 ## Latency
 
-P95 retrieval: _measured number lands here on Day-7 ship per [spec § 3](docs/SPEC.md#3-p95-slo)._
+P95 retrieval **0.27 ms** on a 10K-row fixture, M4 MacBook, 2026-05-13 (mainline build, full daemon stack). Spec section 3 SLO is ≤100 ms; current headroom **~370×**.
 
-Pre-Day-1 spike (synthetic 10K-row fixture, sequential read, warm cache): **0.397 ms** (modernc.org/sqlite, pure-Go) / 0.369 ms (mattn/go-sqlite3, CGO). 252× under SLO.
+Three gates wired in `bench/`:
+
+| Bench | Spec / ADR gate | Measured P95 | Headroom |
+|---|---|---|---|
+| Retrieve (10K rows, 1000 reqs × 3 runs) | ≤100 ms (spec section 3) | 0.31 / 0.27 / 0.25 ms | 320–400× |
+| Write (100 req/s sustained) | ≤50 ms (ADR-014 gap A) | 0.65 ms | ~75× |
+| Concurrent (5 readers + 1 writer) | ≤100 ms (ADR-014 gap C) | 3.5 ms | ~28× |
+
+Reproduce: `make bench`. CI fails the build below threshold.
+
+ADR-016 modernc cold-init 1.75 s is hidden behind launchd/systemd `RunAtLoad=true` so users never see it.
+
+See [SECURITY.md](./SECURITY.md) for the threat model + storage modes before relying on the daemon for anything sensitive.
 
 ---
 
@@ -54,13 +77,13 @@ W1 scaffold (Day 3 of 7). Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase se
 | Phase | What | State |
 |---|---|---|
 | 0 | Repo + scaffold | ✅ |
-| 1 | `internal/store` complete | pending |
-| 2 | `internal/api` complete | pending |
-| 3 | `internal/capture` 3 parsers | pending |
-| 4 | Integration: mirror + concurrency tests | pending |
-| 5 | Bench gates wired | pending |
-| 6 | Cross-compile artifacts + install.sh | pending |
-| 7 | GitHub release + demo post | pending |
+| 1 | `internal/store` complete | ✅ (#1) |
+| 2 | `internal/api` complete | ✅ (#2) |
+| 3 | `internal/capture` 3 parsers + state + race fix | ✅ (#4) |
+| 4 | Integration: mirror + concurrency tests | ✅ (rolled into #4) |
+| 5 | Bench gates wired | ✅ (this PR) |
+| 6 | Cross-compile artifacts + install.sh + service files | ✅ (this PR) |
+| 7 | GitHub release + demo post | gated on operator tag-push |
 
 ---
 
