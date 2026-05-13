@@ -1,29 +1,27 @@
-# Binaries
-bin/
-dist/
-*.exe
-*.dll
-*.so
-*.dylib
 
-# Test artifacts
-*.test
-*.out
-coverage.txt
-
-# Local data
-~/.eidetic/
+.DS_Store
+.idea/
+.vscode/
 *.db
 *.db-shm
 *.db-wal
-state.json
-
-# IDE
-.vscode/
-.idea/
+*.dll
+*.dylib
+*.exe
+*.out
+*.so
 *.swp
-.DS_Store
-
+*.test
+# Binaries
 # Go workspace
+# IDE
+# Local data
+# Test artifacts
+~/.eidetic/
+bin/
+coverage.txt
+dist/
+eideticd
 go.work
 go.work.sum
+state.json

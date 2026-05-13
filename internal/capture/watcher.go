@@ -1,0 +1,300 @@
+package capture
+
+import (
+	"context"
+	"errors"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/eidetic-works/eidetic-daemon/internal/engram"
+	"github.com/eidetic-works/eidetic-daemon/internal/store"
+	"github.com/fsnotify/fsnotify"
+)
+
+// Sink is the subset of *store.Store the watcher needs. Defined as an
+// interface so tests can supply an in-memory recorder.
+type Sink interface {
+	InsertBatch(ctx context.Context, batch []engram.Engram) error
+}
+
+// Watcher multiplexes fsnotify events across configured surfaces, debounces
+// them per-file, runs the per-surface parser, batches the resulting engrams
+// into the writer pool, and persists offset state.
+type Watcher struct {
+	sink     Sink
+	state    *State
+	configs  []SurfaceConfig
+	bySurface map[string]Parser
+
+	debounce time.Duration
+	clock    func() time.Time
+
+	// debounceMu guards pending; pending maps file path → timer firing the parse.
+	debounceMu sync.Mutex
+	pending    map[string]*time.Timer
+
+	// parseMu serializes parseAndCommit per-path. Without this, two
+	// debounce timers can fire `parseAndCommit` for the same path
+	// concurrently, and the second can read state.Get BEFORE the first
+	// writes state.Set, causing double-insert of the same bytes. See
+	// TestWatcherBurstNoDoubleInsert + peer hole-poke
+	// relay_20260513_072250_eee4993e §1.
+	//
+	// Map values are *sync.Mutex; we use sync.Map for lock-free reads of
+	// the per-path mutex itself.
+	parseMu sync.Map
+
+	// instrumentation for tests / observability
+	parseDoneCh chan ParseDone
+}
+
+// ParseDone is emitted on parseDoneCh after each successful parse + commit
+// pair. Useful for integration tests asserting end-to-end latency.
+type ParseDone struct {
+	Surface string
+	Path    string
+	Count   int
+	Latency time.Duration
+}
+
+// NewWatcher constructs a Watcher. debounce defaults to 10ms (per spec
+// section 2.3 + ADR-013 #2 fsnotify event coalescing concern).
+func NewWatcher(sink Sink, state *State, configs []SurfaceConfig, debounce time.Duration) *Watcher {
+	if debounce <= 0 {
+		debounce = 10 * time.Millisecond
+	}
+	bySurface := make(map[string]Parser, len(configs))
+	for _, c := range configs {
+		bySurface[c.Surface] = c.Parser
+	}
+	return &Watcher{
+		sink:      sink,
+		state:     state,
+		configs:   configs,
+		bySurface: bySurface,
+		debounce:  debounce,
+		clock:     time.Now,
+		pending:   map[string]*time.Timer{},
+	}
+}
+
+// SetParseDoneChannel enables emission of ParseDone events. Tests use this
+// to wait for the watcher to finish processing without sleeping.
+//
+// Caller is responsible for draining the channel (it is NOT buffered for
+// production usage to avoid silent backpressure).
+func (w *Watcher) SetParseDoneChannel(ch chan ParseDone) {
+	w.parseDoneCh = ch
+}
+
+// Run starts an fsnotify watcher, registers each existing surface root, walks
+// each root recursively to seed initial-state parsing, and blocks on the
+// event loop until ctx is done.
+func (w *Watcher) Run(ctx context.Context) error {
+	fw, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	defer fw.Close()
+
+	for _, c := range w.configs {
+		if err := w.addRoot(fw, c); err != nil {
+			// Per spec section 2.3 + audit: missing surface dir on this host is
+			// expected (e.g., Cowork dir absent). Log and continue.
+			log.Printf("capture: skip surface %q (root %s): %v", c.Surface, c.Root, err)
+			continue
+		}
+		w.scanInitial(ctx, c)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			w.flushAll(ctx)
+			return nil
+		case err, ok := <-fw.Errors:
+			if !ok {
+				return nil
+			}
+			log.Printf("capture: fsnotify error: %v", err)
+		case ev, ok := <-fw.Events:
+			if !ok {
+				return nil
+			}
+			w.onEvent(ctx, fw, ev)
+		}
+	}
+}
+
+func (w *Watcher) addRoot(fw *fsnotify.Watcher, c SurfaceConfig) error {
+	stat, err := os.Stat(c.Root)
+	if err != nil {
+		return err
+	}
+	if !stat.IsDir() {
+		return errors.New("not a directory")
+	}
+	// Recursive walk: fsnotify on macOS does not auto-recurse.
+	return filepath.Walk(c.Root, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		if info.IsDir() {
+			return fw.Add(path)
+		}
+		return nil
+	})
+}
+
+// scanInitial does a one-shot parse of all matching files at startup. This
+// catches writes that happened while the daemon was down.
+func (w *Watcher) scanInitial(ctx context.Context, c SurfaceConfig) {
+	_ = filepath.Walk(c.Root, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil || info.IsDir() {
+			return nil
+		}
+		if !w.matches(c, path) {
+			return nil
+		}
+		w.parseAndCommit(ctx, c.Surface, path)
+		return nil
+	})
+}
+
+func (w *Watcher) matches(c SurfaceConfig, path string) bool {
+	if c.Glob == "" {
+		return true
+	}
+	ok, err := filepath.Match(c.Glob, filepath.Base(path))
+	return err == nil && ok
+}
+
+func (w *Watcher) onEvent(ctx context.Context, fw *fsnotify.Watcher, ev fsnotify.Event) {
+	if ev.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename|fsnotify.Chmod) == 0 {
+		return
+	}
+	// New directory: register so we receive its child events too.
+	if ev.Op&fsnotify.Create != 0 {
+		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
+			_ = fw.Add(ev.Name)
+			return
+		}
+	}
+
+	// Find the surface this path belongs to.
+	for _, c := range w.configs {
+		if !strings.HasPrefix(ev.Name, c.Root) || !w.matches(c, ev.Name) {
+			continue
+		}
+		w.scheduleParse(ctx, c.Surface, ev.Name)
+		return
+	}
+}
+
+// scheduleParse coalesces bursts: if multiple events arrive for the same
+// path within w.debounce, only one parseAndCommit fires. Per ADR-013 #2.
+func (w *Watcher) scheduleParse(ctx context.Context, surface, path string) {
+	w.debounceMu.Lock()
+	if t, ok := w.pending[path]; ok {
+		t.Stop()
+	}
+	w.pending[path] = time.AfterFunc(w.debounce, func() {
+		w.debounceMu.Lock()
+		delete(w.pending, path)
+		w.debounceMu.Unlock()
+		w.parseAndCommit(ctx, surface, path)
+	})
+	w.debounceMu.Unlock()
+}
+
+func (w *Watcher) parseAndCommit(ctx context.Context, surface, path string) {
+	// Per-path mutex serializes concurrent parseAndCommit calls for the
+	// same path. See parseMu doc on the Watcher struct for the race this
+	// guards against.
+	muIfaceNew := &sync.Mutex{}
+	muIface, _ := w.parseMu.LoadOrStore(path, muIfaceNew)
+	mu := muIface.(*sync.Mutex)
+	mu.Lock()
+	defer mu.Unlock()
+
+	start := w.clock()
+	parser, ok := w.bySurface[surface]
+	if !ok {
+		return
+	}
+	from := w.state.Get(surface, path)
+	engrams, newOffset, err := parser.Parse(path, from)
+	if err != nil {
+		log.Printf("capture: parse %s %s: %v", surface, path, err)
+		return
+	}
+	if len(engrams) > 0 {
+		if err := w.sink.InsertBatch(ctx, engrams); err != nil {
+			log.Printf("capture: insert %s: %v", surface, err)
+			return
+		}
+	}
+	if newOffset != from {
+		w.state.Set(surface, path, newOffset)
+		if err := w.state.Save(); err != nil {
+			log.Printf("capture: state save: %v", err)
+		}
+	}
+	if w.parseDoneCh != nil {
+		w.parseDoneCh <- ParseDone{
+			Surface: surface,
+			Path:    path,
+			Count:   len(engrams),
+			Latency: w.clock().Sub(start),
+		}
+	}
+}
+
+func (w *Watcher) flushAll(ctx context.Context) {
+	w.debounceMu.Lock()
+	pendings := make([]*time.Timer, 0, len(w.pending))
+	for _, t := range w.pending {
+		pendings = append(pendings, t)
+	}
+	w.pending = map[string]*time.Timer{}
+	w.debounceMu.Unlock()
+	for _, t := range pendings {
+		t.Stop()
+	}
+	_ = w.state.Save()
+	_ = ctx
+}
+
+// DefaultSurfaces returns the spec section 2.3 surface list with paths
+// resolved against the user home directory. Missing dirs are NOT pruned
+// here (Run logs and skips them).
+func DefaultSurfaces() []SurfaceConfig {
+	home, _ := os.UserHomeDir()
+	return []SurfaceConfig{
+		{
+			Surface: "claude_code",
+			Root:    filepath.Join(home, ".claude", "projects"),
+			Glob:    "*.jsonl",
+			Parser:  NewJSONLParser("claude_code"),
+		},
+		{
+			Surface: "cowork",
+			Root:    filepath.Join(home, ".cowork", "sessions"),
+			Glob:    "*.json",
+			Parser:  NewJSONLParser("cowork"),
+		},
+		{
+			Surface: "cursor",
+			Root:    cursorRoot(home),
+			Glob:    "*.json",
+			Parser:  NewCursorParser("cursor"),
+		},
+	}
+}
+
+// Compile-time assertion that *store.Store satisfies Sink.
+var _ Sink = (*store.Store)(nil)
