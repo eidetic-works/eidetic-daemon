@@ -1,0 +1,88 @@
+# Track-Tag + Track-C Word Block (eidetic-daemon repo)
+#
+# Ported from mcp-server-nucleus/.github/workflows/track-tag-check.yml @ 25514dae.
+# Closes cc-peer drift-audit-lite gap (relay_20260513_215000) — workflow lived
+# in monorepo but didn't propagate when daemon code consolidated to this repo.
+#
+# Scope here is intentionally NARROWER than the monorepo version: this daemon
+# repo doesn't have STATUS.md or PLAN.md, so the STATUS-staleness + Week-scope
+# + plan-amendment + gate-window guards aren't applicable. Those keep firing
+# in the monorepo (the entity-wide control plane). This repo's discipline is
+# "are PRs spec-aligned" — covered by ADR-014/016 drift audits + cc-peer
+# review. The two checks remaining are pure refusal hygiene:
+#
+#   1. Track-tag-required — every PR description names which 90d track (A | B
+#      | C | Career-capital). Forces conscious framing per PLAN.md §
+#      Determinism+autopilot § B.
+#   2. Track-C-word-block — guards against accidental BFSI / SOC2 / Axis /
+#      enterprise-tier vocab drift in the diff (PLAN.md Risk #13 mitigation;
+#      ADR-013 guardrail #1 carry-over).
+#
+# Both checks fail-fast in <30s. No external secrets required (uses default
+# GITHUB_TOKEN).
+
+name: track-tag-check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # ── Check 1: every PR names its 90d track ─────────────────────────────────
+  track-tag-required:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Track tag in PR body
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s\n' "$PR_BODY" | grep -qE '^Track:[[:space:]]*(A|B|C|Career-capital)\b'; then
+            echo "::error::PR description missing 'Track: A | B | C | Career-capital' header line."
+            echo "::error::Add a single line to the PR body, e.g. 'Track: A' (developer-product Eidetic Works track)."
+            exit 1
+          fi
+          echo "Track tag OK"
+
+  # ── Check 2: BFSI / SOC2 / Axis / enterprise vocab tripwire ──────────────
+  track-c-word-block:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Grep PR diff for Track-C tripwires
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Tripwire vocabulary from PLAN.md § Determinism+autopilot § B.
+          PATTERN='BFSI|SOC2|Axis Bank|enterprise tier|single-tenant deployment'
+          # Diff added-lines only. SECURITY.md may legitimately mention
+          # "trust boundary" / "audit" — exclude it from the grep.
+          HITS=$(git diff "${BASE_SHA}..${HEAD_SHA}" -- ':!SECURITY.md' \
+                 | grep -E '^\+[^+]' \
+                 | grep -iE "$PATTERN" || true)
+          if [ -z "$HITS" ]; then
+            echo "No Track-C tripwire matches in added-lines"
+            exit 0
+          fi
+          # Tripwire matched → require ADR escape hatch in PR description.
+          if printf '%s\n' "$PR_BODY" | grep -qE 'track-c-gate-fired|ADR-[0-9]+[^\n]*track-c'; then
+            echo "Track-C tripwire matched, but PR description references track-c-gate-fired ADR. PASS."
+            printf '%s\n' "$HITS"
+            exit 0
+          fi
+          echo "::error::Track-C tripwire matched in PR diff outside SECURITY.md."
+          echo "::error::PR description must reference 'track-c-gate-fired' ADR or remove trigger words."
+          printf '%s\n' "$HITS"
+          exit 1
