@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/eidetic-works/eidetic-daemon/internal/api"
+	"github.com/eidetic-works/eidetic-daemon/internal/capture"
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
 )
 
@@ -70,6 +71,21 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Capture-side: fsnotify watchers across the 3 default surface roots.
+	// Loads/persists per-file offsets at <dataDir>/state.json. Missing
+	// surface dirs (e.g., Cowork on hosts without it) are graceful-skip
+	// per capture.Watcher.Run.
+	state, err := capture.LoadState(filepath.Join(dataDir, "state.json"))
+	if err != nil {
+		log.Fatalf("capture state load: %v", err)
+	}
+	watcher := capture.NewWatcher(s, state, capture.DefaultSurfaces(), 0)
+	go func() {
+		if err := watcher.Run(ctx); err != nil {
+			log.Printf("capture: %v", err)
+		}
+	}()
 
 	if err := srv.Serve(ctx); err != nil {
 		log.Fatalf("serve: %v", err)
