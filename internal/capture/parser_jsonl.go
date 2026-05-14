@@ -2,6 +2,8 @@ package capture
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -105,19 +107,68 @@ func (p *JSONLParser) Parse(path string, fromOffset int64) ([]engram.Engram, int
 		}
 
 		ts := extractTimestamp(raw, now)
-		meta := fmt.Sprintf(
-			`{"path":%q,"offset_end":%d,"parser":"jsonl/v1"}`,
-			path, cumOffset,
-		)
-		engrams = append(engrams, engram.Engram{
-			Surface: p.surface,
-			TS:      ts,
-			Payload: raw,
-			Meta:    meta,
-		})
+		// Chunked-capture: lines exceeding the per-engram cap are split into
+		// N chunks and tagged with chunk_id (sha256-prefix of full payload —
+		// idempotent on resume) + chunk_seq (0..N-1) + chunk_total in meta.
+		// Consumers reassemble via meta filter. Records ≤ cap → 1 engram
+		// (backward-compat: no chunk_* fields in meta). Per CHANGELOG W2+
+		// candidate "Chunked-capture for arbitrarily-large records (replaces
+		// the 8 MiB cap as a hard wall)" pulled forward Day 4.
+		if len(raw) > chunkPayloadBudget {
+			engrams = append(engrams, splitOversized(p.surface, ts, path, cumOffset, raw)...)
+		} else {
+			meta := fmt.Sprintf(
+				`{"path":%q,"offset_end":%d,"parser":"jsonl/v1"}`,
+				path, cumOffset,
+			)
+			engrams = append(engrams, engram.Engram{
+				Surface: p.surface,
+				TS:      ts,
+				Payload: raw,
+				Meta:    meta,
+			})
+		}
 	}
 
 	return engrams, cumOffset, nil
+}
+
+// chunkPayloadBudget is the per-chunk payload size budget — kept below
+// store.MaxPayloadBytes to leave room for the meta JSON which travels
+// alongside payload through the same writer.ExecContext call. 7 MiB
+// (vs the 8 MiB MaxPayloadBytes cap) gives ~1 MiB of headroom for
+// meta + any wire-protocol overhead.
+const chunkPayloadBudget = 7 << 20
+
+// splitOversized chops `raw` into ⌈len(raw)/chunkPayloadBudget⌉ chunks,
+// each emitted as its own engram with a shared chunk_id (sha256-prefix
+// of the full payload) + chunk_seq + chunk_total in meta. Idempotent
+// on resume: same input bytes → same chunk_id, so duplicate detection
+// at the consumer side is straightforward (group by chunk_id, sort by
+// chunk_seq, concatenate payload).
+func splitOversized(surface string, ts int64, path string, offsetEnd int64, raw string) []engram.Engram {
+	hash := sha256.Sum256([]byte(raw))
+	chunkID := hex.EncodeToString(hash[:8]) // 16 hex chars = 64 bits, enough for collision-free per-file usage
+	total := (len(raw) + chunkPayloadBudget - 1) / chunkPayloadBudget
+	out := make([]engram.Engram, 0, total)
+	for seq := 0; seq < total; seq++ {
+		start := seq * chunkPayloadBudget
+		end := start + chunkPayloadBudget
+		if end > len(raw) {
+			end = len(raw)
+		}
+		meta := fmt.Sprintf(
+			`{"path":%q,"offset_end":%d,"parser":"jsonl/v1","chunk_id":%q,"chunk_seq":%d,"chunk_total":%d}`,
+			path, offsetEnd, chunkID, seq, total,
+		)
+		out = append(out, engram.Engram{
+			Surface: surface,
+			TS:      ts,
+			Payload: raw[start:end],
+			Meta:    meta,
+		})
+	}
+	return out
 }
 
 func endsWithNewline(b []byte) bool {
