@@ -10,6 +10,7 @@ Per spec § 7 Open Q #5: this is the "separate Python wrapper" path — the daem
 |---|---|---|
 | `query_engrams` | `surface` (required), `limit` (default 50, cap 500), `since` (unix ns, default 0), `raw_chunks` (bool, default false) | JSON array of engrams ordered by timestamp descending. Chunked records (per ADR-018) are reassembled by default; `raw_chunks=true` returns chunks as separate engrams. |
 | `daemon_status` | (none) | `{"healthy": bool}` from `/healthz` round-trip |
+| `daemon_metrics` | (none) | Daemon's `/metrics` JSON (v0.0.7+): `version`, `uptime_seconds`, `engram_total`, `engram_by_surface`, `capture_skipped`, `db_path`, `db_size_bytes`. Schema additive-only across versions. Daemons predating v0.0.7 return `error: metrics not configured`. |
 
 ### Chunked-record reassembly (ADR-018)
 
@@ -78,9 +79,25 @@ Once the MCP client picks up the server, your AI can call:
 ```
 query_engrams(surface="claude_code", limit=20)
 → [{"id":N, "surface":"claude_code", "ts":..., "payload":"...", "meta":"..."}, ...]
+
+daemon_status()
+→ {"healthy": true}
+
+daemon_metrics()
+→ {
+    "version": "v0.0.7",
+    "uptime_seconds": 142,
+    "engram_total": 139751,
+    "engram_by_surface": {"claude_code": 141314},
+    "capture_skipped": 0,
+    "db_path": "/Users/.../engrams.db",
+    "db_size_bytes": 659046400
+  }
 ```
 
 Surfaces depend on what the daemon is watching (default: `claude_code`, `cowork`, `cursor`).
+
+`daemon_metrics()` is the v0.0.7+ verifiability surface — your AI can introspect what's been captured without raw curl, useful for "what's in scope right now?" pre-flight before a `query_engrams` call.
 
 ## Development
 
