@@ -22,7 +22,7 @@ Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + win
 curl -fsSL https://nucleusos.dev/install.sh | sh
 ```
 
-Not yet shipped publicly. Latest internal release: [v0.0.3](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.3) (3 cross-compile assets attached). See `scripts/install.sh` for what the one-line installer runs.
+Not yet shipped publicly. Latest release: [v0.0.6](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.6) (3 cross-compile assets + `SHA256SUMS.txt` attached; pure-Go, no CGO). See `scripts/install.sh` for what the one-line installer runs.
 
 Full demo flow with expected outputs at every step: [`docs/demo.md`](./docs/demo.md). Architecture decisions: [`docs/DECISIONS.md`](./docs/DECISIONS.md). Release notes per version: [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -48,6 +48,21 @@ curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/healthz
 # Open Cursor or Claude Code, write something. Then read it back.
 curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams?surface=claude_code&limit=5'
 ```
+
+---
+
+## Real-data dogfood
+
+v0.0.5 ran against this developer's real `~/.claude/projects/` for 12 seconds (2026-05-14):
+
+- **141,502 engrams ingested** from **564 distinct Claude Code session files**
+- **657 MB DB written** at **~11.8K engrams/sec sustained**
+- **0 records skipped** (capture skip-counter at zero)
+- **0 crashes**; max payload 3.54 MiB; mean 3.96 KB
+
+The chunked-capture path (records >7 MiB → split into idempotent `chunk_id`-tagged engrams; reassembled on the bridge side so MCP clients see ONE engram per logical record) didn't trigger — real Claude Code data tops out around 2.4 MiB per record. Chunked-capture is defense-in-depth, not common-case.
+
+v0.0.6 fixed a SIGTERM shutdown race surfaced during this same dogfood (issue #17 — daemon was logging ~30 noisy "database is closed" errors per stop, no data loss; now 0).
 
 ---
 
@@ -86,7 +101,7 @@ See [docs/SPEC.md](docs/SPEC.md) for the binding W1 spec, [docs/IMPLEMENTATION_P
 
 ## Status
 
-W1 scaffold (Day 3 of 7). Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase sequencing.
+W1 hardening (Day 4 of 7). Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase sequencing.
 
 | Phase | What | State |
 |---|---|---|
@@ -97,7 +112,10 @@ W1 scaffold (Day 3 of 7). Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase se
 | 4 | Integration: mirror + concurrency tests | ✅ (rolled into #4) |
 | 5 | Bench gates wired | ✅ (#5) |
 | 6 | Cross-compile artifacts + install.sh + service files | ✅ (#5) |
-| 7 | GitHub release + demo post | ✅ v0.0.2 + v0.0.3 released; demo doc at `docs/demo.md`; public-flip + DO post pending |
+| 7 | GitHub release + demo post | ✅ v0.0.2 → v0.0.6 released; demo at `docs/demo.md`; public-flip + DO post pending |
+| 8 | MCP bridge (Python stdio server) | ✅ v0.0.4 (#12); reassembly v0.0.5 (#15) |
+| 9 | Chunked-capture (no payload-size hard wall) | ✅ v0.0.5 (#14) |
+| 10 | Shutdown drain (issue #17) | ✅ v0.0.6 (#18) |
 
 ---
 
