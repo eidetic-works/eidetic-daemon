@@ -26,6 +26,18 @@ Not yet shipped publicly. Latest internal release: [v0.0.3](https://github.com/e
 
 Full demo flow with expected outputs at every step: [`docs/demo.md`](./docs/demo.md). Architecture decisions: [`docs/DECISIONS.md`](./docs/DECISIONS.md). Release notes per version: [`CHANGELOG.md`](./CHANGELOG.md).
 
+### MCP bridge (Cursor / Claude Code / Cline / any MCP client)
+
+Optional Python wrapper exposing the daemon's UDS API as MCP tools. Lives at [`bridge/python/`](./bridge/python). Process-isolated from the daemon (separate install, separate crash surface).
+
+```sh
+pip install -e bridge/python
+# Then add to your MCP client config:
+#   {"eidetic": {"command": "python", "args": ["-m", "eidetic_mcp.server"]}}
+```
+
+Tools: `query_engrams(surface, limit, since)` + `daemon_status()`. See [`bridge/python/README.md`](./bridge/python/README.md) for full setup + per-client config snippets.
+
 After install, the daemon spawns at login via launchd / systemd-user. To verify:
 
 ```sh
