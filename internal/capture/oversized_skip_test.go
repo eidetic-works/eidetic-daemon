@@ -13,12 +13,17 @@ import (
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
 )
 
-// TestWatcherOversizedPayloadCounted asserts the per-path serializer + the
-// pre-filter against store.MaxPayloadBytes both fire: oversized records are
-// NOT inserted (would poison the whole batch via InsertBatch validation) BUT
-// the rest of the batch lands, and the watcher's atomic skip-counter
-// increments. Closes cc-tb SPIKE-RESULT finding #2 (relay 20260513_152711).
-func TestWatcherOversizedPayloadCounted(t *testing.T) {
+// TestWatcherOversizedPayloadChunked — UPDATED contract per chunked-capture
+// (post-PR-N): oversized records are no longer dropped + counted as skipped;
+// instead the JSONL parser splits them into chunks (each ≤ chunk budget)
+// tagged with chunk_id/chunk_seq/chunk_total in meta. The watcher's
+// SkippedPayloadTooLarge() counter remains as defense-in-depth (any chunk
+// somehow still exceeding cap → skipped + counted), but on normal chunked
+// records it stays at 0 because chunks fit by construction.
+//
+// This supersedes the v0.0.3 TestWatcherOversizedPayloadCounted shape
+// where oversized records were dropped + counted.
+func TestWatcherOversizedPayloadChunked(t *testing.T) {
 	t.Setenv("EIDETIC_DATA_DIR", t.TempDir())
 	st, err := store.Open("")
 	if err != nil {
@@ -38,7 +43,9 @@ func TestWatcherOversizedPayloadCounted(t *testing.T) {
 	go func() { _ = w.Run(ctx) }()
 	time.Sleep(50 * time.Millisecond)
 
-	// One in-bounds record + one oversized record (just over the cap).
+	// One in-bounds record + one oversized record (just over the per-engram
+	// cap). The oversized line will be split into ⌈(MaxPayloadBytes+1) /
+	// chunkPayloadBudget⌉ chunks by the JSONL parser.
 	huge := strings.Repeat("x", store.MaxPayloadBytes+1)
 	p := filepath.Join(dir, "burst.jsonl")
 	body := fmt.Sprintf(`{"i":0,"payload":"small"}`+"\n"+`{"i":1,"payload":%q}`+"\n", huge)
@@ -46,26 +53,54 @@ func TestWatcherOversizedPayloadCounted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	waitFor(t, doneCh, 1, 2*time.Second)
+	// Wait for at least 3 engrams: 1 small + 2 chunks (8 MiB+ over a 7 MiB
+	// budget → 2 chunks) at minimum.
+	waitFor(t, doneCh, 3, 4*time.Second)
 	drainExtra(doneCh, 500*time.Millisecond)
 
-	// Counter should be 1 (the oversized record).
-	if got := w.SkippedPayloadTooLarge(); got != 1 {
-		t.Errorf("SkippedPayloadTooLarge() = %d, want 1", got)
+	// Defense-in-depth counter should remain 0 — chunks fit by construction.
+	if got := w.SkippedPayloadTooLarge(); got != 0 {
+		t.Errorf("SkippedPayloadTooLarge() = %d, want 0 (chunking handles oversized; pre-filter is defense-only)", got)
 	}
 
-	// Store should hold the small record (NOT the oversized one). If the
-	// pre-filter were missing, InsertBatch's pre-tx validation would have
-	// failed the WHOLE batch and 0 rows would be present.
-	rows, err := st.Retrieve(context.Background(), "claude_code", 0, 10)
+	rows, err := st.Retrieve(context.Background(), "claude_code", 0, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 {
-		t.Errorf("got %d rows, want exactly 1 (small record only; oversized skipped not failed-whole-batch)", len(rows))
+	// Expect: 1 small + 2 chunks (the JSON-encoded huge line is slightly
+	// over MaxPayloadBytes due to the wrapping `{"i":1,"payload":"..."}`,
+	// so split into 2 chunks at 7 MiB each).
+	if len(rows) < 3 {
+		t.Errorf("got %d rows, want ≥ 3 (1 small + chunked oversized)", len(rows))
 	}
-	if len(rows) > 0 && !strings.Contains(rows[0].Payload, "small") {
-		t.Errorf("expected small-payload row, got %q", rows[0].Payload[:50])
+
+	// Find the small + chunk rows by scanning meta.
+	var smallCount, chunkCount int
+	chunkIDs := map[string]int{}
+	for _, r := range rows {
+		if strings.Contains(r.Meta, `"chunk_id":`) {
+			chunkCount++
+			// Extract chunk_id for collision check.
+			i := strings.Index(r.Meta, `"chunk_id":"`)
+			if i >= 0 {
+				rest := r.Meta[i+12:]
+				j := strings.IndexByte(rest, '"')
+				if j > 0 {
+					chunkIDs[rest[:j]]++
+				}
+			}
+		} else if strings.Contains(r.Payload, "small") {
+			smallCount++
+		}
+	}
+	if smallCount != 1 {
+		t.Errorf("smallCount = %d, want 1", smallCount)
+	}
+	if chunkCount < 2 {
+		t.Errorf("chunkCount = %d, want ≥ 2", chunkCount)
+	}
+	if len(chunkIDs) != 1 {
+		t.Errorf("expected exactly 1 distinct chunk_id (all chunks share one); got %d (%v)", len(chunkIDs), chunkIDs)
 	}
 }
 
