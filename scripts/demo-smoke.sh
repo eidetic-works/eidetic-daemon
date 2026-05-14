@@ -114,4 +114,27 @@ for r in rows:
 print('demo-smoke: engram row shape OK')
 "
 
-echo "demo-smoke: PASS — spec § 8 acceptance #3 (write→capture→read end-to-end) holds"
+# Stage 7: /metrics observability surface (v0.0.7+). Asserts the JSON
+# schema fields present + counters reflect the capture we just performed.
+# Acts as a regression gate on the v0.0.7 endpoint contract.
+metrics_body=$(curl -sf --unix-socket "$SOCKET" "http://localhost/metrics" 2>/dev/null || echo '{}')
+echo "$metrics_body" | python3 -c "
+import json, sys
+m = json.loads(sys.stdin.read())
+required = ('version', 'uptime_seconds', 'engram_total', 'engram_by_surface',
+            'capture_skipped', 'db_path', 'db_size_bytes')
+missing = [f for f in required if f not in m]
+if missing:
+    print(f'demo-smoke: /metrics missing fields {missing}: {m}', file=sys.stderr); sys.exit(1)
+if not isinstance(m['engram_by_surface'], dict):
+    print(f'demo-smoke: engram_by_surface not dict: {m[\"engram_by_surface\"]}', file=sys.stderr); sys.exit(1)
+# We just captured at least 1 engram in stage 5 — total must be >= 1.
+if m['engram_total'] < 1:
+    print(f'demo-smoke: engram_total={m[\"engram_total\"]} < 1 after capture (regression?)', file=sys.stderr); sys.exit(1)
+# Skip-counter must be 0 — our marker payload is well under MaxPayloadBytes.
+if m['capture_skipped'] != 0:
+    print(f'demo-smoke: capture_skipped={m[\"capture_skipped\"]} > 0 (oversized payload regression?)', file=sys.stderr); sys.exit(1)
+print('demo-smoke: /metrics schema + counters OK')
+"
+
+echo "demo-smoke: PASS — spec § 8 acceptance #3 (write→capture→read end-to-end) + /metrics schema gate hold"
