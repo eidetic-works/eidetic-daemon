@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Eidetic daemon — one-line installer.
+# Eidetic Works daemon — one-line installer.
 #
 # Usage:
 #   curl -fsSL https://eidetic.works/install.sh | sh
@@ -95,7 +95,7 @@ register_linux() {
   install -d "$(dirname "$unit")"
   cat > "$unit" <<UNIT
 [Unit]
-Description=Eidetic engram daemon
+Description=Eidetic Works engram daemon
 After=default.target
 
 [Service]

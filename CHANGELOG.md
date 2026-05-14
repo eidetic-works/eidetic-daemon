@@ -2,6 +2,43 @@
 
 All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](https://keepachangelog.com/); semver via git tags.
 
+## [v0.0.5] — 2026-05-14
+
+Capture-side hard-wall removal + bridge reassembly + brand alignment per entity-wide ADR-017 + ADR-018 (locked: brand = "Eidetic Works", monolithic Notion-style; "Eidetic" alone not used).
+
+### Added
+- **Chunked-capture for arbitrarily-large records** (`internal/capture/parser_jsonl.go`) — JSONL lines exceeding `chunkPayloadBudget` (7 MiB; sized below `store.MaxPayloadBytes` 8 MiB to leave room for meta+wire overhead) are split into ⌈len/budget⌉ chunks, each tagged with `chunk_id` (sha256-prefix of full payload, 16 hex chars; **idempotent on resume**) + `chunk_seq` (0-indexed) + `chunk_total` in meta JSON. Records ≤ budget emit 1 engram with no `chunk_*` meta fields (backward-compat). Consumer-side reassembly: group by `chunk_id`, sort by `chunk_seq`, concatenate `payload`. Eliminates the 8 MiB hard wall — daemon now handles records of any size, bounded only by SQLite per-row limits + writer-pool throughput. **daemon-repo ADR-018**, PR #14.
+- 7 new tests in `internal/capture/parser_chunked_test.go` cover normal-line-no-chunking, oversized-line-splits, chunk-ID-idempotent, mixed-sizes-in-one-file, reassembly-roundtrip, state-offset-advances-past-oversized + sanity gate (chunk-budget < store cap with ≥ 256 KiB headroom). 1 test renamed in `oversized_skip_test.go` (`TestWatcherOversizedPayloadCounted` → `TestWatcherOversizedPayloadChunked`) reflecting new contract: counter stays at 0 on normal chunked records (chunks fit by construction); counter is now defense-in-depth only.
+- **Bridge-side reassembly** (`bridge/python/eidetic_mcp/reassemble.py`) — `reassemble_chunks(rows)` consumer helper for the chunked-capture contract. `query_engrams` MCP tool runs reassembly by default; `raw_chunks=true` bypasses for debugging. MCP clients (Cursor / Claude Code / Cline) see ONE engram per logical record regardless of underlying chunking. Edge cases (warn + best-effort, never silent-drop): missing chunks, total mismatch, malformed meta. Idempotent via stripped `chunk_*` from merged engram's meta. PR #15.
+- 14 new tests in `bridge/python/tests/test_reassemble.py` (bridge total: 25/25 green).
+
+### Changed
+- **Brand alignment per entity-wide ADR-018** (locked = "Eidetic Works"): `docs/SPEC.md` title + `docs/IMPLEMENTATION_PLAN.md` title + `scripts/install.sh` header comment + systemd unit Description = "Eidetic Works daemon" (was "Eidetic daemon"). Plumbing identifiers stay (`eidetic-daemon` repo, `eideticd` binary, `eidetic_mcp` package, `~/.eidetic/` data dir, `EIDETIC_*` env vars) per ADR-017 distribution corollary ("package identifier is plumbing and stays").
+
+### Reference
+- PRs #14 (chunked-capture), #15 (bridge reassembly), #16 (this release commit; brand alignment + version cut)
+- daemon-repo ADR-018 (chunked-capture decision)
+- entity-wide ADR-017 + ADR-018 (brand-architecture decision + Tier 0.5 outcome) — see `mcp-server-nucleus/DECISIONS.md`
+
+---
+
+## [v0.0.4] — 2026-05-14
+
+Python MCP bridge + ship-readiness polish on top of v0.0.3 (no Go behavioral change).
+
+### Added
+- **`bridge/python/`** — Python MCP stdio server (spec § 7 Open Q #5; pulled forward from Day-6 stretch). Two tools: `query_engrams(surface, limit, since)` + `daemon_status()`. Pure-stdlib UDS client (no requests/httpx dep); MCP SDK loaded lazily (server.py import-only-when-running) so client + tests run without it. 11 unit + integration tests via `PYTHONPATH=. pytest tests/`. Live-fire validated against real eideticd. Install: `pip install -e bridge/python` (not yet on PyPI per 90d pivot — substrate-publication decision deferred to W2+). PR #12.
+- **`scripts/demo-smoke.sh`** + Makefile + ci.yml step — end-to-end gate validating spec § 8 acceptance criteria #3 (write→capture→read against real binary, including `-version` flag check + `/healthz` round-trip + JSONL write to watched dir + marker assertion in `/engrams` response). Locally PASSES in ~2-3 sec including modernc cold-init. PR #10.
+- **`docs/demo.md`** — Day-7 spec § 8 acceptance flow text-script with expected outputs at every step. Distribution Officer Day-7 demo post hyperlink target. PR #8.
+- **`CHANGELOG.md`** + README polish linking `docs/demo.md`, `docs/DECISIONS.md`, releases. PR #9.
+- **`.github/pull_request_template.md`** — `Track:` + `Week-scope:` prefilled to reduce track-tag-check CI gate friction; documents Track-C tripwire vocabulary inline. PR #11.
+- README "MCP bridge" section + CHANGELOG entries surfacing the bridge. PR #13.
+
+### Reference
+- PRs #8, #9, #10, #11, #12, #13.
+
+---
+
 ## [v0.0.3] — 2026-05-14
 
 Hardening release on top of v0.0.2 (no behavioral break for v0.0.2 users; recommended upgrade for anyone hitting silent payload-skips on real Claude session JSONLs).
@@ -53,26 +90,17 @@ First W1 release. Daemon W1 spec functionally complete through Phase 6.
 
 ## Unreleased
 
-### Added (post-v0.0.4, pre-next-tag)
-- **Chunked-capture for arbitrarily-large records** (`internal/capture/parser_jsonl.go`) — JSONL lines exceeding `chunkPayloadBudget` (7 MiB; sized below `store.MaxPayloadBytes` 8 MiB to leave room for meta+wire overhead) are split into ⌈len/budget⌉ chunks, each tagged with `chunk_id` (sha256-prefix of full payload, 16 hex chars; **idempotent on resume**) + `chunk_seq` (0-indexed) + `chunk_total` in meta JSON. Records ≤ budget emit 1 engram with no `chunk_*` meta fields (backward-compat). Consumer-side reassembly: group by `chunk_id`, sort by `chunk_seq`, concatenate `payload`. Eliminates the 8 MiB hard wall — daemon now handles records of any size, bounded only by SQLite per-row limits + writer-pool throughput. ADR-018. PR #N.
-- 6 new tests cover normal-line-no-chunking, oversized-line-splits, chunk-ID-idempotent, mixed-sizes-in-one-file, reassembly-roundtrip, state-offset-advances-past-oversized + sanity gate (chunk-budget < store cap with ≥ 256 KiB headroom).
-
-### Added (post-v0.0.3, pre-v0.0.4)
-- **`bridge/python/`** — Python MCP stdio server (spec § 7 Open Q #5; pulled forward from Day-6 stretch). Two tools: `query_engrams(surface, limit, since)` + `daemon_status()`. Pure-stdlib UDS client (no requests/httpx dep); MCP SDK loaded lazily (server.py import-only-when-running) so client + tests run without it. 11 unit + integration tests via `PYTHONPATH=. pytest tests/`. Live-fire validated against real eideticd. Install: `pip install -e bridge/python` (not yet on PyPI per 90d pivot — substrate-publication decision deferred to W2+). PR #12.
-- **`scripts/demo-smoke.sh`** + Makefile + ci.yml step — end-to-end gate validating spec § 8 acceptance criteria #3 (write→capture→read against real binary, including `-version` flag check + `/healthz` round-trip + JSONL write to watched dir + marker assertion in `/engrams` response). Locally PASSES in ~2-3 sec including modernc cold-init. PR #10.
-- **`docs/demo.md`** — Day-7 spec § 8 acceptance flow text-script with expected outputs at every step. Distribution Officer Day-7 demo post hyperlink target. PR #8.
-- **`CHANGELOG.md`** + README polish linking docs/demo.md, docs/DECISIONS.md, releases. PR #9.
-- **`.github/pull_request_template.md`** — `Track:` + `Week-scope:` prefilled to reduce track-tag-check CI gate friction; documents Track-C tripwire vocabulary inline. PR #11.
-
 W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
-- Chunked-capture for arbitrarily-large records (replaces the 8 MiB cap as a hard wall).
 - `/metrics` HTTP endpoint surfacing capture skip-counter + bench numbers.
 - Caller authentication on the API (per-process token in HTTP header).
 - Bridge fold-in to `mcp-server-nucleus` (substrate-paused per `project_eidetic_works_90d_pivot_2026_05_10.md`).
 - Cloudflare D1+R2+Workers cloud sync (per ADR-005, encrypted blobs only).
 - Compliance daemon (W2 per spec § 1).
-- PyPI publication of `eidetic-mcp` package.
-- GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per ADR-017; gates on billing reset 2026-05-19).
+- PyPI publication of `eidetic-mcp` package (deferred per 90d pivot).
+- GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per daemon-repo ADR-017; gates on billing reset 2026-05-19).
+- Acquire `eideticworks.com` ($1-5K) post-W4 if probe validates (per entity-wide ADR-018; logged in `mcp-server-nucleus/docs/brand-migration.md`).
 
+[v0.0.5]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.5
+[v0.0.4]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.4
 [v0.0.3]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.3
 [v0.0.2]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.2

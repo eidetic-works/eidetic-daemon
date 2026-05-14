@@ -1,4 +1,4 @@
-# Eidetic Daemon — W1 Spec
+# Eidetic Works Daemon — W1 Spec
 
 **Date:** 2026-05-10 (Day 0)
 **Status:** Draft for Pre-Day-1 review (cc-peer ADR-013; cc-tb ADR-014)
