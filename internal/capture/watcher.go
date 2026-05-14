@@ -57,6 +57,13 @@ type Watcher struct {
 	// possible on outliers — surface count so users see data loss.
 	skippedPayloadTooLarge uint64
 
+	// inflight tracks parseAndCommit goroutines spawned via scheduleParse
+	// AfterFunc and synchronous scanInitial calls. Run blocks on this
+	// before returning so the caller (main()) can safely close the store
+	// without racing in-flight InsertBatch calls. See issue #17 (v0.0.5
+	// shutdown race: ~30 "database is closed" errors per stop).
+	inflight sync.WaitGroup
+
 	// instrumentation for tests / observability
 	parseDoneCh chan ParseDone
 }
@@ -109,14 +116,27 @@ func (w *Watcher) SetParseDoneChannel(ch chan ParseDone) {
 // Run starts an fsnotify watcher, registers each existing surface root, walks
 // each root recursively to seed initial-state parsing, and blocks on the
 // event loop until ctx is done.
+//
+// Shutdown contract (issue #17): Run does NOT return until all in-flight
+// parseAndCommit goroutines have completed. Callers (main()) may safely
+// close the underlying store immediately after Run returns without racing
+// pending InsertBatch calls.
 func (w *Watcher) Run(ctx context.Context) error {
 	fw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return err
 	}
 	defer fw.Close()
+	// Drain in-flight parse goroutines before returning. This pairs with
+	// inflight.Add(1) in scheduleParse + scanInitial so the store survives
+	// past the last InsertBatch. See issue #17.
+	defer w.inflight.Wait()
 
 	for _, c := range w.configs {
+		if ctx.Err() != nil {
+			// SIGTERM during initial walk: bail before adding more work.
+			break
+		}
 		if err := w.addRoot(fw, c); err != nil {
 			// Per spec section 2.3 + audit: missing surface dir on this host is
 			// expected (e.g., Cowork dir absent). Log and continue.
@@ -167,15 +187,27 @@ func (w *Watcher) addRoot(fw *fsnotify.Watcher, c SurfaceConfig) error {
 
 // scanInitial does a one-shot parse of all matching files at startup. This
 // catches writes that happened while the daemon was down.
+//
+// Bails on ctx cancellation (issue #17) so SIGTERM during a hot ~/.claude/
+// projects walk doesn't keep firing parseAndCommit after main() has begun
+// shutdown. Each parseAndCommit call is bracketed by inflight.Add/Done so
+// Run.defer can drain them.
 func (w *Watcher) scanInitial(ctx context.Context, c SurfaceConfig) {
 	_ = filepath.Walk(c.Root, func(path string, info os.FileInfo, walkErr error) error {
+		if ctx.Err() != nil {
+			return filepath.SkipAll
+		}
 		if walkErr != nil || info.IsDir() {
 			return nil
 		}
 		if !w.matches(c, path) {
 			return nil
 		}
-		w.parseAndCommit(ctx, c.Surface, path)
+		w.inflight.Add(1)
+		func() {
+			defer w.inflight.Done()
+			w.parseAndCommit(ctx, c.Surface, path)
+		}()
 		return nil
 	})
 }
@@ -212,12 +244,23 @@ func (w *Watcher) onEvent(ctx context.Context, fw *fsnotify.Watcher, ev fsnotify
 
 // scheduleParse coalesces bursts: if multiple events arrive for the same
 // path within w.debounce, only one parseAndCommit fires. Per ADR-013 #2.
+//
+// inflight.Add(1) reserves a slot at SCHEDULE time, not fire time, so a
+// debounce timer that fires concurrently with shutdown is still tracked.
+// Stopping the timer (via flushAll) decrements the slot if the AfterFunc
+// did not run; otherwise the AfterFunc decrements via defer.
 func (w *Watcher) scheduleParse(ctx context.Context, surface, path string) {
 	w.debounceMu.Lock()
 	if t, ok := w.pending[path]; ok {
-		t.Stop()
+		// If we successfully Stop() the prior timer, its AfterFunc never
+		// runs and we own its inflight slot — release it so totals balance.
+		if t.Stop() {
+			w.inflight.Done()
+		}
 	}
+	w.inflight.Add(1)
 	w.pending[path] = time.AfterFunc(w.debounce, func() {
+		defer w.inflight.Done()
 		w.debounceMu.Lock()
 		delete(w.pending, path)
 		w.debounceMu.Unlock()
@@ -292,6 +335,11 @@ func (w *Watcher) parseAndCommit(ctx context.Context, surface, path string) {
 	}
 }
 
+// flushAll is called on ctx cancellation. It stops all pending debounce
+// timers (so future fires are cancelled) and decrements inflight for each
+// timer it successfully stopped before it could fire. Run.defer waits on
+// the remaining inflight (already-fired AfterFunc goroutines) before
+// returning. See issue #17.
 func (w *Watcher) flushAll(ctx context.Context) {
 	w.debounceMu.Lock()
 	pendings := make([]*time.Timer, 0, len(w.pending))
@@ -301,7 +349,10 @@ func (w *Watcher) flushAll(ctx context.Context) {
 	w.pending = map[string]*time.Timer{}
 	w.debounceMu.Unlock()
 	for _, t := range pendings {
-		t.Stop()
+		if t.Stop() {
+			// AfterFunc never ran — its inflight slot is ours to release.
+			w.inflight.Done()
+		}
 	}
 	_ = w.state.Save()
 	_ = ctx

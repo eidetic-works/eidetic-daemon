@@ -94,13 +94,25 @@ func main() {
 		log.Fatalf("capture state load: %v", err)
 	}
 	watcher := capture.NewWatcher(s, state, capture.DefaultSurfaces(), 0)
+	captureDone := make(chan struct{})
 	go func() {
+		defer close(captureDone)
 		if err := watcher.Run(ctx); err != nil {
 			log.Printf("capture: %v", err)
 		}
 	}()
 
 	if err := srv.Serve(ctx); err != nil {
-		log.Fatalf("serve: %v", err)
+		// Demoted from Fatalf to Printf so the capture-drain below still
+		// runs on serve errors (e.g., listener already-bound), preserving
+		// the issue #17 invariant: store closes only after capture drains.
+		log.Printf("serve: %v", err)
 	}
+
+	// Drain capture before letting `defer s.Close()` fire. Without this,
+	// in-flight parseAndCommit goroutines race store close and emit ~30
+	// "begin batch tx: sql: database is closed" errors per shutdown
+	// (issue #17). watcher.Run defers inflight.Wait() so no pending
+	// InsertBatch remains when this returns.
+	<-captureDone
 }
