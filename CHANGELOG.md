@@ -2,6 +2,29 @@
 
 All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](https://keepachangelog.com/); semver via git tags.
 
+## [v0.0.6] — 2026-05-14
+
+Shutdown-race fix on top of v0.0.5 (no behavioral change to capture/store/API).
+
+### Fixed
+- **Issue #17 — SIGTERM shutdown race** (`internal/capture/watcher.go` + `cmd/eideticd/main.go`). v0.0.5 daemons fired ~30 `capture: insert claude_code: begin batch tx: sql: database is closed` errors per shutdown because in-flight `parseAndCommit` goroutines (from `scanInitial` walks + debounced `scheduleParse` AfterFunc timers) raced `defer s.Close()` in main(). Fix: introduce `Watcher.inflight sync.WaitGroup` tracking parse goroutines spawned at schedule-time (not fire-time) so AfterFunc timers stopped via `flushAll` correctly release their slot; `Watcher.Run` defers `inflight.Wait()` so it returns only after every InsertBatch drains; `main()` waits on a `captureDone` channel between `srv.Serve(ctx)` returning and the `defer s.Close()` firing. **Real-world dogfood**: same scenario that surfaced the bug now produces 0 "database is closed" errors over 30s capture + SIGTERM (was ~30 in v0.0.5). PR #18.
+- `scanInitial` now bails on `ctx.Err() != nil` via `filepath.SkipAll` so SIGTERM during a hot ~/.claude/projects walk no longer queues additional InsertBatch calls past shutdown.
+- `main()` `srv.Serve(ctx)` error path demoted from `log.Fatalf` → `log.Printf` to preserve the issue #17 invariant (capture-drain runs even on serve errors before store closes).
+
+### Added
+- 2 regression tests in `internal/capture/shutdown_drain_test.go`:
+  - `TestWatcherDrainsBeforeShutdown` — closableSink with 5ms InsertBatch delay; cancel ctx mid-walk; assert 0 post-Close calls land on the sink. Pre-fix: this fails (post-close calls > 0). Post-fix: 0 races.
+  - `TestWatcherDrainBalancesInflight` — synthetic 50-call burst on the same path within debounce window; asserts inflight WG arithmetic balances (no panic, no Wait deadlock).
+- Both green under `-race`.
+
+### Reference
+- PRs #18 (this fix; release commit folded in)
+- daemon-repo issue #17 (filed during v0.0.5 dogfood; closed by this release)
+- HARD RULE applied: `feedback_static_audit_needs_runtime_pair.md` — runtime spike caught what static review missed.
+- HARD RULE applied: `feedback_no_test_before_one_success.md` — live-fire dogfood proved fix BEFORE codifying.
+
+---
+
 ## [v0.0.5] — 2026-05-14
 
 Capture-side hard-wall removal + bridge reassembly + brand alignment per entity-wide ADR-017 + ADR-018 (locked: brand = "Eidetic Works", monolithic Notion-style; "Eidetic" alone not used).
@@ -100,6 +123,7 @@ W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
 - GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per daemon-repo ADR-017; gates on billing reset 2026-05-19).
 - Acquire `eideticworks.com` ($1-5K) post-W4 if probe validates (per entity-wide ADR-018; logged in `mcp-server-nucleus/docs/brand-migration.md`).
 
+[v0.0.6]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.6
 [v0.0.5]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.5
 [v0.0.4]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.4
 [v0.0.3]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.3
