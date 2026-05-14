@@ -26,3 +26,11 @@ go.work
 go.work.sum
 state.json
 release/
+
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
