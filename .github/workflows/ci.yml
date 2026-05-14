@@ -23,3 +23,5 @@ jobs:
         run: make build-all
       - name: Bench (P95 SLO gates)
         run: go test -bench=. -benchtime=1x -run=^$ -timeout=180s ./bench/...
+      - name: Demo smoke (spec section 8 acceptance #3)
+        run: make demo-smoke
