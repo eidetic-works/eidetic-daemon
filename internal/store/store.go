@@ -260,6 +260,40 @@ func (s *Store) ExplainQuery(ctx context.Context) (string, error) {
 	return out, rows.Err()
 }
 
+// Count returns the total engram count across all surfaces. Reader-pool
+// query — does not block writers. Used by the /metrics endpoint (v0.0.7+).
+func (s *Store) Count(ctx context.Context) (int64, error) {
+	var n int64
+	err := s.reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM engrams`).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("count: %w", err)
+	}
+	return n, nil
+}
+
+// CountBySurface returns engram count grouped by surface. Reader-pool
+// query — does not block writers. Used by the /metrics endpoint to
+// surface per-surface ingest visibility.
+func (s *Store) CountBySurface(ctx context.Context) (map[string]int64, error) {
+	rows, err := s.reader.QueryContext(ctx, `SELECT surface, COUNT(*) FROM engrams GROUP BY surface`)
+	if err != nil {
+		return nil, fmt.Errorf("count by surface query: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]int64{}
+	for rows.Next() {
+		var (
+			surface string
+			n       int64
+		)
+		if err := rows.Scan(&surface, &n); err != nil {
+			return nil, fmt.Errorf("count by surface scan: %w", err)
+		}
+		out[surface] = n
+	}
+	return out, rows.Err()
+}
+
 // defaultDBPath resolves $EIDETIC_DATA_DIR or ~/.eidetic/engrams.db
 // per spec § 2.2.
 func defaultDBPath() (string, error) {

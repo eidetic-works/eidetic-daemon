@@ -47,6 +47,10 @@ curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/healthz
 
 # Open Cursor or Claude Code, write something. Then read it back.
 curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams?surface=claude_code&limit=5'
+
+# Live metrics (v0.0.7+): version, uptime, engram counts per surface,
+# capture skip-counter, DB size. Schema is additive-only across versions.
+curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/metrics
 ```
 
 ---

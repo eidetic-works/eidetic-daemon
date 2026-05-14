@@ -21,6 +21,12 @@ type Options struct {
 	UDSPath string        // e.g. "/tmp/eidetic-daemon.sock"; if set, takes precedence
 	TCPAddr string        // e.g. "127.0.0.1:9876"; used only when UDSPath is empty
 	Timeout time.Duration // per-request timeout; default 5s if zero
+
+	// Metrics is an optional provider for the GET /metrics endpoint
+	// (v0.0.7+). Supplied by main() so the api package stays decoupled
+	// from cmd-side state (Watcher, process start time, build version).
+	// If nil, /metrics returns 503 "metrics not configured".
+	Metrics MetricsProvider
 }
 
 // Server wraps an http.Server bound to a local listener (UDS or TCP).
@@ -31,6 +37,7 @@ type Server struct {
 	store    *store.Store
 	udsPath  string // empty for TCP; set so Close can unlink the file
 	timeout  time.Duration
+	metrics  MetricsProvider // may be nil; /metrics returns 503 in that case
 }
 
 // New constructs a server bound per opts. Cleans up a stale UDS file at
@@ -47,7 +54,7 @@ func New(s *store.Store, opts Options) (*Server, error) {
 		opts.Timeout = 5 * time.Second
 	}
 
-	srv := &Server{store: s, timeout: opts.Timeout}
+	srv := &Server{store: s, timeout: opts.Timeout, metrics: opts.Metrics}
 
 	var (
 		listener net.Listener
@@ -81,6 +88,7 @@ func New(s *store.Store, opts Options) (*Server, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/engrams", srv.handleEngramsGET)
 	mux.HandleFunc("/healthz", srv.handleHealthz)
+	mux.HandleFunc("/metrics", srv.handleMetrics)
 
 	srv.httpSrv = &http.Server{
 		Handler:           mux,
