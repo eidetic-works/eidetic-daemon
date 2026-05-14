@@ -105,6 +105,31 @@ P95 round-trip latency: **0.27 ms** on a 10K-row store (M4, mainline build, 2026
 
 ---
 
+## 5a. Inspect daemon state (v0.0.7+)
+
+```sh
+curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/metrics
+```
+
+Expected:
+```json
+{
+  "version": "v0.0.7",
+  "uptime_seconds": 142,
+  "engram_total": 139751,
+  "engram_by_surface": { "claude_code": 141314 },
+  "capture_skipped": 0,
+  "db_path": "/Users/<you>/.eidetic/engrams.db",
+  "db_size_bytes": 659046400
+}
+```
+
+Schema is additive-only across versions. Use this to verify scale / throughput claims directly from the daemon — no trust-me framing. Daemons predating v0.0.7 return `503 metrics not configured`; check `version` to confirm.
+
+If you have the bridge installed (`bridge/python/`), the same data is available to MCP tool-calling AIs via `daemon_metrics()` (v0.0.8+).
+
+---
+
 ## 6. Latency
 
 The bench gates ship in CI:
