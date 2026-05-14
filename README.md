@@ -22,7 +22,9 @@ Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + win
 curl -fsSL https://nucleusos.dev/install.sh | sh
 ```
 
-Not yet shipped publicly. See `scripts/install.sh` for what runs locally.
+Not yet shipped publicly. Latest internal release: [v0.0.3](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.3) (3 cross-compile assets attached). See `scripts/install.sh` for what the one-line installer runs.
+
+Full demo flow with expected outputs at every step: [`docs/demo.md`](./docs/demo.md). Architecture decisions: [`docs/DECISIONS.md`](./docs/DECISIONS.md). Release notes per version: [`CHANGELOG.md`](./CHANGELOG.md).
 
 After install, the daemon spawns at login via launchd / systemd-user. To verify:
 
@@ -81,9 +83,9 @@ W1 scaffold (Day 3 of 7). Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase se
 | 2 | `internal/api` complete | ✅ (#2) |
 | 3 | `internal/capture` 3 parsers + state + race fix | ✅ (#4) |
 | 4 | Integration: mirror + concurrency tests | ✅ (rolled into #4) |
-| 5 | Bench gates wired | ✅ (this PR) |
-| 6 | Cross-compile artifacts + install.sh + service files | ✅ (this PR) |
-| 7 | GitHub release + demo post | gated on operator tag-push |
+| 5 | Bench gates wired | ✅ (#5) |
+| 6 | Cross-compile artifacts + install.sh + service files | ✅ (#5) |
+| 7 | GitHub release + demo post | ✅ v0.0.2 + v0.0.3 released; demo doc at `docs/demo.md`; public-flip + DO post pending |
 
 ---
 
