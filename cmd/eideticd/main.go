@@ -74,6 +74,34 @@ func main() {
 		opts.UDSPath = defaultUDSPath
 	}
 
+	// /metrics provider (v0.0.7+). Closes over watcher (for capture
+	// skip-counter), store (for engram counts + DB path), and process
+	// start time (for uptime). Provider is built BEFORE watcher is
+	// constructed below — so we forward-declare via a *capture.Watcher
+	// pointer set later. nil-safe inside the closure.
+	var watcherPtr *capture.Watcher
+	startTime := time.Now()
+	opts.Metrics = func(ctx context.Context) (api.Metrics, error) {
+		m := api.Metrics{
+			Version:       Version,
+			UptimeSeconds: int64(time.Since(startTime).Seconds()),
+			DBPath:        dbPath,
+		}
+		if total, err := s.Count(ctx); err == nil {
+			m.EngramTotal = total
+		}
+		if bySurface, err := s.CountBySurface(ctx); err == nil {
+			m.EngramBySurface = bySurface
+		}
+		if watcherPtr != nil {
+			m.CaptureSkipped = watcherPtr.SkippedPayloadTooLarge()
+		}
+		if fi, err := os.Stat(dbPath); err == nil {
+			m.DBSizeBytes = fi.Size()
+		}
+		return m, nil
+	}
+
 	srv, err := api.New(s, opts)
 	if err != nil {
 		log.Fatalf("api new: %v", err)
@@ -94,6 +122,7 @@ func main() {
 		log.Fatalf("capture state load: %v", err)
 	}
 	watcher := capture.NewWatcher(s, state, capture.DefaultSurfaces(), 0)
+	watcherPtr = watcher // satisfy /metrics provider closure forward-decl
 	captureDone := make(chan struct{})
 	go func() {
 		defer close(captureDone)

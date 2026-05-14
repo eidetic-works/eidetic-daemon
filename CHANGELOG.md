@@ -2,6 +2,31 @@
 
 All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](https://keepachangelog.com/); semver via git tags.
 
+## [v0.0.7] — 2026-05-14
+
+First observability surface on top of v0.0.6 — `GET /metrics` JSON endpoint exposing daemon-side counters that DO posts (and any future ops dashboard) can cite live.
+
+### Added
+- **`GET /metrics`** (`internal/api/metrics.go` + `internal/api/server.go`) — returns JSON Metrics body: `version`, `uptime_seconds`, `engram_total`, `engram_by_surface`, `capture_skipped`, `db_path`, `db_size_bytes`. Schema is **additive-only** across versions: callers can rely on existing fields continuing to exist; new fields may appear. Per-request timeout from `Server.timeout`. PR #20.
+- **`store.Count(ctx)`** + **`store.CountBySurface(ctx)`** (`internal/store/store.go`) — reader-pool queries (do not block writers) for the /metrics endpoint.
+- **`api.MetricsProvider func(ctx) (Metrics, error)`** + **`api.Options.Metrics`** field — keeps the api package decoupled from cmd-side state (Watcher pointer, process start time, build version). Provider is supplied by `main()`; `nil` provider → `/metrics` returns `503 metrics not configured` so callers can detect daemons that predate v0.0.7 wiring.
+- **5 new tests** under `-race`:
+  - `TestMetricsHappyPath` — TCP-bound server + canned provider; assert 200 + JSON schema fields populate correctly
+  - `TestMetricsNoProviderReturns503` — nil provider fallback
+  - `TestMetricsProviderError` — provider error → 500 with body
+  - `TestMetricsMethodNotAllowed` — POST → 405
+  - `TestCountEmpty` + `TestCountAndCountBySurfaceAfterInsert` — store-level coverage
+- **Live-fire validation**: `eideticd -version` → `eideticd v0.0.7-rc1`; 10s capture against real `~/.claude/projects/`; `curl --unix-socket /tmp/eidetic-metrics-test/sock http://localhost/metrics` returned `engram_total=139751`, `db_size_bytes=659046400`, `capture_skipped=0`. v0.0.6 shutdown-drain still clean (0 "database is closed" errors on SIGTERM).
+
+### Note
+- `engram_total` and `sum(engram_by_surface)` may differ by tens during heavy live ingestion — the two reader-pool queries run on different WAL snapshots a moment apart. Not a bug; total is approximate during burst ingest. For exact total + per-surface read together, prefer `engram_by_surface` and sum client-side.
+
+### Reference
+- PR #20 (this release commit folded in)
+- W2+ list (CHANGELOG Unreleased) entry "/metrics HTTP endpoint surfacing capture skip-counter + bench numbers" — promoted into v0.0.7
+
+---
+
 ## [v0.0.6] — 2026-05-14
 
 Shutdown-race fix on top of v0.0.5 (no behavioral change to capture/store/API).
@@ -114,8 +139,8 @@ First W1 release. Daemon W1 spec functionally complete through Phase 6.
 ## Unreleased
 
 W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
-- `/metrics` HTTP endpoint surfacing capture skip-counter + bench numbers.
 - Caller authentication on the API (per-process token in HTTP header).
+- Prometheus-format `/metrics` (currently JSON-only).
 - Bridge fold-in to `mcp-server-nucleus` (substrate-paused per `project_eidetic_works_90d_pivot_2026_05_10.md`).
 - Cloudflare D1+R2+Workers cloud sync (per ADR-005, encrypted blobs only).
 - Compliance daemon (W2 per spec § 1).
@@ -123,6 +148,7 @@ W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
 - GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per daemon-repo ADR-017; gates on billing reset 2026-05-19).
 - Acquire `eideticworks.com` ($1-5K) post-W4 if probe validates (per entity-wide ADR-018; logged in `mcp-server-nucleus/docs/brand-migration.md`).
 
+[v0.0.7]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.7
 [v0.0.6]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.6
 [v0.0.5]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.5
 [v0.0.4]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.4
