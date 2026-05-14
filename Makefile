@@ -1,5 +1,5 @@
 .PHONY: build build-all build-darwin-arm64 build-linux-amd64 build-windows-amd64 \
-        test bench smoke tidy clean verify-cross-compile
+        test bench smoke demo-smoke tidy clean verify-cross-compile
 
 GO ?= go
 BIN_DIR := bin
@@ -35,6 +35,12 @@ test:
 
 smoke: build
 	@./scripts/smoke.sh
+
+# Spec § 8 acceptance #3 — write→capture→read end-to-end against real binary.
+# Sister to `smoke` (daemon-up + JSON-shape only); this exercises the fsnotify
+# capture path: write JSONL to watched dir → poll /engrams → assert marker.
+demo-smoke: build
+	@./scripts/demo-smoke.sh
 
 bench:
 	$(GO) test -bench=. -benchtime=10s ./bench
