@@ -53,13 +53,22 @@ First W1 release. Daemon W1 spec functionally complete through Phase 6.
 
 ## Unreleased
 
-W2 candidates (per spec § 1 cuts list):
+### Added (post-v0.0.3, pre-next-tag)
+- **`bridge/python/`** — Python MCP stdio server (spec § 7 Open Q #5; pulled forward from Day-6 stretch). Two tools: `query_engrams(surface, limit, since)` + `daemon_status()`. Pure-stdlib UDS client (no requests/httpx dep); MCP SDK loaded lazily (server.py import-only-when-running) so client + tests run without it. 11 unit + integration tests via `PYTHONPATH=. pytest tests/`. Live-fire validated against real eideticd. Install: `pip install -e bridge/python` (not yet on PyPI per 90d pivot — substrate-publication decision deferred to W2+). PR #12.
+- **`scripts/demo-smoke.sh`** + Makefile + ci.yml step — end-to-end gate validating spec § 8 acceptance criteria #3 (write→capture→read against real binary, including `-version` flag check + `/healthz` round-trip + JSONL write to watched dir + marker assertion in `/engrams` response). Locally PASSES in ~2-3 sec including modernc cold-init. PR #10.
+- **`docs/demo.md`** — Day-7 spec § 8 acceptance flow text-script with expected outputs at every step. Distribution Officer Day-7 demo post hyperlink target. PR #8.
+- **`CHANGELOG.md`** + README polish linking docs/demo.md, docs/DECISIONS.md, releases. PR #9.
+- **`.github/pull_request_template.md`** — `Track:` + `Week-scope:` prefilled to reduce track-tag-check CI gate friction; documents Track-C tripwire vocabulary inline. PR #11.
+
+W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
 - Chunked-capture for arbitrarily-large records (replaces the 8 MiB cap as a hard wall).
 - `/metrics` HTTP endpoint surfacing capture skip-counter + bench numbers.
 - Caller authentication on the API (per-process token in HTTP header).
-- MCP bridge as a separate Python wrapper around UDS API (NOT in daemon binary; spec § 7 Open Q #5).
+- Bridge fold-in to `mcp-server-nucleus` (substrate-paused per `project_eidetic_works_90d_pivot_2026_05_10.md`).
 - Cloudflare D1+R2+Workers cloud sync (per ADR-005, encrypted blobs only).
 - Compliance daemon (W2 per spec § 1).
+- PyPI publication of `eidetic-mcp` package.
+- GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per ADR-017; gates on billing reset 2026-05-19).
 
 [v0.0.3]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.3
 [v0.0.2]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.2
