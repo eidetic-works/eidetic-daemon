@@ -42,6 +42,7 @@ from dataclasses import asdict
 from typing import Any
 
 from .client import DaemonClient, DaemonError
+from .reassemble import reassemble_chunks
 
 
 # Lazy import of mcp SDK so client.py + tests can be exercised without it.
@@ -80,7 +81,12 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "from a specific surface. Returns up to `limit` rows ordered by "
                     "timestamp descending. Surfaces are tool-specific tags like "
                     "'claude_code', 'cowork', 'cursor'. Use `since` (unix ns) to "
-                    "page. P95 retrieval latency on a 10K-row store is ~0.27 ms."
+                    "page. P95 retrieval latency on a 10K-row store is ~0.27 ms.\n\n"
+                    "By default, chunked records (per ADR-018: lines >7 MiB split "
+                    "into N chunks tagged with chunk_id/seq/total in meta) are "
+                    "reassembled into single rows before return. Set `raw_chunks=true` "
+                    "to disable reassembly + see chunks as separate engrams (useful "
+                    "for debugging or surface-aware consumers that handle chunking)."
                 ),
                 inputSchema={
                     "type": "object",
@@ -99,6 +105,10 @@ def build_server(client: DaemonClient | None = None) -> Any:
                             "type": "integer",
                             "description": "Unix nanoseconds lower bound (0 = no bound)",
                             "minimum": 0,
+                        },
+                        "raw_chunks": {
+                            "type": "boolean",
+                            "description": "If true, skip chunk-reassembly + return chunks as separate engrams (default false)",
                         },
                     },
                     "required": ["surface"],
@@ -122,10 +132,13 @@ def build_server(client: DaemonClient | None = None) -> Any:
                 return [TextContent(type="text", text="error: surface required")]
             limit = int(arguments.get("limit", 50))
             since = int(arguments.get("since", 0))
+            raw_chunks = bool(arguments.get("raw_chunks", False))
             try:
                 rows = daemon.query_engrams(surface=surface, limit=limit, since=since)
             except (DaemonError, ValueError) as exc:
                 return [TextContent(type="text", text=f"error: {exc}")]
+            if not raw_chunks:
+                rows = reassemble_chunks(rows)
             payload = [asdict(r) for r in rows]
             return [TextContent(type="text", text=json.dumps(payload, indent=2))]
 

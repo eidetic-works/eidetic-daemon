@@ -8,8 +8,25 @@ Per spec § 7 Open Q #5: this is the "separate Python wrapper" path — the daem
 
 | Tool | Args | Returns |
 |---|---|---|
-| `query_engrams` | `surface` (required), `limit` (default 50, cap 500), `since` (unix ns, default 0) | JSON array of engrams ordered by timestamp descending |
+| `query_engrams` | `surface` (required), `limit` (default 50, cap 500), `since` (unix ns, default 0), `raw_chunks` (bool, default false) | JSON array of engrams ordered by timestamp descending. Chunked records (per ADR-018) are reassembled by default; `raw_chunks=true` returns chunks as separate engrams. |
 | `daemon_status` | (none) | `{"healthy": bool}` from `/healthz` round-trip |
+
+### Chunked-record reassembly (ADR-018)
+
+The daemon's JSONL parser splits records exceeding 7 MiB into chunks tagged with `chunk_id`/`chunk_seq`/`chunk_total` in `meta`. The bridge's `query_engrams` runs `reassemble_chunks()` by default — clients see ONE row per logical record regardless of chunking. Set `raw_chunks=true` to bypass reassembly (useful for debugging or when your consumer handles the contract directly).
+
+`reassemble_chunks()` is also exported as a public function for callers that want to reassemble a `tuple[Engram, ...]` from the lower-level `DaemonClient.query_engrams()`:
+
+```python
+from eidetic_mcp.client import DaemonClient
+from eidetic_mcp.reassemble import reassemble_chunks
+
+client = DaemonClient()
+raw_rows = client.query_engrams(surface="claude_code", limit=20)
+merged = reassemble_chunks(raw_rows)  # returns tuple[Engram, ...] with chunked records merged
+```
+
+Idempotent — safe to call on already-reassembled output. Best-effort on incomplete chunk groups (warns + emits partial; does NOT silent-drop).
 
 P95 retrieval round-trip on a 10K-row store: ~0.27 ms (daemon-side; per ADR-016 + spec § 3 measurement).
 
