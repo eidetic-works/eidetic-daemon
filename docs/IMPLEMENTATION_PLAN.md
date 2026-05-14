@@ -1,4 +1,4 @@
-# Eidetic Daemon W1 — Implementation Plan (file-by-file scaffold blueprint)
+# Eidetic Works Daemon W1 — Implementation Plan (file-by-file scaffold blueprint)
 
 **Date:** 2026-05-12 (Day 2 EOD; Day 3 starts tomorrow)
 **Status:** Pre-Day-3 scaffold blueprint (NOT executed yet — read by Day-3 morning before any Go is written)
