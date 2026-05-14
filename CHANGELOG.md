@@ -2,6 +2,25 @@
 
 All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](https://keepachangelog.com/); semver via git tags.
 
+## [v0.0.8] — 2026-05-14
+
+Bridge surface for v0.0.7 `/metrics` — `daemon_metrics()` MCP tool exposes daemon observability counters to MCP clients (Cursor / Claude Code / Cline) via tool-call.
+
+### Added
+- **`DaemonClient.metrics()`** (`bridge/python/eidetic_mcp/client.py`) — pure-stdlib UDS HTTP GET on `/metrics`; returns the JSON body as dict, raises `DaemonError` on transport / parse / 503 (daemon predates v0.0.7) failures.
+- **`daemon_metrics` MCP tool** (`bridge/python/eidetic_mcp/server.py`) — third tool registered alongside `query_engrams` + `daemon_status`. No arguments; returns the daemon's `/metrics` JSON pretty-printed. Schema is additive-only across versions.
+- **2 new bridge tests**:
+  - `test_client_metrics_against_fake_server` — UDS HTTP fake server with `/metrics` route; asserts client returns dict with all 7 fields populated.
+  - `test_client_metrics_unreachable_raises_daemon_error` — no-daemon → `DaemonError` (not silent empty dict; analog to existing healthy() fallback contract).
+- Bridge total: **27/27 tests green** (was 25/25).
+- **Live-fire validation**: `DaemonClient(uds_path='/tmp/.../sock').metrics()` against real v0.0.7 daemon returned `version='v0.0.7'`, `engram_total=64650`, `engram_by_surface={'claude_code': 65313}`, `db_size_bytes=379797504`.
+
+### Reference
+- PR #21 (this release commit folded in)
+- Compounds with v0.0.7 `/metrics` (PR #20) — bridge surface compounds the daemon's observability surface.
+
+---
+
 ## [v0.0.7] — 2026-05-14
 
 First observability surface on top of v0.0.6 — `GET /metrics` JSON endpoint exposing daemon-side counters that DO posts (and any future ops dashboard) can cite live.
@@ -148,6 +167,7 @@ W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
 - GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per daemon-repo ADR-017; gates on billing reset 2026-05-19).
 - Acquire `eideticworks.com` ($1-5K) post-W4 if probe validates (per entity-wide ADR-018; logged in `mcp-server-nucleus/docs/brand-migration.md`).
 
+[v0.0.8]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.8
 [v0.0.7]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.7
 [v0.0.6]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.6
 [v0.0.5]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.5
