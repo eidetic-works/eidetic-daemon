@@ -15,6 +15,12 @@ Tools exposed:
     Returns {'healthy': bool} via /healthz round-trip. Useful as a
     diagnostic before invoking query_engrams.
 
+  daemon_metrics()
+    Returns the daemon's /metrics JSON (v0.0.7+): version, uptime_seconds,
+    engram_total, engram_by_surface, capture_skipped, db_path,
+    db_size_bytes. Schema additive-only across versions. Daemons
+    predating v0.0.7 return error 'metrics not configured'.
+
 Run:
 
     eideticd &                          # daemon listens on UDS
@@ -122,6 +128,18 @@ def build_server(client: DaemonClient | None = None) -> Any:
                 ),
                 inputSchema={"type": "object", "properties": {}, "required": []},
             ),
+            Tool(
+                name="daemon_metrics",
+                description=(
+                    "Read live observability counters from the eidetic-daemon "
+                    "(v0.0.7+). Returns the daemon's /metrics JSON: version, "
+                    "uptime_seconds, engram_total, engram_by_surface, "
+                    "capture_skipped, db_path, db_size_bytes. Schema is "
+                    "additive-only across versions. Daemons predating v0.0.7 "
+                    "return error 'metrics not configured'."
+                ),
+                inputSchema={"type": "object", "properties": {}, "required": []},
+            ),
         ]
 
     @server.call_tool()
@@ -144,6 +162,13 @@ def build_server(client: DaemonClient | None = None) -> Any:
 
         if name == "daemon_status":
             return [TextContent(type="text", text=json.dumps({"healthy": daemon.healthy()}))]
+
+        if name == "daemon_metrics":
+            try:
+                m = daemon.metrics()
+            except DaemonError as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            return [TextContent(type="text", text=json.dumps(m, indent=2))]
 
         return [TextContent(type="text", text=f"error: unknown tool {name!r}")]
 

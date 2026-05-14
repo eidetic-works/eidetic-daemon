@@ -82,6 +82,22 @@ class _UDSHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if self.path == "/metrics":
+            body = json.dumps({
+                "version": "v0.0.7-fake",
+                "uptime_seconds": 42,
+                "engram_total": 100,
+                "engram_by_surface": {"claude_code": 100},
+                "capture_skipped": 0,
+                "db_path": "/fake/engrams.db",
+                "db_size_bytes": 1024,
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         self.send_response(404)
         self.end_headers()
 
@@ -157,3 +173,28 @@ def test_client_tcp_mode_picked_when_env_set(monkeypatch):
     client = DaemonClient()
     # Just verify it picks TCP mode + no transport call yet.
     assert client._mode == "tcp"  # noqa: SLF001 — internal state assertion is intentional
+
+
+def test_client_metrics_against_fake_server(uds_socket_path: str):
+    """GET /metrics returns the daemon JSON verbatim as dict. Schema is
+    additive-only across versions per v0.0.7 contract."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    m = client.metrics()
+    assert isinstance(m, dict)
+    assert m["version"] == "v0.0.7-fake"
+    assert m["engram_total"] == 100
+    assert m["engram_by_surface"] == {"claude_code": 100}
+    assert m["capture_skipped"] == 0
+    assert m["db_path"] == "/fake/engrams.db"
+    assert m["db_size_bytes"] == 1024
+
+
+def test_client_metrics_unreachable_raises_daemon_error(tmp_path: Path):
+    """No daemon at socket path → metrics() must raise DaemonError, not
+    silently return empty dict (analog to healthy() returning False)."""
+    from eidetic_mcp.client import DaemonError
+
+    nowhere = tmp_path / "no-such-daemon.sock"
+    client = DaemonClient(uds_path=str(nowhere))
+    with pytest.raises(DaemonError):
+        client.metrics()

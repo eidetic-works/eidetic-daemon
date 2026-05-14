@@ -109,6 +109,19 @@ class DaemonClient:
             return False
         return isinstance(body, dict) and body.get("status") == "ok"
 
+    def metrics(self) -> dict:
+        """GET /metrics — daemon observability endpoint (v0.0.7+).
+
+        Returns the JSON body verbatim as dict. Schema is additive-only
+        across versions; callers should treat unknown fields as forward-compat.
+        Raises DaemonError if the daemon predates v0.0.7 (returns 503
+        'metrics not configured') or on any transport / parse failure.
+        """
+        body = self._get_json("/metrics")
+        if not isinstance(body, dict):
+            raise DaemonError(f"expected object, got {type(body).__name__}")
+        return body
+
     def query_engrams(
         self, surface: str, limit: int = 50, since: int = 0
     ) -> Sequence[Engram]:
