@@ -71,6 +71,6 @@ For non-sensitive issues, please open a GitHub issue.
 
 - **W2+:** per-record encryption-at-rest with a user-held key
 - **W2+:** path allow-list enforcement at parser-config time
-- **W2+:** caller authentication on the API (e.g., per-process token in an HTTP header)
+- ~~**W2+:** caller authentication on the API (e.g., per-process token in an HTTP header)~~ **SHIPPED in v0.0.9** — opt-in via `EIDETIC_AUTH=1` env var or `-auth` flag. Bearer-token authentication using 64-char hex tokens from `crypto/rand`, stored at `<dataDir>/auth-token` (0600 perms), constant-time validation, token rotates every restart. `/healthz` stays open; `/engrams` + `/metrics` require `Authorization: Bearer <token>`. See [README § Caller auth](./README.md#caller-auth-v009-opt-in).
 - **W2+:** payload scrubbing pass for known secret patterns
 - **W3+:** Cloud sync (D1+R2+Workers per ADR-005) with user-key-encrypted blobs only
