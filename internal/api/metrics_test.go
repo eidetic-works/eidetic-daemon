@@ -242,17 +242,19 @@ func TestMetricsAcceptStarStarReturnsJSON(t *testing.T) {
 	}
 }
 
-// TestMetricsAcceptMultipleHonorsTextPlain: Accept with multiple types
-// including text/plain → Prometheus.
-func TestMetricsAcceptMultipleHonorsTextPlain(t *testing.T) {
+// TestMetricsAcceptMultipleWithoutOpenMetricsHonorsTextPlain: legacy
+// scraper Accept (no openmetrics-text clause) honors text/plain →
+// Prometheus. Distinct from TestMetricsOpenMetricsTakesPrecedenceOverPrometheus
+// which covers the modern-scraper case (both clauses → OpenMetrics).
+func TestMetricsAcceptMultipleWithoutOpenMetricsHonorsTextPlain(t *testing.T) {
 	provider := func(_ context.Context) (Metrics, error) {
-		return Metrics{Version: "v0.0.10"}, nil
+		return Metrics{Version: "v0.0.11"}, nil
 	}
 	url, cleanup := metricsTestServer(t, provider)
 	defer cleanup()
 	req, _ := http.NewRequest("GET", url, nil)
-	// Prometheus scrapers commonly send this:
-	req.Header.Set("Accept", "application/openmetrics-text;version=1.0.0,text/plain;version=0.0.4;q=0.5,*/*;q=0.1")
+	// Pre-OpenMetrics scrapers / curl-with-explicit-flag:
+	req.Header.Set("Accept", "text/plain;version=0.0.4,*/*;q=0.1")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -260,7 +262,7 @@ func TestMetricsAcceptMultipleHonorsTextPlain(t *testing.T) {
 	defer resp.Body.Close()
 	ct := resp.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "text/plain") {
-		t.Errorf("multi-Accept w/ text/plain: got %q, want text/plain prefix", ct)
+		t.Errorf("multi-Accept w/ text/plain (no openmetrics): got %q, want text/plain prefix", ct)
 	}
 }
 
@@ -289,4 +291,138 @@ func TestMarshalPrometheusDeterministicSurfaceOrder(t *testing.T) {
 	if !(cIdx < wIdx && wIdx < rIdx) {
 		t.Errorf("surfaces not alphabetical: claude_code@%d, cowork@%d, cursor@%d. Body:\n%s", cIdx, wIdx, rIdx, out)
 	}
+}
+
+// TestMetricsOpenMetricsFormat: Accept: application/openmetrics-text →
+// OpenMetrics 1.0.0 exposition. Asserts content-type header, EOF
+// trailer, UNIT comments, counter naming convention.
+func TestMetricsOpenMetricsFormat(t *testing.T) {
+	provider := func(_ context.Context) (Metrics, error) {
+		return Metrics{
+			Version:         "v0.0.11-test",
+			UptimeSeconds:   42,
+			EngramTotal:     1000,
+			EngramBySurface: map[string]int64{"claude_code": 750, "cursor": 250},
+			CaptureSkipped:  3,
+			DBPath:          "/tmp/test.db",
+			DBSizeBytes:     12345,
+		}, nil
+	}
+	url, cleanup := metricsTestServer(t, provider)
+	defer cleanup()
+
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Accept", "application/openmetrics-text")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status: got %d, want 200", resp.StatusCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "application/openmetrics-text") {
+		t.Errorf("content-type: got %q, want application/openmetrics-text prefix", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	bodyStr := string(body)
+
+	mustContain := []string{
+		// UNIT comments — distinguishing OpenMetrics feature
+		"# UNIT eidetic_uptime_seconds seconds",
+		"# UNIT eidetic_db_size_bytes bytes",
+		// Counter spec compliance: declared name lacks _total; value line has it
+		"# TYPE eidetic_capture_skipped counter",
+		"eidetic_capture_skipped_total 3",
+		// Per-surface metric — note OpenMetrics uses `eidetic_engrams_by_surface` (no _total suffix on gauge)
+		`eidetic_engrams_by_surface{surface="claude_code"} 750`,
+		`eidetic_engrams_by_surface{surface="cursor"} 250`,
+		// Build info
+		`eidetic_build_info{version="v0.0.11-test"} 1`,
+		// Mandatory EOF trailer
+		"# EOF",
+	}
+	for _, want := range mustContain {
+		if !strings.Contains(bodyStr, want) {
+			t.Errorf("OpenMetrics body missing %q. Full body:\n%s", want, bodyStr)
+		}
+	}
+	// EOF must be the LAST line (modulo trailing newline)
+	if !strings.HasSuffix(strings.TrimRight(bodyStr, "\n"), "# EOF") {
+		t.Errorf("OpenMetrics body must end with `# EOF`. Last 100 chars: %q", bodyStr[max(0, len(bodyStr)-100):])
+	}
+}
+
+// TestMetricsOpenMetricsTakesPrecedenceOverPrometheus: when Accept
+// includes both `application/openmetrics-text` and `text/plain`,
+// OpenMetrics wins (matches real Prometheus scraper behavior — they
+// prefer OpenMetrics if the server supports it).
+func TestMetricsOpenMetricsTakesPrecedenceOverPrometheus(t *testing.T) {
+	provider := func(_ context.Context) (Metrics, error) {
+		return Metrics{Version: "v0.0.11"}, nil
+	}
+	url, cleanup := metricsTestServer(t, provider)
+	defer cleanup()
+	req, _ := http.NewRequest("GET", url, nil)
+	// Real Prometheus scraper Accept header (sends both):
+	req.Header.Set("Accept", "application/openmetrics-text;version=1.0.0,text/plain;version=0.0.4;q=0.5,*/*;q=0.1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "application/openmetrics-text") {
+		t.Errorf("scraper-style Accept w/ both: got %q, want application/openmetrics-text prefix (OpenMetrics precedence)", ct)
+	}
+}
+
+// TestMetricsPlainTextStillReturnsPrometheus: regression — Accept:
+// text/plain alone (no openmetrics-text clause) still returns
+// Prometheus format, not OpenMetrics. Preserves v0.0.10 contract.
+func TestMetricsPlainTextStillReturnsPrometheus(t *testing.T) {
+	provider := func(_ context.Context) (Metrics, error) {
+		return Metrics{Version: "v0.0.11"}, nil
+	}
+	url, cleanup := metricsTestServer(t, provider)
+	defer cleanup()
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Accept", "text/plain")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "text/plain") {
+		t.Errorf("text/plain alone: got %q, want text/plain (Prometheus, not OpenMetrics)", ct)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if strings.Contains(string(body), "# EOF") {
+		t.Error("Prometheus format must NOT have # EOF trailer (that's OpenMetrics)")
+	}
+}
+
+// TestMarshalOpenMetricsCounterNaming: spec compliance — declared
+// counter name MUST NOT have _total suffix; value line MUST have it.
+func TestMarshalOpenMetricsCounterNaming(t *testing.T) {
+	m := Metrics{Version: "v1.0", CaptureSkipped: 7}
+	out := m.MarshalOpenMetrics()
+	if !strings.Contains(out, "# TYPE eidetic_capture_skipped counter") {
+		t.Errorf("declared name should be eidetic_capture_skipped (no _total). Body:\n%s", out)
+	}
+	if !strings.Contains(out, "eidetic_capture_skipped_total 7") {
+		t.Errorf("value line should be eidetic_capture_skipped_total 7. Body:\n%s", out)
+	}
+	if strings.Contains(out, "# TYPE eidetic_capture_skipped_total") {
+		t.Errorf("must NOT declare TYPE on _total-suffixed name (OpenMetrics spec violation). Body:\n%s", out)
+	}
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

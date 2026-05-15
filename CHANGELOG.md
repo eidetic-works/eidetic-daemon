@@ -2,6 +2,41 @@
 
 All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](https://keepachangelog.com/); semver via git tags.
 
+## [v0.0.11] — 2026-05-15
+
+OpenMetrics 1.0.0 exposition format on `/metrics` via Accept-header negotiation. IETF successor to Prometheus exposition (CNCF-graduated). Compounds on v0.0.10 — additive, **zero breaking change to v0.0.10 callers** (Prometheus + JSON paths unchanged).
+
+### Added
+- **OpenMetrics content negotiation** (`internal/api/metrics.go`):
+  - `Accept: application/openmetrics-text` → OpenMetrics format (with optional `version=1.0.0` parameter)
+  - **OpenMetrics takes precedence over Prometheus** when both clauses present in Accept (matches real Prometheus scraper behavior — they prefer OpenMetrics if the server supports it; the dual-Accept header `application/openmetrics-text;version=1.0.0,text/plain;version=0.0.4;q=0.5,*/*;q=0.1` now returns OpenMetrics, not Prometheus)
+  - `Accept: text/plain` (alone, no openmetrics-text clause) → Prometheus exposition (v0.0.10 contract preserved)
+  - Default Accept → JSON (v0.0.7 contract preserved)
+- **`Metrics.MarshalOpenMetrics()`** — renders 6 metric families per OpenMetrics 1.0.0 spec compliance:
+  - `# UNIT` comments where applicable (`seconds`, `bytes`)
+  - Counter naming: declared TYPE name `eidetic_capture_skipped` (no `_total` suffix per spec § Counter Metric type), value line `eidetic_capture_skipped_total <n>` (suffix appended to value line only)
+  - Gauges per spec (no `_total` on gauge value lines — `eidetic_engrams_by_surface` not `eidetic_engrams_by_surface_total`)
+  - Mandatory `# EOF` trailer
+  - Surfaces sorted alphabetically; empty per-surface map suppresses block (same as Prometheus path)
+- **4 new tests** in `internal/api/metrics_test.go` (all green under `-race`):
+  - `TestMetricsOpenMetricsFormat` — full schema verification (UNIT comments, EOF trailer, counter naming convention)
+  - `TestMetricsOpenMetricsTakesPrecedenceOverPrometheus` — scraper-style multi-type Accept → OpenMetrics
+  - `TestMetricsPlainTextStillReturnsPrometheus` — text/plain alone (no openmetrics) still Prometheus; regression gate
+  - `TestMarshalOpenMetricsCounterNaming` — spec compliance (declared name has no `_total`; value line has it; never both)
+  - `TestMetricsAcceptMultipleWithoutOpenMetricsHonorsTextPlain` — renamed v0.0.10 test for clarity (legacy scraper behavior)
+- **Live-fire validation**: `eideticd -version` → `eideticd v0.0.11-rc1`. 4 Accept variants verified against real binary: explicit `application/openmetrics-text` returns full OpenMetrics with UNIT comments + EOF; scraper-style multi-clause Accept returns OpenMetrics (precedence honored); `text/plain` alone returns Prometheus (no EOF — regression-clean); default Accept returns JSON. v0.0.6 shutdown drain + v0.0.9 caller auth + v0.0.10 Prometheus path all still clean.
+
+### Changed
+- `TestMetricsAcceptMultipleHonorsTextPlain` (v0.0.10) → renamed `TestMetricsAcceptMultipleWithoutOpenMetricsHonorsTextPlain` and updated to send Accept WITHOUT openmetrics-text clause. The old assertion (scraper-style Accept → text/plain) is no longer correct as a v0.0.11 contract — that scenario now correctly returns OpenMetrics. Behavior change is intentional + spec-aligned.
+
+### Reference
+- PR #27 (this release commit folded in)
+- W2+ list "OpenMetrics format on /metrics" — promoted into v0.0.11
+- OpenMetrics 1.0.0 spec: https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md
+- Discipline: `feedback_compound_before_build.md` (compounds v0.0.10 Accept negotiation; same MarshalX pattern; OpenMetrics handler shares writeGauge helper); `feedback_no_test_before_one_success.md` (live-fire 4 Accept variants BEFORE codify)
+
+---
+
 ## [v0.0.10] — 2026-05-15
 
 Prometheus exposition format on `/metrics` via Accept-header content negotiation. Compounds on v0.0.7 JSON `/metrics` — additive, zero breaking change. Promotes "Prometheus-format `/metrics`" from the W2+ Unreleased candidate list into v0.0.10.
@@ -220,8 +255,8 @@ First W1 release. Daemon W1 spec functionally complete through Phase 6.
 ## Unreleased
 
 W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
-- OpenMetrics format on `/metrics` (currently JSON + Prometheus exposition only; OpenMetrics is the IETF successor).
 - Latency histograms on `/metrics` (P50/P95/P99 of /engrams query times, capture parse latency).
+- Counter `_created` timestamps on OpenMetrics output (per spec optional extension).
 - Bridge fold-in to `mcp-server-nucleus` (substrate-paused per `project_eidetic_works_90d_pivot_2026_05_10.md`).
 - Cloudflare D1+R2+Workers cloud sync (per ADR-005, encrypted blobs only).
 - Compliance daemon (W2 per spec § 1).
@@ -229,6 +264,7 @@ W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
 - GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per daemon-repo ADR-017; gates on billing reset 2026-05-19).
 - Acquire `eideticworks.com` ($1-5K) post-W4 if probe validates (per entity-wide ADR-018; logged in `mcp-server-nucleus/docs/brand-migration.md`).
 
+[v0.0.11]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.11
 [v0.0.10]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.10
 [v0.0.9]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.9
 [v0.0.8]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.8
