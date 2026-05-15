@@ -2,6 +2,32 @@
 
 All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](https://keepachangelog.com/); semver via git tags.
 
+## [v0.0.9] — 2026-05-15
+
+Opt-in caller authentication on the daemon API. Defense-in-depth on top of UDS `0600` trust boundary — prevents other-process-on-same-uid impersonation when enabled. Off by default; preserves the W1 single-user UDS-trust model documented in `SECURITY.md`.
+
+### Added
+- **`internal/auth` package** (`internal/auth/auth.go`) — Token type with `Generate()` (32-byte crypto/rand → 64-char hex), `WriteFile(dataDir, token)` (`0600` perms, rotates on every restart, no cross-restart persistence), `ReadFile(dataDir)` (client-side discovery), `Set/Get/Enabled` atomic accessors, `Validate(header)` constant-time comparison (accepts both `Bearer <token>` and bare-token forms), and `Middleware(next, openPaths...)` http.Handler wrapper. PR #25.
+- **`api.Options.AuthToken *auth.Token`** — opt-in field on the api package. Nil OR disabled token → middleware passes through transparently (preserves backward-compat for callers that don't set `EIDETIC_AUTH=1`). When enabled, `/engrams` + `/metrics` require `Authorization: Bearer <token>`; `/healthz` stays open (liveness probe contract; service managers + load balancers expect this).
+- **`cmd/eideticd/main.go`** — new `-auth` flag + `EIDETIC_AUTH=1` env var. On startup with auth enabled: generate token via crypto/rand, write to `<dataDir>/auth-token` (0600), log `auth: enabled — token written to <path> (0600), rotates each restart`. `dataDir` is now MkdirAll'd at 0700 before any file write (covers token + state.json + engrams.db).
+- **Bridge auto-discovery** (`bridge/python/eidetic_mcp/client.py`) — `DaemonClient` constructor adds optional `auth_token` kwarg; resolution order: explicit kwarg → `EIDETIC_AUTH_TOKEN` env → `<EIDETIC_DATA_DIR>/auth-token` file. When token is present, all requests carry `Authorization: Bearer <token>`. Backward-compat: when daemon is not in auth-mode, the header is harmless; when daemon is in auth-mode and bridge has no token, requests get 401 (transparent failure).
+- **9 new Go tests** in `internal/auth/auth_test.go` — Generate uniqueness + 64-char shape, WriteFile 0600 perms, WriteFile rotation, ReadFile missing → error, Token Set/Get/Enabled, Validate Bearer + bare + whitespace-tolerance, Validate rejects mismatch + length-mismatch, Middleware passes-through when disabled (regression), Middleware gates protected routes (401 + WWW-Authenticate), Middleware open-path bypasses, Middleware valid-token passes-through. All green under `-race`.
+- **4 new bridge tests** in `bridge/python/tests/test_client.py` — explicit kwarg, env var override, file auto-discovery, absent-token (no Authorization header sent). Bridge total: 31/31 (was 27/27).
+- **Stage 8 in `scripts/demo-smoke.sh`** — auth contract regression gate. Spawns a SECOND daemon instance with `EIDETIC_AUTH=1`, verifies (a) `auth-token` file exists with 0600 perms + 64-char content, (b) `/healthz` 200 even with auth on (open path), (c) `/metrics` 401 without token, (d) `/metrics` 401 with wrong token, (e) `/metrics` 200 with valid Bearer header. Catches future auth contract regressions when CI billing returns ~2026-05-19.
+- **Live-fire validation**: `eideticd -version` → `eideticd v0.0.9-rc1`; auth-disabled regression PASS (no auth-token file written, /metrics works without token); auth-enabled 7 contract cases PASS (file 0600 64ch, /healthz open, /metrics 401/401/401/200/200 across no-token/wrong-token/valid-Bearer/valid-bare). Bridge end-to-end: token auto-loaded from file (64 chars), `c.metrics()` returns valid JSON via Bearer header. v0.0.6 shutdown drain still clean (0 "database is closed" errors on SIGTERM).
+
+### Reference
+- PR #25 (this release commit folded in)
+- W2+ list "Caller authentication on the API (per-process token in HTTP header)" — promoted into v0.0.9
+- Discipline: `feedback_compound_before_build.md` (compounds existing Options/middleware pattern; reuses the 0600 conventions from store + UDS); `feedback_no_test_before_one_success.md` (live-fire BEFORE codify — 7 contract cases dogfooded against real binary before any test was written)
+
+### Threat model amendment to `SECURITY.md`
+- Pre-v0.0.9: UDS `0600` was the only trust boundary. Other processes running as the same uid could read engrams.
+- v0.0.9 with `EIDETIC_AUTH=1`: caller must possess the per-process Bearer token. Token rotates each restart (no stale-token replay if dataDir is ever world-readable between sessions). Bridge clients auto-discover via file. Token file shares dataDir's 0700 protection + own 0600.
+- Off-by-default for backward-compat. Operators who want the harder boundary turn it on with one env var.
+
+---
+
 ## [v0.0.8] — 2026-05-14
 
 Bridge surface for v0.0.7 `/metrics` — `daemon_metrics()` MCP tool exposes daemon observability counters to MCP clients (Cursor / Claude Code / Cline) via tool-call.
@@ -158,7 +184,6 @@ First W1 release. Daemon W1 spec functionally complete through Phase 6.
 ## Unreleased
 
 W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
-- Caller authentication on the API (per-process token in HTTP header).
 - Prometheus-format `/metrics` (currently JSON-only).
 - Bridge fold-in to `mcp-server-nucleus` (substrate-paused per `project_eidetic_works_90d_pivot_2026_05_10.md`).
 - Cloudflare D1+R2+Workers cloud sync (per ADR-005, encrypted blobs only).
@@ -167,6 +192,7 @@ W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
 - GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per daemon-repo ADR-017; gates on billing reset 2026-05-19).
 - Acquire `eideticworks.com` ($1-5K) post-W4 if probe validates (per entity-wide ADR-018; logged in `mcp-server-nucleus/docs/brand-migration.md`).
 
+[v0.0.9]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.9
 [v0.0.8]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.8
 [v0.0.7]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.7
 [v0.0.6]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.6

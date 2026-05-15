@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/eidetic-works/eidetic-daemon/internal/api"
+	"github.com/eidetic-works/eidetic-daemon/internal/auth"
 	"github.com/eidetic-works/eidetic-daemon/internal/capture"
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
 )
@@ -38,6 +39,7 @@ var Version = "dev"
 func main() {
 	udsPath := flag.String("uds", "", "Unix domain socket path (overrides default)")
 	tcpAddr := flag.String("tcp", "", "TCP listen address (overrides default; opt-in via EIDETIC_TCP=1)")
+	authFlag := flag.Bool("auth", false, "enable Bearer-token caller authentication (also EIDETIC_AUTH=1); writes <dataDir>/auth-token (0600)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
@@ -56,13 +58,37 @@ func main() {
 	}
 	dbPath := filepath.Join(dataDir, "engrams.db")
 
+	// Ensure dataDir exists with 0700 perms BEFORE any file write
+	// (auth-token, state.json, engrams.db all live under it).
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		log.Fatalf("mkdir dataDir %s: %v", dataDir, err)
+	}
+
 	s, err := store.Open(dbPath)
 	if err != nil {
 		log.Fatalf("store open: %v", err)
 	}
 	defer s.Close()
 
-	opts := api.Options{Timeout: 5 * time.Second}
+	// v0.0.9+: opt-in caller authentication. Off by default — preserves
+	// W1 single-user UDS-trust model (SECURITY.md). On via -auth flag OR
+	// EIDETIC_AUTH=1 env var. Token rotates every startup.
+	authEnabled := *authFlag || os.Getenv("EIDETIC_AUTH") == "1"
+	authToken := &auth.Token{}
+	if authEnabled {
+		tok, err := auth.Generate()
+		if err != nil {
+			log.Fatalf("auth: generate: %v", err)
+		}
+		path, err := auth.WriteFile(dataDir, tok)
+		if err != nil {
+			log.Fatalf("auth: write file: %v", err)
+		}
+		authToken.Set(tok)
+		log.Printf("auth: enabled — token written to %s (0600), rotates each restart", path)
+	}
+
+	opts := api.Options{Timeout: 5 * time.Second, AuthToken: authToken}
 	switch {
 	case *udsPath != "":
 		opts.UDSPath = *udsPath

@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/eidetic-works/eidetic-daemon/internal/auth"
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
 )
 
@@ -27,6 +28,14 @@ type Options struct {
 	// from cmd-side state (Watcher, process start time, build version).
 	// If nil, /metrics returns 503 "metrics not configured".
 	Metrics MetricsProvider
+
+	// AuthToken is an optional opt-in caller-authentication token (v0.0.9+).
+	// When the token's Enabled() returns true, /engrams and /metrics
+	// require Authorization: Bearer <token> headers; /healthz stays open.
+	// When nil OR disabled, all routes pass through (preserves W1
+	// single-user UDS-trust behavior). main() supplies this; api stays
+	// decoupled from token-file path resolution.
+	AuthToken *auth.Token
 }
 
 // Server wraps an http.Server bound to a local listener (UDS or TCP).
@@ -38,6 +47,7 @@ type Server struct {
 	udsPath  string // empty for TCP; set so Close can unlink the file
 	timeout  time.Duration
 	metrics  MetricsProvider // may be nil; /metrics returns 503 in that case
+	auth     *auth.Token     // may be nil OR disabled; middleware passes through
 }
 
 // New constructs a server bound per opts. Cleans up a stale UDS file at
@@ -54,7 +64,7 @@ func New(s *store.Store, opts Options) (*Server, error) {
 		opts.Timeout = 5 * time.Second
 	}
 
-	srv := &Server{store: s, timeout: opts.Timeout, metrics: opts.Metrics}
+	srv := &Server{store: s, timeout: opts.Timeout, metrics: opts.Metrics, auth: opts.AuthToken}
 
 	var (
 		listener net.Listener
@@ -90,8 +100,17 @@ func New(s *store.Store, opts Options) (*Server, error) {
 	mux.HandleFunc("/healthz", srv.handleHealthz)
 	mux.HandleFunc("/metrics", srv.handleMetrics)
 
+	// v0.0.9+: optional Bearer-token middleware. /healthz stays open
+	// (liveness probe, no sensitive data leaked). When opts.AuthToken
+	// is nil OR disabled, Middleware passes through transparently —
+	// preserves backward-compat for callers that don't set EIDETIC_AUTH=1.
+	var handler http.Handler = mux
+	if opts.AuthToken != nil {
+		handler = opts.AuthToken.Middleware(mux, "/healthz")
+	}
+
 	srv.httpSrv = &http.Server{
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: opts.Timeout,
 	}
 

@@ -72,6 +72,7 @@ class DaemonClient:
         tcp_host: str = DEFAULT_TCP_HOST,
         tcp_port: int = DEFAULT_TCP_PORT,
         timeout: float = DEFAULT_TIMEOUT_SEC,
+        auth_token: Optional[str] = None,
     ) -> None:
         self._timeout = timeout
         if os.environ.get("EIDETIC_TCP") == "1":
@@ -82,6 +83,20 @@ class DaemonClient:
             self._mode = "uds"
             self._uds_path = uds_path or os.environ.get("EIDETIC_UDS_PATH") or _default_uds()
 
+        # v0.0.9+: auto-discover Bearer token from <dataDir>/auth-token if
+        # the daemon is auth-enabled. Resolution order:
+        #   1. explicit auth_token kwarg (test injection)
+        #   2. EIDETIC_AUTH_TOKEN env var
+        #   3. <EIDETIC_DATA_DIR>/auth-token file (default ~/.eidetic/auth-token)
+        # Empty/missing token = no Authorization header sent. Daemons not
+        # running auth-mode pass through transparently; daemons in auth-mode
+        # without a token return 401 on protected paths.
+        self._auth_token: Optional[str] = (
+            auth_token
+            or os.environ.get("EIDETIC_AUTH_TOKEN")
+            or _read_auth_token_file()
+        )
+
     def _conn(self) -> http.client.HTTPConnection:
         if self._mode == "uds":
             return _UDSConnection(self._uds_path, self._timeout)
@@ -90,7 +105,10 @@ class DaemonClient:
     def _get_json(self, path: str) -> object:
         conn = self._conn()
         try:
-            conn.request("GET", path)
+            headers = {}
+            if self._auth_token:
+                headers["Authorization"] = f"Bearer {self._auth_token}"
+            conn.request("GET", path, headers=headers)
             resp = conn.getresponse()
             body = resp.read().decode("utf-8")
             if resp.status != 200:
@@ -159,3 +177,25 @@ def _default_uds() -> str:
     import sys
 
     return DEFAULT_UDS_PATH_LINUX if sys.platform.startswith("linux") else DEFAULT_UDS_PATH_DARWIN
+
+
+def _read_auth_token_file() -> Optional[str]:
+    """Read <dataDir>/auth-token if present (v0.0.9+ Bearer-token discovery).
+
+    dataDir resolution: $EIDETIC_DATA_DIR or ~/.eidetic. Returns the
+    stripped token string, or None if the file doesn't exist / isn't
+    readable. No exception on missing — auth-disabled daemons are the
+    common case.
+    """
+    data_dir = os.environ.get("EIDETIC_DATA_DIR")
+    if not data_dir:
+        home = os.environ.get("HOME")
+        if not home:
+            return None
+        data_dir = os.path.join(home, ".eidetic")
+    token_path = os.path.join(data_dir, "auth-token")
+    try:
+        with open(token_path, "r", encoding="utf-8") as f:
+            return f.read().strip() or None
+    except OSError:
+        return None

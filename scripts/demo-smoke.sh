@@ -137,4 +137,59 @@ if m['capture_skipped'] != 0:
 print('demo-smoke: /metrics schema + counters OK')
 "
 
-echo "demo-smoke: PASS — spec § 8 acceptance #3 (write→capture→read end-to-end) + /metrics schema gate hold"
+# Stage 8: caller authentication contract (v0.0.9+). Spawns a SECOND
+# daemon instance with EIDETIC_AUTH=1, verifies the 4 contract cases:
+# (a) /healthz open even with auth, (b) /metrics 401 without token,
+# (c) /metrics 401 with wrong token, (d) /metrics 200 with valid Bearer.
+# Acts as a regression gate on the v0.0.9 auth contract.
+AUTH_SOCKET="${SOCKET}.auth"
+AUTH_DATADIR="${DATADIR}-auth"
+AUTH_WATCH_BASE="${WATCH_BASE}-auth"
+mkdir -p "$AUTH_DATADIR" "$AUTH_WATCH_BASE/.claude/projects"
+
+EIDETIC_DATA_DIR="$AUTH_DATADIR" EIDETIC_AUTH=1 HOME="$AUTH_WATCH_BASE" \
+    "$BINARY" -uds "$AUTH_SOCKET" >/dev/null 2>&1 &
+AUTH_PID=$!
+trap 'cleanup; [ -n "${AUTH_PID:-}" ] && kill "$AUTH_PID" 2>/dev/null || true; rm -f "$AUTH_SOCKET"; rm -rf "$AUTH_DATADIR" "$AUTH_WATCH_BASE"' EXIT
+
+deadline=$(( $(date +%s) + MAX_READY_SEC ))
+ready=0
+while [ "$(date +%s)" -lt "$deadline" ]; do
+    if curl -sf --unix-socket "$AUTH_SOCKET" "http://localhost/healthz" >/dev/null 2>&1; then
+        ready=1; break
+    fi
+    sleep 0.1
+done
+if [ "$ready" = "0" ]; then
+    echo "demo-smoke: auth daemon /healthz did not respond within ${MAX_READY_SEC}s" >&2
+    exit 1
+fi
+
+[ -f "$AUTH_DATADIR/auth-token" ] || { echo "demo-smoke: auth-token file not written when EIDETIC_AUTH=1" >&2; exit 1; }
+TOKEN_PERMS=$(stat -f '%Lp' "$AUTH_DATADIR/auth-token" 2>/dev/null || stat -c '%a' "$AUTH_DATADIR/auth-token" 2>/dev/null)
+if [ "$TOKEN_PERMS" != "600" ]; then
+    echo "demo-smoke: auth-token perms=$TOKEN_PERMS, want 600" >&2
+    exit 1
+fi
+TOKEN=$(cat "$AUTH_DATADIR/auth-token")
+[ "${#TOKEN}" = "64" ] || { echo "demo-smoke: token len=${#TOKEN}, want 64" >&2; exit 1; }
+
+# Case (a): /healthz open even with auth on
+hz_code=$(curl -s -o /dev/null -w '%{http_code}' --unix-socket "$AUTH_SOCKET" "http://localhost/healthz")
+[ "$hz_code" = "200" ] || { echo "demo-smoke: /healthz with auth: got $hz_code, want 200 (open path contract violation)" >&2; exit 1; }
+
+# Case (b): /metrics without token = 401
+m_no_token=$(curl -s -o /dev/null -w '%{http_code}' --unix-socket "$AUTH_SOCKET" "http://localhost/metrics")
+[ "$m_no_token" = "401" ] || { echo "demo-smoke: /metrics without token: got $m_no_token, want 401" >&2; exit 1; }
+
+# Case (c): /metrics with wrong token = 401
+m_wrong=$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer wrong-token' --unix-socket "$AUTH_SOCKET" "http://localhost/metrics")
+[ "$m_wrong" = "401" ] || { echo "demo-smoke: /metrics with wrong token: got $m_wrong, want 401" >&2; exit 1; }
+
+# Case (d): /metrics with valid Bearer = 200
+m_ok=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" --unix-socket "$AUTH_SOCKET" "http://localhost/metrics")
+[ "$m_ok" = "200" ] || { echo "demo-smoke: /metrics with valid token: got $m_ok, want 200" >&2; exit 1; }
+
+echo "demo-smoke: auth contract OK (token 64ch perm 600; healthz open; metrics 401/401/200)"
+
+echo "demo-smoke: PASS — spec § 8 acceptance #3 (write→capture→read end-to-end) + /metrics schema gate + v0.0.9 auth contract hold"
