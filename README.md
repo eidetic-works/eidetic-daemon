@@ -22,7 +22,7 @@ Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + win
 curl -fsSL https://nucleusos.dev/install.sh | sh
 ```
 
-Not yet shipped publicly. Latest release: [v0.0.6](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.6) (3 cross-compile assets + `SHA256SUMS.txt` attached; pure-Go, no CGO). See `scripts/install.sh` for what the one-line installer runs.
+Not yet shipped publicly. Latest release: [v0.0.11](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.11) (3 cross-compile assets + `SHA256SUMS.txt` attached; pure-Go, no CGO). See `scripts/install.sh` for what the one-line installer runs.
 
 Full demo flow with expected outputs at every step: [`docs/demo.md`](./docs/demo.md). Architecture decisions: [`docs/DECISIONS.md`](./docs/DECISIONS.md). Release notes per version: [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -36,7 +36,9 @@ pip install -e bridge/python
 #   {"eidetic": {"command": "python", "args": ["-m", "eidetic_mcp.server"]}}
 ```
 
-Tools: `query_engrams(surface, limit, since)` + `daemon_status()`. See [`bridge/python/README.md`](./bridge/python/README.md) for full setup + per-client config snippets.
+Tools: `query_engrams(surface, limit, since)` + `daemon_status()` + `daemon_metrics()` (v0.0.8+ — wraps the daemon's `/metrics` endpoint as an MCP-callable tool). See [`bridge/python/README.md`](./bridge/python/README.md) for full setup + per-client config snippets.
+
+If the daemon is running with caller auth on (v0.0.9+, opt-in), the bridge auto-discovers the token from `<dataDir>/auth-token` (or `EIDETIC_AUTH_TOKEN` env var). No bridge config change required.
 
 After install, the daemon spawns at login via launchd / systemd-user. To verify:
 
@@ -50,8 +52,24 @@ curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams?surface=cl
 
 # Live metrics (v0.0.7+): version, uptime, engram counts per surface,
 # capture skip-counter, DB size. Schema is additive-only across versions.
-curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/metrics
+# Three formats via Accept-header content negotiation:
+curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/metrics                                              # JSON (default; v0.0.7)
+curl -H 'Accept: text/plain' --unix-socket /tmp/eidetic-daemon.sock http://localhost/metrics                      # Prometheus exposition (v0.0.10+)
+curl -H 'Accept: application/openmetrics-text' --unix-socket /tmp/eidetic-daemon.sock http://localhost/metrics    # OpenMetrics 1.0.0 (v0.0.11+)
 ```
+
+Real Prometheus scrapers send a multi-type Accept by default (`application/openmetrics-text;version=1.0.0,text/plain;version=0.0.4;q=0.5,*/*;q=0.1`); v0.0.11 honors the openmetrics clause and returns OpenMetrics (precedence) — drop into your existing scrape config, no shim.
+
+### Caller auth (v0.0.9+, opt-in)
+
+Off by default — preserves the W1 single-user UDS-trust model in [SECURITY.md](./SECURITY.md). Operators wanting a harder boundary turn it on with one env var or flag:
+
+```sh
+EIDETIC_AUTH=1 eideticd      # env var (recommended for service managers)
+eideticd -auth                # flag (recommended for one-shot invocations)
+```
+
+On enable, the daemon writes `<dataDir>/auth-token` (0600 perms, 64-char hex from `crypto/rand`). Token rotates every restart — no stale-token replay. `/healthz` stays open even with auth on; `/engrams` + `/metrics` require `Authorization: Bearer <token>` (or bare token).
 
 ---
 
@@ -105,7 +123,7 @@ See [docs/SPEC.md](docs/SPEC.md) for the binding W1 spec, [docs/IMPLEMENTATION_P
 
 ## Status
 
-W1 hardening (Day 4 of 7). Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase sequencing.
+W1 ship (Day 5 of 7) — 11 releases v0.0.2 → v0.0.11. Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase sequencing.
 
 | Phase | What | State |
 |---|---|---|
@@ -116,10 +134,14 @@ W1 hardening (Day 4 of 7). Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase s
 | 4 | Integration: mirror + concurrency tests | ✅ (rolled into #4) |
 | 5 | Bench gates wired | ✅ (#5) |
 | 6 | Cross-compile artifacts + install.sh + service files | ✅ (#5) |
-| 7 | GitHub release + demo post | ✅ v0.0.2 → v0.0.6 released; demo at `docs/demo.md`; public-flip + DO post pending |
-| 8 | MCP bridge (Python stdio server) | ✅ v0.0.4 (#12); reassembly v0.0.5 (#15) |
+| 7 | GitHub release + demo post | ✅ v0.0.2 → v0.0.11 released; demo at `docs/demo.md`; public-flip + DO post pending |
+| 8 | MCP bridge (Python stdio server) | ✅ v0.0.4 (#12); reassembly v0.0.5 (#15); `daemon_metrics()` v0.0.8 (#22) |
 | 9 | Chunked-capture (no payload-size hard wall) | ✅ v0.0.5 (#14) |
 | 10 | Shutdown drain (issue #17) | ✅ v0.0.6 (#18) |
+| 11 | Observability — `/metrics` JSON | ✅ v0.0.7 (#19) |
+| 12 | Caller auth — Bearer token (opt-in) | ✅ v0.0.9 (#25) |
+| 13 | Prometheus exposition format on `/metrics` | ✅ v0.0.10 (#26) |
+| 14 | OpenMetrics 1.0.0 exposition format on `/metrics` | ✅ v0.0.11 (#27) |
 
 ---
 
