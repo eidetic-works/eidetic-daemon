@@ -2,6 +2,42 @@
 
 All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](https://keepachangelog.com/); semver via git tags.
 
+## [v0.0.10] — 2026-05-15
+
+Prometheus exposition format on `/metrics` via Accept-header content negotiation. Compounds on v0.0.7 JSON `/metrics` — additive, zero breaking change. Promotes "Prometheus-format `/metrics`" from the W2+ Unreleased candidate list into v0.0.10.
+
+### Added
+- **Content negotiation on `/metrics`** (`internal/api/metrics.go`):
+  - `Accept: text/plain` → Prometheus exposition format (with optional `version=0.0.4` parameter, per Prometheus convention)
+  - `Accept: application/json` OR missing OR `*/*` → JSON Metrics body (v0.0.7 contract — backward-compat default)
+  - Multi-type Accept (e.g., scraper-style `application/openmetrics-text;version=1.0.0,text/plain;version=0.0.4;q=0.5,*/*;q=0.1`) honors text/plain
+  - Default-JSON preserves v0.0.7 caller behavior; switch-to-Prometheus-default may happen at v1.0 ADR if scraper-share warrants
+- **`Metrics.MarshalPrometheus()`** — renders 6 metric families with HELP+TYPE comments per Prometheus exposition format spec:
+  - `eidetic_uptime_seconds` (gauge)
+  - `eidetic_engrams_total` (gauge)
+  - `eidetic_engrams_by_surface_total{surface="..."}` (gauge with label; surfaces sorted alphabetically for diff-stable output)
+  - `eidetic_capture_skipped_total` (counter)
+  - `eidetic_db_size_bytes` (gauge)
+  - `eidetic_build_info{version="v..."}` (gauge value=1, version in label — Prometheus convention for build metadata)
+  - Empty `EngramBySurface` map suppresses the per-surface block (no dangling HELP/TYPE without a value)
+- **5 new tests** in `internal/api/metrics_test.go`:
+  - `TestMetricsPrometheusFormat` — full schema verification (all 6 families, HELP/TYPE comments, label format)
+  - `TestMetricsAcceptDefaultsJSON` — missing Accept defaults to JSON (backward-compat regression)
+  - `TestMetricsAcceptStarStarReturnsJSON` — `*/*` wildcard does not trigger Prometheus
+  - `TestMetricsAcceptMultipleHonorsTextPlain` — multi-type Accept including text/plain → Prometheus
+  - `TestMarshalPrometheusEmptyBySurface` — empty surface map suppresses block
+  - `TestMarshalPrometheusDeterministicSurfaceOrder` — alphabetical sort for stable output
+  - All green under `-race`. Existing 4 tests (HappyPath / NoProvider503 / ProviderError500 / MethodNotAllowed) regression-clean.
+- **Live-fire validation**: `eideticd -version` → `eideticd v0.0.10-rc1`; default Accept returns JSON (55,245 engrams in 5s capture); `Accept: text/plain` returns full Prometheus exposition (8 metric lines + 12 comment lines); scraper-style multi-type Accept honors text/plain. v0.0.6 shutdown drain + v0.0.9 caller auth still clean.
+
+### Reference
+- PR #26 (this release commit folded in)
+- W2+ list "Prometheus-format `/metrics`" — promoted into v0.0.10
+- Prometheus exposition format spec: https://prometheus.io/docs/instrumenting/exposition_formats/
+- Discipline: `feedback_compound_before_build.md` (compounds v0.0.7 Metrics struct + handler; Accept-header negotiation is additive); `feedback_no_test_before_one_success.md` (live-fire 3 Accept variants BEFORE codify)
+
+---
+
 ## [v0.0.9] — 2026-05-15
 
 Opt-in caller authentication on the daemon API. Defense-in-depth on top of UDS `0600` trust boundary — prevents other-process-on-same-uid impersonation when enabled. Off by default; preserves the W1 single-user UDS-trust model documented in `SECURITY.md`.
@@ -184,7 +220,8 @@ First W1 release. Daemon W1 spec functionally complete through Phase 6.
 ## Unreleased
 
 W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
-- Prometheus-format `/metrics` (currently JSON-only).
+- OpenMetrics format on `/metrics` (currently JSON + Prometheus exposition only; OpenMetrics is the IETF successor).
+- Latency histograms on `/metrics` (P50/P95/P99 of /engrams query times, capture parse latency).
 - Bridge fold-in to `mcp-server-nucleus` (substrate-paused per `project_eidetic_works_90d_pivot_2026_05_10.md`).
 - Cloudflare D1+R2+Workers cloud sync (per ADR-005, encrypted blobs only).
 - Compliance daemon (W2 per spec § 1).
@@ -192,6 +229,7 @@ W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
 - GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per daemon-repo ADR-017; gates on billing reset 2026-05-19).
 - Acquire `eideticworks.com` ($1-5K) post-W4 if probe validates (per entity-wide ADR-018; logged in `mcp-server-nucleus/docs/brand-migration.md`).
 
+[v0.0.10]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.10
 [v0.0.9]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.9
 [v0.0.8]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.8
 [v0.0.7]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.7
