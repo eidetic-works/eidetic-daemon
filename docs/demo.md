@@ -24,7 +24,7 @@ install: installed /usr/local/bin/eideticd
 install: registered LaunchAgent at /Users/<you>/Library/LaunchAgents/works.eidetic.eideticd.plist
 install: launchd: started works.eidetic.eideticd
 install: smoke test
-eideticd v0.0.3
+eideticd v0.0.11
 install: OK — daemon installed and registered. UDS: /tmp/eidetic-daemon.sock (Mac) or /var/run/eidetic.sock (Linux)
 ```
 
@@ -55,7 +55,7 @@ eideticd -version
 
 Expected:
 ```
-eideticd v0.0.3
+eideticd v0.0.11
 ```
 
 (Version is injected at build via `-ldflags "-X main.Version=$(git describe --tags --always --dirty)"` per ADR-017.)
@@ -111,10 +111,10 @@ P95 round-trip latency: **0.27 ms** on a 10K-row store (M4, mainline build, 2026
 curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/metrics
 ```
 
-Expected:
+Expected (default JSON format, v0.0.7+):
 ```json
 {
-  "version": "v0.0.7",
+  "version": "v0.0.11",
   "uptime_seconds": 142,
   "engram_total": 139751,
   "engram_by_surface": { "claude_code": 141314 },
@@ -126,7 +126,41 @@ Expected:
 
 Schema is additive-only across versions. Use this to verify scale / throughput claims directly from the daemon — no trust-me framing. Daemons predating v0.0.7 return `503 metrics not configured`; check `version` to confirm.
 
+### Prometheus + OpenMetrics formats (v0.0.10/v0.0.11+)
+
+Same endpoint, content-negotiated via `Accept` header. Drop into your existing scrape config — no exporter sidecar:
+
+```sh
+# Prometheus exposition format (v0.0.10+)
+curl -H 'Accept: text/plain' --unix-socket /tmp/eidetic-daemon.sock http://localhost/metrics
+
+# OpenMetrics 1.0.0 (v0.0.11+, with EOF trailer + UNIT comments)
+curl -H 'Accept: application/openmetrics-text' --unix-socket /tmp/eidetic-daemon.sock http://localhost/metrics
+```
+
+Real Prometheus scrapers send a multi-type Accept by default (`application/openmetrics-text;version=1.0.0,text/plain;version=0.0.4;q=0.5,*/*;q=0.1`); v0.0.11 honors the openmetrics clause and returns OpenMetrics (precedence) — matches scraper expectation. v0.0.10 callers (text/plain alone) are unchanged.
+
 If you have the bridge installed (`bridge/python/`), the same data is available to MCP tool-calling AIs via `daemon_metrics()` (v0.0.8+).
+
+---
+
+## 5b. Caller auth (v0.0.9+, opt-in)
+
+Off by default — preserves the W1 single-user UDS-trust model in [SECURITY.md](../SECURITY.md). To turn it on:
+
+```sh
+EIDETIC_AUTH=1 eideticd      # env var (recommended for service managers)
+eideticd -auth                # flag (recommended for one-shot invocations)
+```
+
+On enable, the daemon writes `<dataDir>/auth-token` (0600 perms, 64-char hex from `crypto/rand`). Token rotates every restart — no stale-token replay. `/healthz` stays open even with auth on; `/engrams` + `/metrics` require `Authorization: Bearer <token>` (or bare token):
+
+```sh
+TOKEN=$(cat ~/.eidetic/auth-token)
+curl -H "Authorization: Bearer $TOKEN" --unix-socket /tmp/eidetic-daemon.sock http://localhost/metrics
+```
+
+The Python MCP bridge auto-discovers the token (file → env var → explicit kwarg). No bridge config change required when daemon enables auth.
 
 ---
 

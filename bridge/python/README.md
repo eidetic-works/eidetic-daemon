@@ -85,7 +85,7 @@ daemon_status()
 
 daemon_metrics()
 → {
-    "version": "v0.0.7",
+    "version": "v0.0.11",
     "uptime_seconds": 142,
     "engram_total": 139751,
     "engram_by_surface": {"claude_code": 141314},
@@ -97,7 +97,17 @@ daemon_metrics()
 
 Surfaces depend on what the daemon is watching (default: `claude_code`, `cowork`, `cursor`).
 
-`daemon_metrics()` is the v0.0.7+ verifiability surface — your AI can introspect what's been captured without raw curl, useful for "what's in scope right now?" pre-flight before a `query_engrams` call.
+`daemon_metrics()` is the v0.0.7+ verifiability surface — your AI can introspect what's been captured without raw curl, useful for "what's in scope right now?" pre-flight before a `query_engrams` call. (The bridge wraps the JSON response from the daemon's `/metrics`. The daemon also speaks Prometheus exposition (v0.0.10+) and OpenMetrics 1.0.0 (v0.0.11+) on the same endpoint via `Accept` header, but the bridge tool surface stays JSON.)
+
+### Caller auth (v0.0.9+, opt-in)
+
+If the daemon is running with `EIDETIC_AUTH=1` (or `-auth` flag), the bridge auto-discovers the rotating Bearer token. Resolution order:
+
+1. Explicit `auth_token=<hex>` kwarg (test injection)
+2. `EIDETIC_AUTH_TOKEN` env var
+3. `<EIDETIC_DATA_DIR>/auth-token` file (default `~/.eidetic/auth-token`)
+
+Daemons NOT in auth-mode pass through transparently — no bridge config change required either way.
 
 ## Development
 
