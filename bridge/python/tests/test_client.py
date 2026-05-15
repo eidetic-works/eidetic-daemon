@@ -198,3 +198,45 @@ def test_client_metrics_unreachable_raises_daemon_error(tmp_path: Path):
     client = DaemonClient(uds_path=str(nowhere))
     with pytest.raises(DaemonError):
         client.metrics()
+
+
+def test_client_auth_token_explicit_kwarg(uds_socket_path: str):
+    """v0.0.9+: explicit auth_token kwarg routed into Authorization header.
+    Fake server doesn't enforce auth, so we just verify the header is sent
+    by introspecting the kwarg priority over env / file."""
+    client = DaemonClient(uds_path=uds_socket_path, auth_token="explicit-test-token")
+    assert client._auth_token == "explicit-test-token"  # noqa: SLF001 — internal state assertion intentional
+    # Round-trip works (fake server ignores auth):
+    assert client.healthy() is True
+
+
+def test_client_auth_token_from_env(monkeypatch, uds_socket_path: str):
+    """EIDETIC_AUTH_TOKEN env var overrides file lookup. Useful for CI /
+    one-shot invocations without writing the file."""
+    monkeypatch.setenv("EIDETIC_AUTH_TOKEN", "env-test-token")
+    monkeypatch.delenv("EIDETIC_DATA_DIR", raising=False)
+    client = DaemonClient(uds_path=uds_socket_path)
+    assert client._auth_token == "env-test-token"  # noqa: SLF001
+
+
+def test_client_auth_token_from_file(monkeypatch, tmp_path: Path, uds_socket_path: str):
+    """v0.0.9+: <EIDETIC_DATA_DIR>/auth-token auto-discovered when present.
+    Mirrors the daemon-side WriteFile path."""
+    data_dir = tmp_path / "datadir"
+    data_dir.mkdir()
+    (data_dir / "auth-token").write_text("file-test-token-aaaa-bbbb-cccc")
+    monkeypatch.setenv("EIDETIC_DATA_DIR", str(data_dir))
+    monkeypatch.delenv("EIDETIC_AUTH_TOKEN", raising=False)
+    client = DaemonClient(uds_path=uds_socket_path)
+    assert client._auth_token == "file-test-token-aaaa-bbbb-cccc"  # noqa: SLF001
+
+
+def test_client_auth_token_absent_when_no_source(monkeypatch, tmp_path: Path, uds_socket_path: str):
+    """No env, no file → token is None, no Authorization header sent.
+    Preserves backward-compat for daemons not running auth-mode."""
+    nowhere = tmp_path / "no-data-dir"
+    monkeypatch.setenv("EIDETIC_DATA_DIR", str(nowhere))
+    monkeypatch.delenv("EIDETIC_AUTH_TOKEN", raising=False)
+    client = DaemonClient(uds_path=uds_socket_path)
+    assert client._auth_token is None  # noqa: SLF001
+    assert client.healthy() is True  # fake server doesn't enforce; verifies no transport breakage
