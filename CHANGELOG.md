@@ -33,7 +33,7 @@ OpenMetrics 1.0.0 exposition format on `/metrics` via Accept-header negotiation.
 - PR #27 (this release commit folded in)
 - W2+ list "OpenMetrics format on /metrics" — promoted into v0.0.11
 - OpenMetrics 1.0.0 spec: https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md
-- Discipline: `feedback_compound_before_build.md` (compounds v0.0.10 Accept negotiation; same MarshalX pattern; OpenMetrics handler shares writeGauge helper); `feedback_no_test_before_one_success.md` (live-fire 4 Accept variants BEFORE codify)
+- Compounds v0.0.10 Accept negotiation; same MarshalX pattern; OpenMetrics handler shares writeGauge helper. Live-fire 4 Accept variants against the real binary before any test was codified.
 
 ---
 
@@ -69,7 +69,7 @@ Prometheus exposition format on `/metrics` via Accept-header content negotiation
 - PR #26 (this release commit folded in)
 - W2+ list "Prometheus-format `/metrics`" — promoted into v0.0.10
 - Prometheus exposition format spec: https://prometheus.io/docs/instrumenting/exposition_formats/
-- Discipline: `feedback_compound_before_build.md` (compounds v0.0.7 Metrics struct + handler; Accept-header negotiation is additive); `feedback_no_test_before_one_success.md` (live-fire 3 Accept variants BEFORE codify)
+- Compounds v0.0.7 Metrics struct + handler; Accept-header negotiation is additive. Live-fire 3 Accept variants against the real binary before any test was codified.
 
 ---
 
@@ -90,7 +90,7 @@ Opt-in caller authentication on the daemon API. Defense-in-depth on top of UDS `
 ### Reference
 - PR #25 (this release commit folded in)
 - W2+ list "Caller authentication on the API (per-process token in HTTP header)" — promoted into v0.0.9
-- Discipline: `feedback_compound_before_build.md` (compounds existing Options/middleware pattern; reuses the 0600 conventions from store + UDS); `feedback_no_test_before_one_success.md` (live-fire BEFORE codify — 7 contract cases dogfooded against real binary before any test was written)
+- Compounds existing Options/middleware pattern; reuses the 0600 conventions from store + UDS. 7 contract cases dogfooded against the real binary before any test was codified.
 
 ### Threat model amendment to `SECURITY.md`
 - Pre-v0.0.9: UDS `0600` was the only trust boundary. Other processes running as the same uid could read engrams.
@@ -161,14 +161,13 @@ Shutdown-race fix on top of v0.0.5 (no behavioral change to capture/store/API).
 ### Reference
 - PRs #18 (this fix; release commit folded in)
 - daemon-repo issue #17 (filed during v0.0.5 dogfood; closed by this release)
-- HARD RULE applied: `feedback_static_audit_needs_runtime_pair.md` — runtime spike caught what static review missed.
-- HARD RULE applied: `feedback_no_test_before_one_success.md` — live-fire dogfood proved fix BEFORE codifying.
+- Runtime spike caught what static review missed; live-fire dogfood proved the fix before any test was codified.
 
 ---
 
 ## [v0.0.5] — 2026-05-14
 
-Capture-side hard-wall removal + bridge reassembly + brand alignment per entity-wide ADR-017 + ADR-018 (locked: brand = "Eidetic Works", monolithic Notion-style; "Eidetic" alone not used).
+Capture-side hard-wall removal + bridge reassembly + brand alignment (brand = "Eidetic Works"; "Eidetic" alone not used).
 
 ### Added
 - **Chunked-capture for arbitrarily-large records** (`internal/capture/parser_jsonl.go`) — JSONL lines exceeding `chunkPayloadBudget` (7 MiB; sized below `store.MaxPayloadBytes` 8 MiB to leave room for meta+wire overhead) are split into ⌈len/budget⌉ chunks, each tagged with `chunk_id` (sha256-prefix of full payload, 16 hex chars; **idempotent on resume**) + `chunk_seq` (0-indexed) + `chunk_total` in meta JSON. Records ≤ budget emit 1 engram with no `chunk_*` meta fields (backward-compat). Consumer-side reassembly: group by `chunk_id`, sort by `chunk_seq`, concatenate `payload`. Eliminates the 8 MiB hard wall — daemon now handles records of any size, bounded only by SQLite per-row limits + writer-pool throughput. **daemon-repo ADR-018**, PR #14.
@@ -177,12 +176,12 @@ Capture-side hard-wall removal + bridge reassembly + brand alignment per entity-
 - 14 new tests in `bridge/python/tests/test_reassemble.py` (bridge total: 25/25 green).
 
 ### Changed
-- **Brand alignment per entity-wide ADR-018** (locked = "Eidetic Works"): `docs/SPEC.md` title + `docs/IMPLEMENTATION_PLAN.md` title + `scripts/install.sh` header comment + systemd unit Description = "Eidetic Works daemon" (was "Eidetic daemon"). Plumbing identifiers stay (`eidetic-daemon` repo, `eideticd` binary, `eidetic_mcp` package, `~/.eidetic/` data dir, `EIDETIC_*` env vars) per ADR-017 distribution corollary ("package identifier is plumbing and stays").
+- **Brand alignment** (locked = "Eidetic Works"): `docs/SPEC.md` title + `docs/IMPLEMENTATION_PLAN.md` title + `scripts/install.sh` header comment + systemd unit Description = "Eidetic Works daemon" (was "Eidetic daemon"). Plumbing identifiers stay (`eidetic-daemon` repo, `eideticd` binary, `eidetic_mcp` package, `~/.eidetic/` data dir, `EIDETIC_*` env vars) — package identifier is plumbing and stays.
 
 ### Reference
 - PRs #14 (chunked-capture), #15 (bridge reassembly), #16 (this release commit; brand alignment + version cut)
 - daemon-repo ADR-018 (chunked-capture decision)
-- entity-wide ADR-017 + ADR-018 (brand-architecture decision + Tier 0.5 outcome) — see `mcp-server-nucleus/DECISIONS.md`
+- ADR-017 (brand-architecture decision) + ADR-018 (chunked-capture, in `docs/DECISIONS.md`)
 
 ---
 
@@ -191,7 +190,7 @@ Capture-side hard-wall removal + bridge reassembly + brand alignment per entity-
 Python MCP bridge + ship-readiness polish on top of v0.0.3 (no Go behavioral change).
 
 ### Added
-- **`bridge/python/`** — Python MCP stdio server (spec § 7 Open Q #5; pulled forward from Day-6 stretch). Two tools: `query_engrams(surface, limit, since)` + `daemon_status()`. Pure-stdlib UDS client (no requests/httpx dep); MCP SDK loaded lazily (server.py import-only-when-running) so client + tests run without it. 11 unit + integration tests via `PYTHONPATH=. pytest tests/`. Live-fire validated against real eideticd. Install: `pip install -e bridge/python` (not yet on PyPI per 90d pivot — substrate-publication decision deferred to W2+). PR #12.
+- **`bridge/python/`** — Python MCP stdio server (spec § 7 Open Q #5; pulled forward from Day-6 stretch). Two tools: `query_engrams(surface, limit, since)` + `daemon_status()`. Pure-stdlib UDS client (no requests/httpx dep); MCP SDK loaded lazily (server.py import-only-when-running) so client + tests run without it. 11 unit + integration tests via `PYTHONPATH=. pytest tests/`. Live-fire validated against real eideticd. Install: `pip install -e bridge/python` (not yet on PyPI; planned for W2+). PR #12.
 - **`scripts/demo-smoke.sh`** + Makefile + ci.yml step — end-to-end gate validating spec § 8 acceptance criteria #3 (write→capture→read against real binary, including `-version` flag check + `/healthz` round-trip + JSONL write to watched dir + marker assertion in `/engrams` response). Locally PASSES in ~2-3 sec including modernc cold-init. PR #10.
 - **`docs/demo.md`** — Day-7 spec § 8 acceptance flow text-script with expected outputs at every step. Distribution Officer Day-7 demo post hyperlink target. PR #8.
 - **`CHANGELOG.md`** + README polish linking `docs/demo.md`, `docs/DECISIONS.md`, releases. PR #9.
@@ -212,10 +211,10 @@ Hardening release on top of v0.0.2 (no behavioral break for v0.0.2 users; recomm
 - `Watcher.SkippedPayloadTooLarge() uint64` — atomic count of capture-side engrams skipped due to payload exceeding `store.MaxPayloadBytes`. Surfaces silent data loss to telemetry / tests.
 - `docs/DECISIONS.md` with **ADR-017** — v0.0.2 cross-compile runtime smoke verdict (darwin + linux PASS; windows static-cleared, runtime deferred).
 - `docs/demo.md` — Day-7 spec § 8 acceptance flow text-script + expected outputs.
-- `.github/workflows/track-tag-check.yml` — PR-gate ported from monorepo (track-tag-required + track-c-word-block); narrower scope vs monorepo (drops STATUS/PLAN-coupled checks).
+- `.github/workflows/track-tag-check.yml` — PR-gate enforcing track-tag-required + Track-C tripwire vocabulary block on incoming PRs.
 
 ### Changed
-- `store.MaxPayloadBytes`: **1 MiB → 8 MiB** (3.3× headroom over largest observed real Claude session JSONL chunk: 2.41 MiB; cc-tb runtime spike showed 8+ engrams dropped silently in first 1s with 1 MiB cap).
+- `store.MaxPayloadBytes`: **1 MiB → 8 MiB** (3.3× headroom over largest observed real Claude session JSONL chunk: 2.41 MiB; runtime spike showed 8+ engrams dropped silently in first 1s with 1 MiB cap).
 - `internal/capture/watcher.go` — pre-filters at `parseAndCommit` before `InsertBatch` so one oversized record no longer fails the WHOLE batch via pre-tx validation. Per-batch log-line surfaces skip count.
 - `Makefile` — all build targets now inject `-ldflags "-X main.Version=$(git describe --tags --always --dirty)"`.
 
@@ -225,9 +224,7 @@ Hardening release on top of v0.0.2 (no behavioral break for v0.0.2 users; recomm
 
 ### Reference
 - PR #6 (`63af7f4`), PR #7 (`d70ffe3`), PR #8 (`e0739c0`)
-- cc-tb SPIKE-RESULT relay `_152711_52fb5738`
-- cc-peer DRIFT-AUDIT-LITE-RESULT relay `_215000` + AUDIT-AMENDMENT relay `_225000`
-- HARD RULE landed: `feedback_static_audit_needs_runtime_pair.md` (monorepo MEMORY.md)
+- Runtime-spike-driven hardening cycle (caught silent data loss that static review missed).
 
 ---
 
@@ -245,10 +242,10 @@ First W1 release. Daemon W1 spec functionally complete through Phase 6.
 - **SECURITY.md**: explicit threat model + storage modes (`0700` dir, `0600` file) + 5 known W1 limitations + hardening roadmap. (PR #5)
 
 ### Reference
-- Cumulative: 6 PRs (#1–#5 with stacking from cc-main on top of operator's #1+#2 Phase 0-2)
-- W1 spec: `docs/SPEC.md`
-- ADRs: `docs/IMPLEMENTATION_PLAN.md` references entity-wide ADR-008 + ADR-011 + ADR-012 + ADR-013 + ADR-014 + ADR-016 (in monorepo `mcp-server-nucleus/DECISIONS.md`)
-- Release workflow billing-blocked per `project_eidetic_works_ci_billing.md`; assets uploaded manually.
+- Cumulative: 6 PRs (#1–#5).
+- W1 spec: `docs/SPEC.md`.
+- ADR-014 (writer/reader pool split + InsertBatch + concurrent-read gate) + ADR-016 (CGO-free SQLite driver) — see `docs/DECISIONS.md`.
+- Release workflow gated on CI billing in early releases; assets uploaded manually until billing window resumes.
 
 ---
 
@@ -257,12 +254,10 @@ First W1 release. Daemon W1 spec functionally complete through Phase 6.
 W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
 - Latency histograms on `/metrics` (P50/P95/P99 of /engrams query times, capture parse latency).
 - Counter `_created` timestamps on OpenMetrics output (per spec optional extension).
-- Bridge fold-in to `mcp-server-nucleus` (substrate-paused per `project_eidetic_works_90d_pivot_2026_05_10.md`).
 - Cloudflare D1+R2+Workers cloud sync (per ADR-005, encrypted blobs only).
 - Compliance daemon (W2 per spec § 1).
-- PyPI publication of `eidetic-mcp` package (deferred per 90d pivot).
-- GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per daemon-repo ADR-017; gates on billing reset 2026-05-19).
-- Acquire `eideticworks.com` ($1-5K) post-W4 if probe validates (per entity-wide ADR-018; logged in `mcp-server-nucleus/docs/brand-migration.md`).
+- PyPI publication of `eidetic-mcp` package.
+- GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per ADR-017).
 
 [v0.0.11]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.11
 [v0.0.10]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.10
