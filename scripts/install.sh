@@ -2,11 +2,11 @@
 # Eidetic Works daemon — one-line installer.
 #
 # Usage:
-#   curl -fsSL https://eidetic.works/install.sh | sh
+#   curl -fsSL https://nucleusos.dev/install.sh | sh
 #
-# Detects host OS + arch, downloads the matching release tarball, places the
-# binary in /usr/local/bin (or $EIDETIC_PREFIX/bin), and registers the
-# launchd / systemd-user service so the daemon spawns at login.
+# Detects host OS + arch, downloads the matching release binary, places it
+# in /usr/local/bin (or $EIDETIC_PREFIX/bin), and registers the launchd /
+# systemd-user service so the daemon spawns at login.
 #
 # Per ADR-016 the spawn-at-startup mandate is non-negotiable: it absorbs the
 # 1.75s modernc.org/sqlite cold-init behind login UI.
@@ -40,9 +40,9 @@ detect_target() {
 download_url() {
   local target="$1"
   if [ "$VERSION" = "latest" ]; then
-    echo "https://github.com/${REPO}/releases/latest/download/eideticd-${target}.tar.gz"
+    echo "https://github.com/${REPO}/releases/latest/download/eideticd-${target}"
   else
-    echo "https://github.com/${REPO}/releases/download/${VERSION}/eideticd-${target}.tar.gz"
+    echo "https://github.com/${REPO}/releases/download/${VERSION}/eideticd-${target}"
   fi
 }
 
@@ -51,8 +51,10 @@ install_binary() {
   url="$(download_url "$target")"
   tmp="$(mktemp -d)"
   log "fetching $url"
-  curl -fsSL "$url" -o "$tmp/eideticd.tar.gz"
-  ( cd "$tmp" && tar -xzf eideticd.tar.gz )
+  if ! curl -fsSL "$url" -o "$tmp/eideticd"; then
+    rm -rf "$tmp"
+    err "download failed (404 or network error). If 404: the daemon repo may still be private during early-access — see https://github.com/${REPO}/releases for status, or contact hello@nucleusos.dev"
+  fi
   install -d "${PREFIX}/bin"
   install -m 0755 "$tmp/eideticd" "${PREFIX}/bin/eideticd"
   rm -rf "$tmp"
@@ -115,7 +117,6 @@ UNIT
 
 main() {
   command -v curl >/dev/null || err "curl is required"
-  command -v tar  >/dev/null || err "tar is required"
 
   local target
   target="$(detect_target)"
