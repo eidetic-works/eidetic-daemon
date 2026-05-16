@@ -218,7 +218,7 @@ See [SECURITY.md](./SECURITY.md) for the full threat model + storage modes befor
 
 ## 9. Skipped engrams
 
-If the watcher hits an engram larger than `store.MaxPayloadBytes` (8 MiB per ADR-017, raised from 1 MiB after cc-tb runtime spike showed real Claude session JSONL chunks at 1.18-2.41 MiB), it skips that record and logs:
+If the watcher hits an engram larger than `store.MaxPayloadBytes` (8 MiB per ADR-017, raised from 1 MiB after a runtime spike showed real Claude session JSONL chunks at 1.18-2.41 MiB), it skips that record and logs:
 
 ```
 capture: claude_code /Users/<you>/.claude/projects/.../session.jsonl: skipped 1 oversized engrams (>8388608 bytes); total skipped this session: N
