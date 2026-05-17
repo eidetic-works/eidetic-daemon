@@ -249,16 +249,37 @@ First W1 release. Daemon W1 spec functionally complete through Phase 6.
 
 ---
 
+## [v0.0.12] — 2026-05-17
+
+Query latency percentiles on `/metrics`. Every `/engrams` call is timed; P50/P95/P99 surface via all three `/metrics` formats (JSON, Prometheus summary, OpenMetrics summary). Compounds on v0.0.11 — additive, **zero breaking change** (new fields are `omitempty` in JSON; new metric block gated on ≥ 2 samples).
+
+### Added
+- **`LatencyTracker`** (`internal/api/latency.go`): lock-guarded ring-buffer reservoir sampler (configurable capacity; default 1000 → ~8 KB). `Record(time.Duration)` stores microsecond values; `Percentiles()` returns P50/P95/P99 via linear interpolation on a sorted snapshot; returns `math.NaN` when < 2 samples. `Count()` returns live fill (capped at capacity after wrap).
+- **`Options.QueryLatency *LatencyTracker`** (`internal/api/server.go`): optional — zero timing overhead when nil; wired in `main.go` with a 1000-sample reservoir.
+- **`/engrams` timing** (`internal/api/routes.go`): `time.Since(start)` around `store.Retrieve`; recorded to `queryLatency` when non-nil.
+- **`Metrics` struct fields** (`internal/api/metrics.go`): `QueryP50Us`, `QueryP95Us`, `QueryP99Us *float64` (omitempty) + `QueryCount int` (omitempty). Nil when < 2 samples.
+- **Prometheus summary block**: `eidetic_query_duration_microseconds{quantile="0.5/0.95/0.99"}` + `_count` line. Omitted when no data.
+- **OpenMetrics summary block**: same metric with `# UNIT eidetic_query_duration microseconds`. Omitted when no data; EOF preserved unconditionally.
+- **Tests** (`internal/api/latency_test.go`): 6 tests — empty, single-sample, 100-sample percentile accuracy (P50 ±2 µs, P95 ±2 µs, P99 ±2 µs), ring-buffer wrap (slot reuse verified), zero-capacity no-panic, concurrent safety (8 goroutines × 200 samples).
+- **Tests** (`internal/api/metrics_test.go`): 3 new tests — `TestMetricsQueryLatencyJSONOmitEmpty` (nil fields absent in JSON, set fields present), `TestMetricsPrometheusQueryLatencySummary` (block absent/present, all 6 expected lines), `TestMetricsOpenMetricsQueryLatencySummary` (block absent/present, UNIT comment, EOF unconditional).
+
+### Reference
+- Compounds: v0.0.7 `/metrics` JSON → v0.0.10 Prometheus → v0.0.11 OpenMetrics → v0.0.12 query latency.
+- NaN-check idiom in `main.go`: `p50 == p50` (NaN is the only float64 that doesn't equal itself — avoids importing `math` in `cmd/`).
+- Reservoir cap = 1000 → ~8 KB overhead. Ring wraps after 1000 samples; older measurements drop.
+
+---
+
 ## Unreleased
 
 W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
-- Latency histograms on `/metrics` (P50/P95/P99 of /engrams query times, capture parse latency).
 - Counter `_created` timestamps on OpenMetrics output (per spec optional extension).
 - Cloudflare D1+R2+Workers cloud sync (per ADR-005, encrypted blobs only).
 - Compliance daemon (W2 per spec § 1).
 - PyPI publication of `eidetic-mcp` package.
 - GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per ADR-017).
 
+[v0.0.12]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.12
 [v0.0.11]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.11
 [v0.0.10]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.10
 [v0.0.9]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.9

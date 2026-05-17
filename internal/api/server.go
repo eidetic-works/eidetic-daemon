@@ -36,18 +36,25 @@ type Options struct {
 	// single-user UDS-trust behavior). main() supplies this; api stays
 	// decoupled from token-file path resolution.
 	AuthToken *auth.Token
+
+	// QueryLatency is an optional LatencyTracker for /engrams query timing
+	// (v0.0.12+). When non-nil, every handleEngramsGET records the
+	// store.Retrieve round-trip duration; percentiles surface via /metrics.
+	// When nil, no timing overhead is incurred.
+	QueryLatency *LatencyTracker
 }
 
 // Server wraps an http.Server bound to a local listener (UDS or TCP).
 // One Server owns one Store reference; multiple Servers can share a Store.
 type Server struct {
-	httpSrv  *http.Server
-	listener net.Listener
-	store    *store.Store
-	udsPath  string // empty for TCP; set so Close can unlink the file
-	timeout  time.Duration
-	metrics  MetricsProvider // may be nil; /metrics returns 503 in that case
-	auth     *auth.Token     // may be nil OR disabled; middleware passes through
+	httpSrv      *http.Server
+	listener     net.Listener
+	store        *store.Store
+	udsPath      string          // empty for TCP; set so Close can unlink the file
+	timeout      time.Duration
+	metrics      MetricsProvider // may be nil; /metrics returns 503 in that case
+	auth         *auth.Token     // may be nil OR disabled; middleware passes through
+	queryLatency *LatencyTracker // may be nil; no timing overhead when absent
 }
 
 // New constructs a server bound per opts. Cleans up a stale UDS file at
@@ -64,7 +71,7 @@ func New(s *store.Store, opts Options) (*Server, error) {
 		opts.Timeout = 5 * time.Second
 	}
 
-	srv := &Server{store: s, timeout: opts.Timeout, metrics: opts.Metrics, auth: opts.AuthToken}
+	srv := &Server{store: s, timeout: opts.Timeout, metrics: opts.Metrics, auth: opts.AuthToken, queryLatency: opts.QueryLatency}
 
 	var (
 		listener net.Listener

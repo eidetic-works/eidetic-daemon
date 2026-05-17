@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 // handleHealthz serves GET /healthz. Returns 200 + {"status":"ok"}. Used by
@@ -43,7 +44,11 @@ func (s *Server) handleEngramsGET(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
 	defer cancel()
 
+	start := time.Now()
 	rows, err := s.store.Retrieve(ctx, surface, since, limit)
+	if s.queryLatency != nil {
+		s.queryLatency.Record(time.Since(start))
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
