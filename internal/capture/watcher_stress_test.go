@@ -12,8 +12,7 @@ import (
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
 )
 
-// TestWatcherBurstNoDoubleInsert exercises peer hole-poke #1
-// (relay_20260513_072250_eee4993e §1):
+// TestWatcherBurstNoDoubleInsert exercises PR#1 review hole-poke #1:
 //
 //	"the real fsnotify-event-flood pattern under burst sessions could collapse
 //	the headroom. Look at internal/capture/watcher.go scheduleParse debounce

@@ -63,7 +63,7 @@ func Seed(ctx context.Context, st *store.Store, count int, span time.Duration) e
 }
 
 // synthPayload returns a deterministic-but-varied 50-2000-char string built
-// from a small word pool. Mirrors the cc-tb spike fixture shape so bench
+// from a small word pool. Mirrors the original spike fixture shape so bench
 // numbers are comparable across host runs.
 func synthPayload(r *rand.Rand) string {
 	const minLen = 50

@@ -104,8 +104,8 @@ func TestWatcherEndToEndJSONLAppend(t *testing.T) {
 	}
 	// Spec section 2.3: <50ms target. Build-tag split: tight 100ms margin
 	// without -race (CI gate); 500ms with -race (detector overhead 2-20×).
-	// Closes peer hole-poke #3 (relay_20260513_072250_eee4993e §3) — prior
-	// 500ms-everywhere margin masked any regression up to 200ms.
+	// Closes PR#1 review hole-poke #3 — prior 500ms-everywhere margin masked
+	// any regression up to 200ms.
 	margin := 100 * time.Millisecond
 	if isRaceMode {
 		margin = 500 * time.Millisecond
