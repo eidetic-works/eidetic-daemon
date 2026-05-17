@@ -1,6 +1,6 @@
 # Demo — Day-7 spec § 8 acceptance flow (text-script)
 
-This walks through the demo flow that Distribution Officer references on Day-7 release. Text-script + expected outputs so an operator (or anyone) can run it without guessing.
+Text-script + expected outputs for the Day-7 release demo, so anyone can run it without guessing.
 
 For a video recording: pair this with [asciinema](https://asciinema.org/) — `asciinema rec docs/demo.cast` while running these commands.
 
@@ -228,4 +228,4 @@ You can also read the count programmatically (see `Watcher.SkippedPayloadTooLarg
 
 ---
 
-**Distribution Officer**: this script is the source-of-truth for the Day-7 demo post. Hyperlink the headline numbers (P95 0.27 ms, ~370× under SLO) directly to this file.
+**Release demo post**: headline numbers (P95 0.27 ms, ~370× under SLO) should hyperlink directly to this file.

@@ -192,7 +192,7 @@ Python MCP bridge + ship-readiness polish on top of v0.0.3 (no Go behavioral cha
 ### Added
 - **`bridge/python/`** — Python MCP stdio server (spec § 7 Open Q #5; pulled forward from Day-6 stretch). Two tools: `query_engrams(surface, limit, since)` + `daemon_status()`. Pure-stdlib UDS client (no requests/httpx dep); MCP SDK loaded lazily (server.py import-only-when-running) so client + tests run without it. 11 unit + integration tests via `PYTHONPATH=. pytest tests/`. Live-fire validated against real eideticd. Install: `pip install -e bridge/python` (not yet on PyPI; planned for W2+). PR #12.
 - **`scripts/demo-smoke.sh`** + Makefile + ci.yml step — end-to-end gate validating spec § 8 acceptance criteria #3 (write→capture→read against real binary, including `-version` flag check + `/healthz` round-trip + JSONL write to watched dir + marker assertion in `/engrams` response). Locally PASSES in ~2-3 sec including modernc cold-init. PR #10.
-- **`docs/demo.md`** — Day-7 spec § 8 acceptance flow text-script with expected outputs at every step. Distribution Officer Day-7 demo post hyperlink target. PR #8.
+- **`docs/demo.md`** — Day-7 spec § 8 acceptance flow text-script with expected outputs at every step. Release demo post hyperlink target. PR #8.
 - **`CHANGELOG.md`** + README polish linking `docs/demo.md`, `docs/DECISIONS.md`, releases. PR #9.
 - **`.github/pull_request_template.md`** — `Track:` + `Week-scope:` prefilled to reduce track-tag-check CI gate friction; documents Track-C tripwire vocabulary inline. PR #11.
 - README "MCP bridge" section + CHANGELOG entries surfacing the bridge. PR #13.
