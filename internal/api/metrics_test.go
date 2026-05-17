@@ -426,3 +426,115 @@ func max(a, b int) int {
 	}
 	return b
 }
+
+// TestMetricsQueryLatencyJSONOmitEmpty: QueryP50Us/P95Us/P99Us/QueryCount are
+// absent in JSON when nil (omitempty). Present when set.
+func TestMetricsQueryLatencyJSONOmitEmpty(t *testing.T) {
+	// No latency data — fields must be absent.
+	m := Metrics{Version: "v0.0.12", EngramTotal: 5}
+	b, _ := json.Marshal(m)
+	for _, key := range []string{"query_p50_us", "query_p95_us", "query_p99_us", "query_count"} {
+		if strings.Contains(string(b), key) {
+			t.Errorf("nil latency: JSON must not contain %q. Got: %s", key, b)
+		}
+	}
+
+	// With latency data — fields must be present.
+	p50, p95, p99 := 12.3, 45.6, 78.9
+	m2 := Metrics{
+		Version:    "v0.0.12",
+		QueryP50Us: &p50,
+		QueryP95Us: &p95,
+		QueryP99Us: &p99,
+		QueryCount: 42,
+	}
+	b2, _ := json.Marshal(m2)
+	s2 := string(b2)
+	for _, key := range []string{"query_p50_us", "query_p95_us", "query_p99_us", "query_count"} {
+		if !strings.Contains(s2, key) {
+			t.Errorf("set latency: JSON must contain %q. Got: %s", key, s2)
+		}
+	}
+}
+
+// TestMetricsPrometheusQueryLatencySummary: summary block absent when nil,
+// present with correct quantile lines and _count when set.
+func TestMetricsPrometheusQueryLatencySummary(t *testing.T) {
+	// Absent when nil.
+	m := Metrics{Version: "v0.0.12"}
+	out := m.MarshalPrometheus()
+	if strings.Contains(out, "eidetic_query_duration_microseconds") {
+		t.Errorf("nil latency: Prometheus must not emit query_duration block. Got:\n%s", out)
+	}
+
+	// Present with correct format.
+	p50, p95, p99 := 10.5, 95.1, 99.9
+	m2 := Metrics{
+		Version:    "v0.0.12",
+		QueryP50Us: &p50,
+		QueryP95Us: &p95,
+		QueryP99Us: &p99,
+		QueryCount: 1000,
+	}
+	out2 := m2.MarshalPrometheus()
+
+	wantLines := []string{
+		"# HELP eidetic_query_duration_microseconds",
+		"# TYPE eidetic_query_duration_microseconds summary",
+		`eidetic_query_duration_microseconds{quantile="0.5"} 10.500`,
+		`eidetic_query_duration_microseconds{quantile="0.95"} 95.100`,
+		`eidetic_query_duration_microseconds{quantile="0.99"} 99.900`,
+		"eidetic_query_duration_microseconds_count 1000",
+	}
+	for _, want := range wantLines {
+		if !strings.Contains(out2, want) {
+			t.Errorf("Prometheus latency summary: want line %q.\nGot:\n%s", want, out2)
+		}
+	}
+	// Must NOT have # EOF (Prometheus format, not OpenMetrics).
+	if strings.Contains(out2, "# EOF") {
+		t.Error("Prometheus format must not contain # EOF")
+	}
+}
+
+// TestMetricsOpenMetricsQueryLatencySummary: summary block absent when nil,
+// present with UNIT comment and correct quantile lines when set.
+func TestMetricsOpenMetricsQueryLatencySummary(t *testing.T) {
+	// Absent when nil.
+	m := Metrics{Version: "v0.0.12"}
+	out := m.MarshalOpenMetrics()
+	if strings.Contains(out, "eidetic_query_duration{") {
+		t.Errorf("nil latency: OpenMetrics must not emit query_duration block. Got:\n%s", out)
+	}
+	// Must still end with # EOF even when no latency.
+	if !strings.HasSuffix(strings.TrimRight(out, "\n"), "# EOF") {
+		t.Errorf("OpenMetrics must end with # EOF regardless of latency. Got:\n%s", out)
+	}
+
+	// Present with correct format.
+	p50, p95, p99 := 10.5, 95.1, 99.9
+	m2 := Metrics{
+		Version:    "v0.0.12",
+		QueryP50Us: &p50,
+		QueryP95Us: &p95,
+		QueryP99Us: &p99,
+		QueryCount: 500,
+	}
+	out2 := m2.MarshalOpenMetrics()
+
+	wantLines := []string{
+		"# HELP eidetic_query_duration",
+		"# TYPE eidetic_query_duration summary",
+		"# UNIT eidetic_query_duration microseconds",
+		`eidetic_query_duration{quantile="0.5"} 10.500`,
+		`eidetic_query_duration{quantile="0.95"} 95.100`,
+		`eidetic_query_duration{quantile="0.99"} 99.900`,
+		"eidetic_query_duration_count 500",
+		"# EOF",
+	}
+	for _, want := range wantLines {
+		if !strings.Contains(out2, want) {
+			t.Errorf("OpenMetrics latency summary: want line %q.\nGot:\n%s", want, out2)
+		}
+	}
+}

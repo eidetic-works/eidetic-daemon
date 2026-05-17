@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -22,13 +23,22 @@ const (
 // additive-only across versions (callers can rely on existing fields
 // continuing to exist; new fields may appear).
 type Metrics struct {
-	Version          string           `json:"version"`
-	UptimeSeconds    int64            `json:"uptime_seconds"`
-	EngramTotal      int64            `json:"engram_total"`
-	EngramBySurface  map[string]int64 `json:"engram_by_surface"`
-	CaptureSkipped   uint64           `json:"capture_skipped"`
-	DBPath           string           `json:"db_path"`
-	DBSizeBytes      int64            `json:"db_size_bytes"`
+	Version         string           `json:"version"`
+	UptimeSeconds   int64            `json:"uptime_seconds"`
+	EngramTotal     int64            `json:"engram_total"`
+	EngramBySurface map[string]int64 `json:"engram_by_surface"`
+	CaptureSkipped  uint64           `json:"capture_skipped"`
+	DBPath          string           `json:"db_path"`
+	DBSizeBytes     int64            `json:"db_size_bytes"`
+
+	// Query latency percentiles (v0.0.12+). Nil when fewer than 2 samples
+	// have been recorded (daemon just started or no /engrams calls yet).
+	// Values in microseconds. QueryCount is the reservoir sample count
+	// (capped at tracker capacity, not total request count).
+	QueryP50Us  *float64 `json:"query_p50_us,omitempty"`
+	QueryP95Us  *float64 `json:"query_p95_us,omitempty"`
+	QueryP99Us  *float64 `json:"query_p99_us,omitempty"`
+	QueryCount  int      `json:"query_count,omitempty"`
 }
 
 // MetricsProvider is supplied by main() so the api package stays decoupled
@@ -173,6 +183,16 @@ func (m Metrics) MarshalPrometheus() string {
 	writeMetric("eidetic_db_size_bytes", "On-disk size of the engram SQLite database file.", "gauge", m.DBSizeBytes)
 	writeMetric("eidetic_build_info", "Daemon build version. Value is always 1; version is in the label.", "gauge", 1, fmt.Sprintf("version=%q", m.Version))
 
+	// v0.0.12+: query latency summary. Omitted when no data yet.
+	if m.QueryP50Us != nil && !math.IsNaN(*m.QueryP50Us) {
+		fmt.Fprintln(&b, "# HELP eidetic_query_duration_microseconds /engrams query latency percentiles (reservoir, last ~1000 samples).")
+		fmt.Fprintln(&b, "# TYPE eidetic_query_duration_microseconds summary")
+		fmt.Fprintf(&b, `eidetic_query_duration_microseconds{quantile="0.5"} %.3f`+"\n", *m.QueryP50Us)
+		fmt.Fprintf(&b, `eidetic_query_duration_microseconds{quantile="0.95"} %.3f`+"\n", *m.QueryP95Us)
+		fmt.Fprintf(&b, `eidetic_query_duration_microseconds{quantile="0.99"} %.3f`+"\n", *m.QueryP99Us)
+		fmt.Fprintf(&b, "eidetic_query_duration_microseconds_count %d\n", m.QueryCount)
+	}
+
 	return b.String()
 }
 
@@ -234,6 +254,17 @@ func (m Metrics) MarshalOpenMetrics() string {
 
 	writeGauge("eidetic_db_size_bytes", "On-disk size of the engram SQLite database file.", "bytes", m.DBSizeBytes)
 	writeGauge("eidetic_build_info", "Daemon build version. Value is always 1; version is in the label.", "", 1, fmt.Sprintf("version=%q", m.Version))
+
+	// v0.0.12+: query latency summary. Omitted when no data yet.
+	if m.QueryP50Us != nil && !math.IsNaN(*m.QueryP50Us) {
+		fmt.Fprintln(&b, "# HELP eidetic_query_duration /engrams query latency percentiles (reservoir, last ~1000 samples).")
+		fmt.Fprintln(&b, "# TYPE eidetic_query_duration summary")
+		fmt.Fprintln(&b, "# UNIT eidetic_query_duration microseconds")
+		fmt.Fprintf(&b, `eidetic_query_duration{quantile="0.5"} %.3f`+"\n", *m.QueryP50Us)
+		fmt.Fprintf(&b, `eidetic_query_duration{quantile="0.95"} %.3f`+"\n", *m.QueryP95Us)
+		fmt.Fprintf(&b, `eidetic_query_duration{quantile="0.99"} %.3f`+"\n", *m.QueryP99Us)
+		fmt.Fprintf(&b, "eidetic_query_duration_count %d\n", m.QueryCount)
+	}
 
 	// Mandatory EOF line per spec.
 	fmt.Fprintln(&b, "# EOF")

@@ -88,7 +88,10 @@ func main() {
 		log.Printf("auth: enabled — token written to %s (0600), rotates each restart", path)
 	}
 
-	opts := api.Options{Timeout: 5 * time.Second, AuthToken: authToken}
+	// v0.0.12+: query latency tracker (1000-sample reservoir; ~8 KB).
+	queryTracker := api.NewLatencyTracker(1000)
+
+	opts := api.Options{Timeout: 5 * time.Second, AuthToken: authToken, QueryLatency: queryTracker}
 	switch {
 	case *udsPath != "":
 		opts.UDSPath = *udsPath
@@ -124,6 +127,13 @@ func main() {
 		}
 		if fi, err := os.Stat(dbPath); err == nil {
 			m.DBSizeBytes = fi.Size()
+		}
+		// v0.0.12+: query latency percentiles. Nil when < 2 samples.
+		if p50, p95, p99 := queryTracker.Percentiles(); p50 == p50 { // NaN != NaN
+			m.QueryP50Us = &p50
+			m.QueryP95Us = &p95
+			m.QueryP99Us = &p99
+			m.QueryCount = queryTracker.Count()
 		}
 		return m, nil
 	}
