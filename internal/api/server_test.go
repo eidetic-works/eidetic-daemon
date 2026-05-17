@@ -167,7 +167,8 @@ func TestGET_WrongMethodReturns405(t *testing.T) {
 	defer stop()
 
 	addr := srv.Addr().String()
-	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
+	// DELETE is now valid (v0.0.13 purge endpoint); only POST/PUT/PATCH are not.
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch} {
 		req, _ := http.NewRequest(method, fmt.Sprintf("http://%s/engrams?surface=x", addr), nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -314,5 +315,141 @@ func TestRequestTimeoutAppliesToStoreLayer(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		// Should reference context cancellation if the timeout fired.
 		_ = body // accept either outcome; the test guards against panic / wrong wiring
+	}
+}
+
+// --- DELETE /engrams tests (v0.0.13) ---
+
+func TestEngramsDELETEPurgeAll(t *testing.T) {
+	st := tempStore(t)
+	seedStore(t, st, "cursor", 5)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodDelete,
+		fmt.Sprintf("http://%s/engrams?surface=cursor", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("DELETE purge-all: want 200, got %d: %s", resp.StatusCode, body)
+	}
+	var result map[string]int64
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result["deleted"] != 5 {
+		t.Errorf("DELETE purge-all: want deleted=5, got %d", result["deleted"])
+	}
+
+	// Verify store is empty for that surface.
+	rows, err := st.Retrieve(context.Background(), "cursor", 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("after DELETE purge-all: want 0 rows, got %d", len(rows))
+	}
+}
+
+func TestEngramsDELETEPurgeBefore(t *testing.T) {
+	st := tempStore(t)
+	// Seed 4 rows with sequential ts values.
+	base := seedStore(t, st, "claude_code", 4) // ts = base, base+1, base+2, base+3
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	// Delete rows with ts < base+2 (should delete 2 rows).
+	before := base + 2
+	req, _ := http.NewRequest(http.MethodDelete,
+		fmt.Sprintf("http://%s/engrams?surface=claude_code&before=%d", srv.Addr(), before), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("DELETE purge-before: want 200, got %d: %s", resp.StatusCode, body)
+	}
+	var result map[string]int64
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result["deleted"] != 2 {
+		t.Errorf("DELETE purge-before: want deleted=2, got %d", result["deleted"])
+	}
+
+	// 2 rows remain.
+	rows, err := st.Retrieve(context.Background(), "claude_code", 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Errorf("after DELETE purge-before: want 2 remaining, got %d", len(rows))
+	}
+}
+
+func TestEngramsDELETEMissingSurface(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodDelete,
+		fmt.Sprintf("http://%s/engrams", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("DELETE missing surface: want 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestEngramsDELETEDoesNotTouchOtherSurfaces(t *testing.T) {
+	st := tempStore(t)
+	seedStore(t, st, "cursor", 3)
+	seedStore(t, st, "cowork", 2)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodDelete,
+		fmt.Sprintf("http://%s/engrams?surface=cursor", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+
+	// cowork surface untouched.
+	rows, err := st.Retrieve(context.Background(), "cowork", 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Errorf("DELETE cursor: cowork should be untouched, got %d rows", len(rows))
+	}
+}
+
+func TestEngramsPUTMethodNotAllowed(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodPut,
+		fmt.Sprintf("http://%s/engrams?surface=x", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("PUT /engrams: want 405, got %d", resp.StatusCode)
 	}
 }

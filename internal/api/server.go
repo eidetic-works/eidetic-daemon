@@ -96,7 +96,7 @@ func New(s *store.Store, opts Options) (*Server, error) {
 	srv.listener = listener
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/engrams", srv.handleEngramsGET)
+	mux.HandleFunc("/engrams", srv.handleEngrams)
 	mux.HandleFunc("/healthz", srv.handleHealthz)
 	mux.HandleFunc("/metrics", srv.handleMetrics)
 

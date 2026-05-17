@@ -20,16 +20,24 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
-// handleEngramsGET serves GET /engrams?surface=X&limit=N&since=unix-ns.
-// Returns 200 + JSON array on success, 400 on missing surface, 405 on
-// non-GET, 500 on store error. Param parse failures map to store defaults
-// (per docs/PHASE_2_DESIGN.md "forgiving param parse" decision).
-func (s *Server) handleEngramsGET(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+// handleEngrams dispatches /engrams by method:
+//   - GET  → handleEngramsGET  (retrieve)
+//   - DELETE → handleEngramsDELETE (purge)
+func (s *Server) handleEngrams(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		s.handleEngramsGET(w, r)
+	case http.MethodDelete:
+		s.handleEngramsDELETE(w, r)
+	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
 	}
+}
 
+// handleEngramsGET serves GET /engrams?surface=X&limit=N&since=unix-ns.
+// Returns 200 + JSON array on success, 400 on missing surface, 500 on store
+// error. Param parse failures map to store defaults ("forgiving param parse").
+func (s *Server) handleEngramsGET(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	surface := q.Get("surface")
 	if surface == "" {
@@ -37,7 +45,7 @@ func (s *Server) handleEngramsGET(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit, _ := strconv.Atoi(q.Get("limit"))      // 0 / invalid → store default (50)
+	limit, _ := strconv.Atoi(q.Get("limit"))
 	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
 
 	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
@@ -51,4 +59,32 @@ func (s *Server) handleEngramsGET(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(rows)
+}
+
+// handleEngramsDELETE serves DELETE /engrams?surface=X[&before=unix-ns].
+// Purges engrams for the given surface. When before is provided and > 0, only
+// rows with ts < before are deleted; otherwise all rows for the surface are
+// purged. Returns 200 + {"deleted": N} on success, 400 on missing surface,
+// 500 on store error. (v0.0.13+)
+func (s *Server) handleEngramsDELETE(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	surface := q.Get("surface")
+	if surface == "" {
+		http.Error(w, "surface required", http.StatusBadRequest)
+		return
+	}
+
+	before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
+
+	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
+	defer cancel()
+
+	n, err := s.store.Purge(ctx, surface, before)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]int64{"deleted": n})
 }

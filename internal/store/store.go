@@ -294,6 +294,39 @@ func (s *Store) CountBySurface(ctx context.Context) (map[string]int64, error) {
 	return out, rows.Err()
 }
 
+// Purge deletes engrams for a surface. When before > 0, only rows with
+// ts < before are deleted (unix nanoseconds, matching the ts column). When
+// before == 0, all rows for the surface are deleted. Returns the number of
+// rows deleted. Writer-pool exec — does not block readers.
+func (s *Store) Purge(ctx context.Context, surface string, before int64) (int64, error) {
+	if surface == "" {
+		return 0, errors.New("surface required")
+	}
+	var (
+		res sql.Result
+		err error
+	)
+	if before > 0 {
+		res, err = s.writer.ExecContext(ctx,
+			`DELETE FROM engrams WHERE surface = ? AND ts < ?`,
+			surface, before,
+		)
+	} else {
+		res, err = s.writer.ExecContext(ctx,
+			`DELETE FROM engrams WHERE surface = ?`,
+			surface,
+		)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("purge: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("purge rows affected: %w", err)
+	}
+	return n, nil
+}
+
 // defaultDBPath resolves $EIDETIC_DATA_DIR or ~/.eidetic/engrams.db
 // per spec § 2.2.
 func defaultDBPath() (string, error) {

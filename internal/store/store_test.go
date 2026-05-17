@@ -205,3 +205,101 @@ func TestWALModeAndIndexUsedForRetrieval(t *testing.T) {
 		t.Fatalf("payload roundtrip broken: %q", got[0].Payload)
 	}
 }
+
+func TestStorePurgeAll(t *testing.T) {
+	s := tempStore(t)
+	ctx := context.Background()
+	now := time.Now().UnixNano()
+
+	for i := 0; i < 5; i++ {
+		if _, err := s.Insert(ctx, engram.Engram{Surface: "claude_code", TS: now + int64(i), Payload: "x"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Insert on a different surface — must be untouched.
+	if _, err := s.Insert(ctx, engram.Engram{Surface: "cursor", TS: now, Payload: "y"}); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := s.Purge(ctx, "claude_code", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 5 {
+		t.Errorf("Purge(all): want 5 deleted, got %d", n)
+	}
+
+	// claude_code rows gone.
+	rows, err := s.Retrieve(ctx, "claude_code", 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("after purge: want 0 rows for claude_code, got %d", len(rows))
+	}
+
+	// cursor row untouched.
+	rows, err = s.Retrieve(ctx, "cursor", 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Errorf("after purge: cursor surface should be untouched, got %d rows", len(rows))
+	}
+}
+
+func TestStorePurgeBefore(t *testing.T) {
+	s := tempStore(t)
+	ctx := context.Background()
+
+	// Insert 4 rows: ts 100, 200, 300, 400 (nanoseconds, small values for clarity).
+	for _, ts := range []int64{100, 200, 300, 400} {
+		if _, err := s.Insert(ctx, engram.Engram{Surface: "claude_code", TS: ts, Payload: "p"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Purge ts < 300 → should delete rows at ts=100 and ts=200 (2 rows).
+	n, err := s.Purge(ctx, "claude_code", 300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Errorf("Purge(before=300): want 2 deleted, got %d", n)
+	}
+
+	// Remaining: ts=300 and ts=400.
+	rows, err := s.Retrieve(ctx, "claude_code", 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Errorf("after Purge(before=300): want 2 remaining rows, got %d", len(rows))
+	}
+	for _, r := range rows {
+		if r.TS < 300 {
+			t.Errorf("Purge(before=300) left ts=%d which should have been deleted", r.TS)
+		}
+	}
+}
+
+func TestStorePurgeEmptySurface(t *testing.T) {
+	s := tempStore(t)
+	ctx := context.Background()
+	_, err := s.Purge(ctx, "", 0)
+	if err == nil {
+		t.Error("Purge with empty surface should return error")
+	}
+}
+
+func TestStorePurgeNonExistentSurface(t *testing.T) {
+	s := tempStore(t)
+	ctx := context.Background()
+	n, err := s.Purge(ctx, "no_such_surface", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("purge non-existent surface: want 0 deleted, got %d", n)
+	}
+}
