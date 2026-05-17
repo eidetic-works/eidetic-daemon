@@ -11,6 +11,8 @@ Per spec § 7 Open Q #5: this is the "separate Python wrapper" path — the daem
 | `query_engrams` | `surface` (required), `limit` (default 50, cap 500), `since` (unix ns, default 0), `raw_chunks` (bool, default false) | JSON array of engrams ordered by timestamp descending. Chunked records (per ADR-018) are reassembled by default; `raw_chunks=true` returns chunks as separate engrams. |
 | `daemon_status` | (none) | `{"healthy": bool}` from `/healthz` round-trip |
 | `daemon_metrics` | (none) | Daemon's `/metrics` JSON (v0.0.7+): `version`, `uptime_seconds`, `engram_total`, `engram_by_surface`, `capture_skipped`, `db_path`, `db_size_bytes`. Schema additive-only across versions. Daemons predating v0.0.7 return `error: metrics not configured`. |
+| `list_surfaces` | (none) | `{"surface": count, ...}` — every surface the daemon has seen with its engram count (v0.0.13+). Empty store → `{}`. Use for discovery before `query_engrams`. |
+| `purge_engrams` | `surface` (required), `before` (unix ns, default 0) | `{"deleted": N}`. Removes all engrams for the surface when `before=0`; only removes engrams with `ts < before` when set. Irreversible (v0.0.13+). |
 
 ### Chunked-record reassembly (ADR-018)
 
@@ -85,7 +87,7 @@ daemon_status()
 
 daemon_metrics()
 → {
-    "version": "v0.0.11",
+    "version": "v0.0.13",
     "uptime_seconds": 142,
     "engram_total": 139751,
     "engram_by_surface": {"claude_code": 141314},
@@ -93,9 +95,18 @@ daemon_metrics()
     "db_path": "/Users/.../engrams.db",
     "db_size_bytes": 659046400
   }
+
+list_surfaces()
+→ {"claude_code": 141314, "cursor": 23, "cowork": 414}
+
+purge_engrams(surface="cursor")
+→ {"deleted": 23}
+
+purge_engrams(surface="claude_code", before=1715000000000000000)
+→ {"deleted": 98214}   # only engrams older than the timestamp
 ```
 
-Surfaces depend on what the daemon is watching (default: `claude_code`, `cowork`, `cursor`).
+Surfaces depend on what the daemon is watching (default: `claude_code`, `cowork`, `cursor`). Use `list_surfaces()` to discover what's currently in the store.
 
 `daemon_metrics()` is the v0.0.7+ verifiability surface — your AI can introspect what's been captured without raw curl, useful for "what's in scope right now?" pre-flight before a `query_engrams` call. (The bridge wraps the JSON response from the daemon's `/metrics`. The daemon also speaks Prometheus exposition (v0.0.10+) and OpenMetrics 1.0.0 (v0.0.11+) on the same endpoint via `Accept` header, but the bridge tool surface stays JSON.)
 
