@@ -2,6 +2,50 @@
 
 All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](https://keepachangelog.com/); semver via git tags.
 
+## [v0.0.13] — 2026-05-18
+
+Engram purge endpoint + surface listing + uninstall script. Three independent
+capabilities that close the full lifecycle: query (v0.0.2), observe (v0.0.7),
+authenticate (v0.0.9), and now **purge + discover + clean-uninstall**. All
+additive — **zero breaking change** to any prior caller.
+
+### Added
+
+- **`DELETE /engrams?surface=X[&before=unix-ns]`** (`internal/api/routes.go`, `internal/store/store.go`):
+  - Purges all engrams for a surface when `before` is absent (or 0).
+  - Purges only engrams with `ts < before` when `before` is set — age-gated cleanup without touching recent data.
+  - Returns `{"deleted": N}` (rows affected from the writer pool).
+  - Auth-gated when caller auth is on (v0.0.9+ Bearer token required, same as `/engrams` GET).
+  - `Store.Purge(ctx, surface, before)` in the store layer; writer-pool exec; two-branch query path mirrors `Retrieve`'s `since`-branch design.
+  - **5 new store tests** (`internal/store/store_test.go`): `TestStorePurgeAll`, `TestStorePurgeBefore`, `TestStorePurgeEmptySurface`, `TestStorePurgeNonExistentSurface` + round-trip.
+  - **5 new API tests** (`internal/api/server_test.go`): DELETE happy path, `before=` cutoff, missing surface 400, wrong method (PATCH) 405, auth-protected 401.
+
+- **`GET /surfaces`** (`internal/api/routes.go`):
+  - Returns a `map[string]int64` of surface name → engram count — same data already computed by `/metrics` `engram_by_surface`, now exposed as a standalone route.
+  - Empty store → `{}` (not null).
+  - Auth-gated when caller auth is on.
+  - **3 new API tests**: `TestSurfacesEmpty`, `TestSurfacesReturnsCounts`, `TestSurfacesMethodNotAllowed`.
+
+- **`scripts/uninstall.sh`**: curl-pipeable removal companion to `scripts/install.sh`.
+  - Stops launchd (macOS) or systemd-user (Linux), kills stray `eideticd` procs via `pkill -x`.
+  - Removes UDS socket (`/tmp/eidetic-daemon.sock`) and binary (`${PREFIX}/bin/eideticd`).
+  - **Engram data retained by default** — `~/.eidetic/` untouched unless `--purge-data` is passed.
+  - Flags: `--purge-data` (wipes `$EIDETIC_DATA_DIR` or `~/.eidetic/`), `--prefix=PATH` (default `/usr/local`).
+  - Usage: `curl -fsSL https://eidetic.works/uninstall.sh | sh`
+
+- **MCP bridge — two new tools** (`bridge/python/eidetic_mcp/server.py`, `client.py`):
+  - `list_surfaces()` — `GET /surfaces` exposed as an MCP tool; returns surface → count map.
+  - `purge_engrams(surface, before=0)` — `DELETE /engrams` exposed as an MCP tool; returns `{"deleted": N}`.
+  - `DaemonClient._request_json(method, path)` consolidates GET + DELETE transport with auth-header wiring.
+  - **5 new bridge tests** (`bridge/python/tests/test_client.py`): `test_client_surfaces_against_fake_server`, `test_client_surfaces_unreachable_raises`, `test_client_purge_engrams_against_fake_server`, `test_client_purge_engrams_with_before`, `test_client_purge_engrams_requires_surface`.
+
+### Reference
+
+- PRs #38 (`DELETE /engrams`), #39 (`GET /surfaces`), #40 (`uninstall.sh`), #42 (bridge tools)
+- Compounds v0.0.12 latency tracker → v0.0.13 lifecycle completion.
+
+---
+
 ## [v0.0.11] — 2026-05-15
 
 OpenMetrics 1.0.0 exposition format on `/metrics` via Accept-header negotiation. IETF successor to Prometheus exposition (CNCF-graduated). Compounds on v0.0.10 — additive, **zero breaking change to v0.0.10 callers** (Prometheus + JSON paths unchanged).
@@ -279,6 +323,7 @@ W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
 - PyPI publication of `eidetic-mcp` package.
 - GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per ADR-017).
 
+[v0.0.13]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.13
 [v0.0.12]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.12
 [v0.0.11]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.11
 [v0.0.10]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.10
