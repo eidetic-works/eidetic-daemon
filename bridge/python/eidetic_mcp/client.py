@@ -102,13 +102,13 @@ class DaemonClient:
             return _UDSConnection(self._uds_path, self._timeout)
         return http.client.HTTPConnection(self._tcp_host, self._tcp_port, timeout=self._timeout)
 
-    def _get_json(self, path: str) -> object:
+    def _request_json(self, method: str, path: str) -> object:
         conn = self._conn()
         try:
             headers = {}
             if self._auth_token:
                 headers["Authorization"] = f"Bearer {self._auth_token}"
-            conn.request("GET", path, headers=headers)
+            conn.request(method, path, headers=headers)
             resp = conn.getresponse()
             body = resp.read().decode("utf-8")
             if resp.status != 200:
@@ -118,6 +118,12 @@ class DaemonClient:
             raise DaemonError(f"daemon transport / parse error: {exc}") from exc
         finally:
             conn.close()
+
+    def _get_json(self, path: str) -> object:
+        return self._request_json("GET", path)
+
+    def _delete_json(self, path: str) -> object:
+        return self._request_json("DELETE", path)
 
     def healthy(self) -> bool:
         """Return True iff /healthz responds 200 with {'status':'ok'}."""
@@ -156,6 +162,35 @@ class DaemonClient:
         if not isinstance(body, list):
             raise DaemonError(f"expected array, got {type(body).__name__}")
         return tuple(_parse_engram(row) for row in body)
+
+
+    def surfaces(self) -> dict[str, int]:
+        """GET /surfaces — map of every surface the daemon has seen to its engram count (v0.0.13+).
+
+        Returns an empty dict when the store is empty. Raises DaemonError on
+        transport failure or if the daemon predates v0.0.13.
+        """
+        body = self._get_json("/surfaces")
+        if not isinstance(body, dict):
+            raise DaemonError(f"expected object, got {type(body).__name__}")
+        return {str(k): int(v) for k, v in body.items()}
+
+    def purge_engrams(self, surface: str, before: int = 0) -> int:
+        """DELETE /engrams — remove engrams for a surface (v0.0.13+).
+
+        `before` is unix epoch nanoseconds; 0 (default) purges ALL engrams for
+        the surface. Returns the number of rows deleted. Raises DaemonError on
+        transport failure, if surface is empty, or if the daemon predates v0.0.13.
+        """
+        if not surface:
+            raise ValueError("surface required")
+        params: dict[str, str] = {"surface": surface}
+        if before > 0:
+            params["before"] = str(before)
+        body = self._delete_json(f"/engrams?{urlencode(params)}")
+        if not isinstance(body, dict) or "deleted" not in body:
+            raise DaemonError(f"unexpected purge response: {body!r}")
+        return int(body["deleted"])
 
 
 def _parse_engram(row: object) -> Engram:
