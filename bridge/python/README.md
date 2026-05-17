@@ -2,7 +2,7 @@
 
 Thin MCP stdio server that exposes the [eidetic-daemon](../..) UDS API as MCP tools. Any MCP client (Cursor, Claude Code, Cline, Cody, etc.) can list + call these tools to query the daemon's local engram store.
 
-Per spec § 7 Open Q #5: this is the "separate Python wrapper" path — the daemon binary itself ships independently. The bridge is co-located in this repo for convenience; eventual fold into [`mcp-server-nucleus`](https://github.com/eidetic-works/mcp-server-nucleus) (the existing Nucleus MCP server) is a substrate-work decision deferred to W2+.
+Per spec § 7 Open Q #5: this is the "separate Python wrapper" path — the daemon binary itself ships independently. The bridge is co-located in this repo for convenience; eventual fold into [`mcp-server-nucleus`](https://github.com/eidetic-works/mcp-server-nucleus) (the existing Nucleus MCP server) is an architecture decision deferred to W2+.
 
 ## Tools
 
@@ -44,7 +44,7 @@ pip install -e .          # editable install (or: pip install .)
 python -m eidetic_mcp.server  # starts MCP stdio server; ^C to exit
 ```
 
-The bridge is **not yet on PyPI**. Install from this repo until the substrate-work decision on `mcp-server-nucleus` fold-in lands (W2+).
+The bridge is **not yet on PyPI**. Install from this repo until the architecture decision on `mcp-server-nucleus` fold-in lands (W2+).
 
 ## Configure your MCP client
 

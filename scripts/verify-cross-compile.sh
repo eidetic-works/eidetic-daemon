@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Cross-compile correctness gate per memory feedback_cgo_cross_compile_silent_failure
-# (2026-05-12 — mattn/go-sqlite3 cross-compile silently produces broken binary).
+# Cross-compile correctness gate — mattn/go-sqlite3 cross-compile silently produces a
+# broken binary (missing CGO linkage; same BuildID, smaller file, crashes at runtime).
 #
 # This gate guards against future regressions even though we use modernc.org/sqlite
 # (pure-Go, doesn't have the failure mode). If anyone ever swaps in a CGO dep,
