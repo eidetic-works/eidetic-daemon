@@ -8,7 +8,7 @@
 
 ## What Phase 2 ships
 
-A single HTTP endpoint over a local Unix domain socket that serves engram retrieval from the `internal/store` reader pool. No authentication (local-only by socket file permissions). No write paths (capture layer is Phase 3). No MCP framing (out of W1 binary per [cc-peer ADR-013 guardrail #4](../docs/SPEC.md)).
+A single HTTP endpoint over a local Unix domain socket that serves engram retrieval from the `internal/store` reader pool. No authentication (local-only by socket file permissions). No write paths (capture layer is Phase 3). No MCP framing (out of W1 binary per [review guardrail #4](../docs/SPEC.md)).
 
 ```
 GET unix:///tmp/eidetic-daemon.sock /engrams?surface=X&limit=N&since=unix-ns
@@ -29,7 +29,7 @@ TCP fallback (`127.0.0.1:9876`) when `EIDETIC_TCP=1` — testing + CI use this.
 | `internal/api/routes.go` | `GET /engrams` handler, param parsing, JSON marshal | ~70 |
 | `internal/api/server_test.go` | Request-shape + JSON-correctness + error-path tests | ~130 |
 
-Total: ~280 LOC. Same-size envelope as Phase 1. Single PR to `feat/internal-api` branch with `--head feat/internal-api --base main`. cc-peer cold-read per `.claude/agents/cc-peer.md` § Operating principles.
+Total: ~280 LOC. Same-size envelope as Phase 1. Single PR to `feat/internal-api` branch with `--head feat/internal-api --base main`. Cold-read review before merge.
 
 ---
 
@@ -153,7 +153,7 @@ Uses `net/http/httptest` for the HTTP machinery + `t.TempDir()` UDS path for soc
 
 9 cases. Mirror the Phase 1 test density.
 
-**No benchmark in Phase 2.** Bench lives in `bench/` per Phase 5 (gated on cc-tb directive `relay_20260512_024145_spike_directive_w1_bench_gaps`).
+**No benchmark in Phase 2.** Bench lives in `bench/` per Phase 5 (gated on the W1 bench-gaps spike directive).
 
 ---
 
@@ -206,7 +206,7 @@ Cold-init handling in dev: smoke-test script polls `/engrams?surface=ping&limit=
 ## Out of Phase 2 (deferred per spec § 1)
 
 - **fsnotify capture path** → Phase 3
-- **MCP bridge / framing library** → post-W1 separate repo (cc-peer ADR-013 #4)
+- **MCP bridge / framing library** → post-W1 separate repo (review guardrail #4)
 - **Auth / TLS** → post-W1 (UDS perms are the trust boundary)
 - **Write API** → Phase 3 (insert flows from capture, not API)
 - **Pagination / streaming chunked responses** → only if Phase 5 bench shows >2.5MB responses common (unlikely)
@@ -222,11 +222,11 @@ Cold-init handling in dev: smoke-test script polls `/engrams?surface=ping&limit=
 4. Write `internal/api/server_test.go` covering the 9 cases.
 5. `go build ./...` clean + `go test ./...` green.
 6. Add `make smoke` target + smoke-test script.
-7. PR to `main`, request cc-peer cold-read.
+7. PR to `main`, request cold-read review.
 8. Address review, merge.
 9. Phase 3 (capture) opens.
 
-**Estimated cc-main wall-clock:** 1-2 hours of focused work once Phase 1 merges. Sonnet sub-agent could handle test scaffolding (`server_test.go`) but the lifecycle code (`server.go`) is cc-main directly per implementation plan.
+**Estimated implementer wall-clock:** 1-2 hours of focused work once Phase 1 merges. Sub-agent could handle test scaffolding (`server_test.go`); the lifecycle code (`server.go`) is implementer directly per implementation plan.
 
 ---
 
