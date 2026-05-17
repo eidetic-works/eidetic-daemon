@@ -62,28 +62,25 @@ class _UDSHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *_args, **_kw):  # silence test output
         pass
 
+    def _send_json(self, payload: object) -> None:
+        body = json.dumps(payload).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):  # noqa: N802
         if self.path == "/healthz":
-            body = json.dumps({"status": "ok"}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._send_json({"status": "ok"})
             return
         if self.path.startswith("/engrams"):
-            # 1 row, fake but parseable
-            body = json.dumps([
+            self._send_json([
                 {"id": 1, "surface": "claude_code", "ts": 100, "payload": "hi", "meta": ""},
-            ]).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            ])
             return
         if self.path == "/metrics":
-            body = json.dumps({
+            self._send_json({
                 "version": "v0.0.7-fake",
                 "uptime_seconds": 42,
                 "engram_total": 100,
@@ -91,12 +88,17 @@ class _UDSHandler(http.server.BaseHTTPRequestHandler):
                 "capture_skipped": 0,
                 "db_path": "/fake/engrams.db",
                 "db_size_bytes": 1024,
-            }).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            })
+            return
+        if self.path == "/surfaces":
+            self._send_json({"claude_code": 100, "cursor": 42})
+            return
+        self.send_response(404)
+        self.end_headers()
+
+    def do_DELETE(self):  # noqa: N802
+        if self.path.startswith("/engrams"):
+            self._send_json({"deleted": 5})
             return
         self.send_response(404)
         self.end_headers()
@@ -240,3 +242,40 @@ def test_client_auth_token_absent_when_no_source(monkeypatch, tmp_path: Path, ud
     client = DaemonClient(uds_path=uds_socket_path)
     assert client._auth_token is None  # noqa: SLF001
     assert client.healthy() is True  # fake server doesn't enforce; verifies no transport breakage
+
+
+# ── v0.0.13: surfaces() + purge_engrams() ───────────────────────────────────
+
+def test_client_surfaces_against_fake_server(uds_socket_path: str):
+    """GET /surfaces returns surface → count dict (v0.0.13+)."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    counts = client.surfaces()
+    assert isinstance(counts, dict)
+    assert counts["claude_code"] == 100
+    assert counts["cursor"] == 42
+
+
+def test_client_surfaces_unreachable_raises(tmp_path: Path):
+    client = DaemonClient(uds_path=str(tmp_path / "no.sock"), timeout=0.5)
+    with pytest.raises(DaemonError):
+        client.surfaces()
+
+
+def test_client_purge_engrams_against_fake_server(uds_socket_path: str):
+    """DELETE /engrams returns deleted count (v0.0.13+)."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    deleted = client.purge_engrams(surface="cursor")
+    assert deleted == 5
+
+
+def test_client_purge_engrams_with_before(uds_socket_path: str):
+    """before= param accepted; fake server ignores it but round-trip completes."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    deleted = client.purge_engrams(surface="cursor", before=1715000000000000000)
+    assert deleted == 5
+
+
+def test_client_purge_engrams_requires_surface(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    with pytest.raises(ValueError):
+        client.purge_engrams(surface="")

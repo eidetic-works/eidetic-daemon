@@ -21,6 +21,15 @@ Tools exposed:
     db_size_bytes. Schema additive-only across versions. Daemons
     predating v0.0.7 return error 'metrics not configured'.
 
+  list_surfaces()
+    Returns a map of surface name → engram count for every surface the
+    daemon has seen (v0.0.13+). Empty dict when store is empty.
+
+  purge_engrams(surface, before=0)
+    Delete engrams for a surface (v0.0.13+). `before` is unix epoch
+    nanoseconds; 0 (default) removes all engrams for that surface.
+    Returns {"deleted": N}. Irreversible — use with care.
+
 Run:
 
     eideticd &                          # daemon listens on UDS
@@ -140,6 +149,41 @@ def build_server(client: DaemonClient | None = None) -> Any:
                 ),
                 inputSchema={"type": "object", "properties": {}, "required": []},
             ),
+            Tool(
+                name="list_surfaces",
+                description=(
+                    "List every surface the eidetic-daemon has seen, with its "
+                    "engram count (v0.0.13+). Returns a JSON object mapping "
+                    "surface name to count, e.g. {'claude_code': 1234, 'cursor': 567}. "
+                    "Use as a discovery step before querying a specific surface."
+                ),
+                inputSchema={"type": "object", "properties": {}, "required": []},
+            ),
+            Tool(
+                name="purge_engrams",
+                description=(
+                    "Delete engrams from the daemon's store for a given surface "
+                    "(v0.0.13+). Irreversible. Returns {'deleted': N}.\n\n"
+                    "With `before` (unix epoch nanoseconds): only removes engrams "
+                    "older than that timestamp, leaving newer ones intact.\n"
+                    "Without `before` (or before=0): removes ALL engrams for the surface."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "surface": {
+                            "type": "string",
+                            "description": "Surface tag to purge, e.g. claude_code | cursor",
+                        },
+                        "before": {
+                            "type": "integer",
+                            "description": "Unix epoch nanoseconds cutoff. Purges ts < before. 0 = purge all.",
+                            "minimum": 0,
+                        },
+                    },
+                    "required": ["surface"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -169,6 +213,24 @@ def build_server(client: DaemonClient | None = None) -> Any:
             except DaemonError as exc:
                 return [TextContent(type="text", text=f"error: {exc}")]
             return [TextContent(type="text", text=json.dumps(m, indent=2))]
+
+        if name == "list_surfaces":
+            try:
+                counts = daemon.surfaces()
+            except DaemonError as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            return [TextContent(type="text", text=json.dumps(counts, indent=2))]
+
+        if name == "purge_engrams":
+            surface = str(arguments.get("surface", "")).strip()
+            if not surface:
+                return [TextContent(type="text", text="error: surface required")]
+            before = int(arguments.get("before", 0))
+            try:
+                deleted = daemon.purge_engrams(surface=surface, before=before)
+            except (DaemonError, ValueError) as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            return [TextContent(type="text", text=json.dumps({"deleted": deleted}))]
 
         return [TextContent(type="text", text=f"error: unknown tool {name!r}")]
 
