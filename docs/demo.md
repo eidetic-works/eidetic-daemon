@@ -164,6 +164,41 @@ The Python MCP bridge auto-discovers the token (file → env var → explicit kw
 
 ---
 
+## 5c. Surface listing + purge (v0.0.13+)
+
+Discover what the daemon has seen, then prune stale data:
+
+```sh
+# List every surface with its engram count.
+curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/surfaces
+# → {"claude_code": 139751, "cursor": 23, "cowork": 414}
+
+# Purge all engrams for a surface (irreversible).
+curl -X DELETE --unix-socket /tmp/eidetic-daemon.sock \
+  'http://localhost/engrams?surface=cursor'
+# → {"deleted": 23}
+
+# Purge only engrams older than a timestamp (unix nanoseconds).
+# Engrams newer than the cutoff are retained.
+curl -X DELETE --unix-socket /tmp/eidetic-daemon.sock \
+  'http://localhost/engrams?surface=claude_code&before=1715000000000000000'
+# → {"deleted": 98214}
+```
+
+Both endpoints are auth-gated when `EIDETIC_AUTH=1` — same `Authorization: Bearer <token>` header required.
+
+Via the MCP bridge (`bridge/python/`), the same operations are available as tool calls:
+
+```
+list_surfaces()
+→ {"claude_code": 139751, "cursor": 23}
+
+purge_engrams(surface="cursor")
+→ {"deleted": 23}
+```
+
+---
+
 ## 6. Latency
 
 The bench gates ship in CI:
@@ -198,6 +233,16 @@ To reinstall/update:
 
 ```sh
 curl -fsSL https://eidetic.works/install.sh | sh   # idempotent; replaces binary + re-registers
+```
+
+To uninstall completely:
+
+```sh
+# Stops service, removes binary + socket. Engram data (~/.eidetic/) retained.
+curl -fsSL https://eidetic.works/uninstall.sh | sh
+
+# Also wipe engram data (irreversible).
+curl -fsSL https://eidetic.works/uninstall.sh | sh -s -- --purge-data
 ```
 
 ---
