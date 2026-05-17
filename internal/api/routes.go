@@ -21,6 +21,29 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// handleSurfaces serves GET /surfaces. Returns 200 + JSON object mapping
+// surface name → engram count for all surfaces with at least one engram.
+// Empty store returns {}. 405 on non-GET, 500 on store error. (v0.0.13+)
+func (s *Server) handleSurfaces(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
+	defer cancel()
+
+	counts, err := s.store.CountBySurface(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if counts == nil {
+		counts = map[string]int64{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(counts)
+}
+
 // handleEngrams dispatches /engrams by method:
 //   - GET  → handleEngramsGET  (retrieve)
 //   - DELETE → handleEngramsDELETE (purge)

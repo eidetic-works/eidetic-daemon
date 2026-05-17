@@ -453,3 +453,73 @@ func TestEngramsPUTMethodNotAllowed(t *testing.T) {
 		t.Errorf("PUT /engrams: want 405, got %d", resp.StatusCode)
 	}
 }
+
+// --- GET /surfaces tests (v0.0.13) ---
+
+func TestSurfacesEmpty(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/surfaces", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	var counts map[string]int64
+	if err := json.NewDecoder(resp.Body).Decode(&counts); err != nil {
+		t.Fatal(err)
+	}
+	if len(counts) != 0 {
+		t.Errorf("empty store: want {}, got %v", counts)
+	}
+}
+
+func TestSurfacesReturnsCounts(t *testing.T) {
+	st := tempStore(t)
+	seedStore(t, st, "cursor", 3)
+	seedStore(t, st, "claude_code", 7)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/surfaces", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	var counts map[string]int64
+	if err := json.NewDecoder(resp.Body).Decode(&counts); err != nil {
+		t.Fatal(err)
+	}
+	if counts["cursor"] != 3 {
+		t.Errorf("cursor: want 3, got %d", counts["cursor"])
+	}
+	if counts["claude_code"] != 7 {
+		t.Errorf("claude_code: want 7, got %d", counts["claude_code"])
+	}
+	if len(counts) != 2 {
+		t.Errorf("want 2 surfaces, got %d: %v", len(counts), counts)
+	}
+}
+
+func TestSurfacesMethodNotAllowed(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/surfaces", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST /surfaces: want 405, got %d", resp.StatusCode)
+	}
+}
