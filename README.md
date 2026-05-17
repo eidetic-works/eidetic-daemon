@@ -9,7 +9,9 @@ Part of [Nucleus](https://nucleusos.dev). 90-day public probe (started 2026-05-1
 ## What it does
 
 - **Engram capture** — `fsnotify` watches each surface's session files; new text → engram row in <50ms of file-write.
-- **Engram retrieval** — `GET /engrams?surface=X&limit=N` over local Unix socket. P95 <100ms on 10K-row store.
+- **Engram retrieval** — `GET /engrams?surface=X&limit=N&since=unix-ns` over local Unix socket. P95 <100ms on 10K-row store.
+- **Engram purge** — `DELETE /engrams?surface=X[&before=unix-ns]` — remove by surface (with optional timestamp cutoff); returns `{"deleted": N}`.
+- **Surface listing** — `GET /surfaces` — map of every active surface to its engram count; live view of what the daemon has seen.
 - **Multi-surface mirror** — Cursor / Cowork / Claude Code all feed one canonical store, indexed `(surface, ts DESC)`.
 
 Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + windows-amd64.
@@ -22,7 +24,14 @@ Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + win
 curl -fsSL https://nucleusos.dev/install.sh | sh
 ```
 
-Not yet shipped publicly. Latest release: [v0.0.11](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.11) (3 cross-compile assets + `SHA256SUMS.txt` attached; pure-Go, no CGO). See `scripts/install.sh` for what the one-line installer runs.
+To remove:
+
+```sh
+curl -fsSL https://eidetic.works/uninstall.sh | sh          # stops service, removes binary; keeps ~/.eidetic/
+curl -fsSL https://eidetic.works/uninstall.sh | sh -s -- --purge-data  # also wipes engram data (irreversible)
+```
+
+Not yet shipped publicly. Latest release: [v0.0.11](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.11) (3 cross-compile assets + `SHA256SUMS.txt` attached; pure-Go, no CGO). See `scripts/install.sh` and `scripts/uninstall.sh` for what the one-line installers run.
 
 Full demo flow with expected outputs at every step: [`docs/demo.md`](./docs/demo.md). Architecture decisions: [`docs/DECISIONS.md`](./docs/DECISIONS.md). Release notes per version: [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -50,12 +59,26 @@ curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/healthz
 # Open Cursor or Claude Code, write something. Then read it back.
 curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams?surface=claude_code&limit=5'
 
+# All surfaces the daemon has seen, with engram counts (v0.0.13+).
+curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/surfaces
+# → {"claude_code": 1234, "cursor": 567, "cowork": 89}
+
+# Purge all engrams for a surface (v0.0.13+).
+curl -X DELETE --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams?surface=cursor'
+# → {"deleted": 567}
+
+# Purge only engrams older than a timestamp (unix nanoseconds).
+curl -X DELETE --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams?surface=cursor&before=1715000000000000000'
+# → {"deleted": 42}
+
 # Live metrics (v0.0.7+): version, uptime, engram counts per surface,
-# capture skip-counter, DB size. Schema is additive-only across versions.
-# Three formats via Accept-header content negotiation:
+# capture skip-counter, DB size, query latency P50/P95/P99 (v0.0.12+).
+# Schema is additive-only across versions. Three formats via Accept-header:
 curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/metrics                                              # JSON (default; v0.0.7)
 curl -H 'Accept: text/plain' --unix-socket /tmp/eidetic-daemon.sock http://localhost/metrics                      # Prometheus exposition (v0.0.10+)
 curl -H 'Accept: application/openmetrics-text' --unix-socket /tmp/eidetic-daemon.sock http://localhost/metrics    # OpenMetrics 1.0.0 (v0.0.11+)
+# v0.0.12+ adds query_latency_p50_us / _p95_us / _p99_us to JSON and
+# eidetic_query_duration_microseconds{quantile=...} summary to Prometheus/OpenMetrics.
 ```
 
 Real Prometheus scrapers send a multi-type Accept by default (`application/openmetrics-text;version=1.0.0,text/plain;version=0.0.4;q=0.5,*/*;q=0.1`); v0.0.11 honors the openmetrics clause and returns OpenMetrics (precedence) — drop into your existing scrape config, no shim.
@@ -123,7 +146,7 @@ See [docs/SPEC.md](docs/SPEC.md) for the binding W1 spec, [docs/IMPLEMENTATION_P
 
 ## Status
 
-W1 ship (Day 5 of 7) — 11 releases v0.0.2 → v0.0.11. Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase sequencing.
+W1 complete — 14 releases v0.0.2 → v0.0.13 (v0.0.12/v0.0.13 pending CI). Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase sequencing.
 
 | Phase | What | State |
 |---|---|---|
@@ -134,7 +157,7 @@ W1 ship (Day 5 of 7) — 11 releases v0.0.2 → v0.0.11. Track via `docs/IMPLEME
 | 4 | Integration: mirror + concurrency tests | ✅ (rolled into #4) |
 | 5 | Bench gates wired | ✅ (#5) |
 | 6 | Cross-compile artifacts + install.sh + service files | ✅ (#5) |
-| 7 | GitHub release + demo post | ✅ v0.0.2 → v0.0.11 released; demo at `docs/demo.md`; public-flip + DO post pending |
+| 7 | GitHub release + demo post | ✅ v0.0.2 → v0.0.13 released; demo at `docs/demo.md`; public-flip + DO post pending |
 | 8 | MCP bridge (Python stdio server) | ✅ v0.0.4 (#12); reassembly v0.0.5 (#15); `daemon_metrics()` v0.0.8 (#22) |
 | 9 | Chunked-capture (no payload-size hard wall) | ✅ v0.0.5 (#14) |
 | 10 | Shutdown drain (issue #17) | ✅ v0.0.6 (#18) |
@@ -142,6 +165,9 @@ W1 ship (Day 5 of 7) — 11 releases v0.0.2 → v0.0.11. Track via `docs/IMPLEME
 | 12 | Caller auth — Bearer token (opt-in) | ✅ v0.0.9 (#25) |
 | 13 | Prometheus exposition format on `/metrics` | ✅ v0.0.10 (#26) |
 | 14 | OpenMetrics 1.0.0 exposition format on `/metrics` | ✅ v0.0.11 (#27) |
+| 15 | Query latency tracker — P50/P95/P99 on `/metrics` | ✅ v0.0.12 (#37, pending CI) |
+| 16 | `DELETE /engrams` + `GET /surfaces` | ✅ v0.0.13 (#38 #39, pending CI) |
+| 17 | `uninstall.sh` — clean daemon removal + optional data purge | ✅ (#40, pending CI) |
 
 ---
 
