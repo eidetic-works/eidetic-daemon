@@ -8,7 +8,7 @@ PKG := ./cmd/eideticd
 
 # Inject Version from the most recent git tag (or `dev` for unreleased builds).
 # Visible via `eideticd -version`. Single source of truth for the binary's
-# self-identification per cc-tb SPIKE-RESULT 2026-05-13 finding #1.
+# self-identification (closes the 2026-05-13 spike finding #1).
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.Version=$(VERSION)
 

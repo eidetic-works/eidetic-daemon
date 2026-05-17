@@ -28,7 +28,7 @@ var schemaSQL string
 const writerPragmas = "_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=busy_timeout(5000)&_pragma=cache_size(-64000)"
 
 // Reader pool runs in mode=ro so journal_mode + synchronous are no-ops; only
-// busy_timeout + cache_size apply per cc-peer PR#1 minor #1.
+// busy_timeout + cache_size apply per PR#1 review minor #1.
 const readerPragmas = "_pragma=busy_timeout(5000)&_pragma=cache_size(-64000)"
 
 // readerPoolSize covers 5 expected surfaces + headroom (per ADR-014 pattern #3).
@@ -36,14 +36,14 @@ const readerPoolSize = 8
 
 // MaxPayloadBytes caps Insert payload to prevent a single oversized engram
 // (e.g., a 50MB Cursor JSONL chunk from a Phase-3 parser bug) from blocking
-// ALL writers under the SetMaxOpenConns(1) writer-pool shape per cc-peer
-// PR#1 concern #3.
+// ALL writers under the SetMaxOpenConns(1) writer-pool shape (PR#1 review
+// concern #3).
 //
-// 8 MiB cap covers real Claude Code session-JSONL chunks measured by cc-tb
-// runtime spike on 2026-05-13 (largest observed: 2.41 MiB; 1 MiB original
-// cap dropped 8+ engrams in the first 1s of capture). 8 MiB = ~3.3× over the
+// 8 MiB cap covers real Claude Code session-JSONL chunks measured during a
+// 2026-05-13 runtime spike (largest observed: 2.41 MiB; 1 MiB original cap
+// dropped 8+ engrams in the first 1s of capture). 8 MiB = ~3.3× over the
 // measured ceiling — still bounded against the parser-bug failure mode.
-// See ADR-017 (docs/DECISIONS.md) + memory rule feedback_static_audit_needs_runtime_pair.md.
+// See ADR-017 (docs/DECISIONS.md).
 const MaxPayloadBytes = 8 << 20
 
 // Store owns the writer + reader pool pair. Always opened together against
@@ -95,7 +95,7 @@ func Open(path string) (*Store, error) {
 func (s *Store) Path() string { return s.path }
 
 // Close releases both pools. If both fail, errors are joined per
-// cc-peer PR#1 minor #2 (don't silently swallow the second error).
+// PR#1 review minor #2 (don't silently swallow the second error).
 func (s *Store) Close() error {
 	return errors.Join(s.writer.Close(), s.reader.Close())
 }
@@ -158,8 +158,8 @@ func (s *Store) InsertBatch(ctx context.Context, batch []engram.Engram) error {
 	return nil
 }
 
-// validateEngram enforces semantic-required at the Go boundary (per cc-peer
-// PR#1 concern #1) + payload size cap (per cc-peer PR#1 concern #3).
+// validateEngram enforces semantic-required at the Go boundary (PR#1 review
+// concern #1) + payload size cap (PR#1 review concern #3).
 // Centralized so Insert + InsertBatch can't drift.
 func validateEngram(e engram.Engram) error {
 	if e.Surface == "" {
@@ -182,7 +182,7 @@ func validateEngram(e engram.Engram) error {
 // + limit. Uses the read-only reader pool. Returns rows in (surface, ts DESC)
 // order — covered by idx_surface_ts.
 //
-// Two-branch query path per cc-peer PR#1 concern #2 — the prior single-query
+// Two-branch query path per PR#1 review concern #2 — the prior single-query
 // shape `WHERE surface=? AND (?=0 OR ts>?)` worked but was fragile to refactor:
 // dropping the `hasSince` flag would silently turn unfiltered queries into
 // 0-row results.

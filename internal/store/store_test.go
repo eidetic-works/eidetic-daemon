@@ -139,14 +139,14 @@ func TestInsertRejectsEmptySurfaceOrZeroTSOrEmptyPayload(t *testing.T) {
 	if _, err := s.Insert(ctx, engram.Engram{Surface: "x", TS: 0, Payload: "p"}); err == nil {
 		t.Fatal("want error for zero ts")
 	}
-	// cc-peer PR#1 concern #1: schema NOT NULL is no-op on Go's "" — enforce here.
+	// PR#1 review concern #1: schema NOT NULL is no-op on Go's "" — enforce here.
 	if _, err := s.Insert(ctx, engram.Engram{Surface: "x", TS: 1, Payload: ""}); err == nil {
 		t.Fatal("want error for empty payload")
 	}
 }
 
 func TestInsertRejectsOversizePayload(t *testing.T) {
-	// cc-peer PR#1 concern #3: oversize payload blocks single-writer pool.
+	// PR#1 review concern #3: oversize payload blocks single-writer pool.
 	s := tempStore(t)
 	ctx := context.Background()
 	big := strings.Repeat("x", store.MaxPayloadBytes+1)
@@ -160,7 +160,7 @@ func TestInsertRejectsOversizePayload(t *testing.T) {
 }
 
 func TestRetrieveSinceZeroReturnsAllRows(t *testing.T) {
-	// cc-peer PR#1 concern #2 regression guard: since=0 must return ALL rows,
+	// PR#1 review concern #2 regression guard: since=0 must return ALL rows,
 	// not zero. Two-branch refactor must not flip this case.
 	s := tempStore(t)
 	ctx := context.Background()

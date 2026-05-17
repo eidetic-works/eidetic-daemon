@@ -42,8 +42,8 @@ type Watcher struct {
 	// debounce timers can fire `parseAndCommit` for the same path
 	// concurrently, and the second can read state.Get BEFORE the first
 	// writes state.Set, causing double-insert of the same bytes. See
-	// TestWatcherBurstNoDoubleInsert + peer hole-poke
-	// relay_20260513_072250_eee4993e §1.
+	// TestWatcherBurstNoDoubleInsert (regression test for the burst-flood
+	// hole-poke from PR#1 review).
 	//
 	// Map values are *sync.Mutex; we use sync.Map for lock-free reads of
 	// the per-path mutex itself.
@@ -52,7 +52,7 @@ type Watcher struct {
 	// skippedPayloadTooLarge counts engrams dropped because their payload
 	// exceeded store.MaxPayloadBytes. Updated atomically by parseAndCommit;
 	// read via SkippedPayloadTooLarge() for telemetry/test assertions.
-	// Per cc-tb runtime spike 2026-05-13: real Claude Code session JSONLs
+	// Per a 2026-05-13 runtime spike: real Claude Code session JSONLs
 	// produce chunks up to 2.41 MiB; cap raised to 8 MiB but skips still
 	// possible on outliers — surface count so users see data loss.
 	skippedPayloadTooLarge uint64
@@ -296,7 +296,7 @@ func (w *Watcher) parseAndCommit(ctx context.Context, surface, path string) {
 		// row violation). Surface the skip count via log + Watcher counter so
 		// users see the data loss they're getting. Cap value tracked in
 		// store.MaxPayloadBytes; capture mirrors the gate to avoid one-row
-		// batch poisoning. See ADR-017 (cc-tb runtime spike 2026-05-13).
+		// batch poisoning. See ADR-017 (2026-05-13 runtime spike).
 		filtered := engrams[:0]
 		skipped := 0
 		for _, e := range engrams {

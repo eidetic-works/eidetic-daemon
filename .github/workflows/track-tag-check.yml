@@ -1,14 +1,13 @@
 # Track-Tag + Track-C Word Block (eidetic-daemon repo)
 #
-# Ported from mcp-server-nucleus/.github/workflows/track-tag-check.yml @ 25514dae.
-# Closes cc-peer drift-audit-lite gap (relay_20260513_215000) — workflow lived
-# in monorepo but didn't propagate when daemon code consolidated to this repo.
+# Ported from a sibling repo's workflow of the same name. Closes a
+# drift-audit-lite gap (the workflow lived in the sibling repo but didn't
+# propagate when daemon code consolidated here).
 #
-# Scope here is intentionally NARROWER than the monorepo version: this daemon
+# Scope here is intentionally NARROWER than the sibling version: this daemon
 # repo doesn't have STATUS.md or PLAN.md, so the STATUS-staleness + Week-scope
-# + plan-amendment + gate-window guards aren't applicable. Those keep firing
-# in the monorepo (the entity-wide control plane). This repo's discipline is
-# "are PRs spec-aligned" — covered by ADR-014/016 drift audits + cc-peer
+# + plan-amendment + gate-window guards aren't applicable. This repo's
+# discipline is "are PRs spec-aligned" — covered by ADR drift audits + cold
 # review. The two checks remaining are pure refusal hygiene:
 #
 #   1. Track-tag-required — every PR description names which 90d track (A | B
