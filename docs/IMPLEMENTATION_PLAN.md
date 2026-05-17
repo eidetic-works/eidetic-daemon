@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-12 (Day 2 EOD; Day 3 starts tomorrow)
 **Status:** Pre-Day-3 scaffold blueprint (NOT executed yet — read by Day-3 morning before any Go is written)
-**Owner:** cc-main (with Sonnet sub-agents for bulk Go code per ADR-011 delegation pattern)
+**Owner:** Daemon repo owner (with sub-agent delegation for bulk Go code)
 **Authority anchors:** spec `eidetic-daemon-w1.md` @ `b3caa126`; ADR-012 (Go feasibility GO); ADR-014 (5 carry-forward patterns + 3 measurement gaps); ADR-016 (modernc.org/sqlite + Tauri sidecar + spawn-at-startup)
 **Repo target:** `eidetic-works/eidetic-daemon` (NEW GitHub repo; operator-keyboard create)
 
@@ -10,9 +10,9 @@
 
 ## 0. Pre-Day-3 operator action (one item)
 
-Create the GitHub repo `eidetic-works/eidetic-daemon` (private at first; flip to public on Day-7 release per spec § 8). Empty repo is fine — cc-main will push the initial scaffold.
+Create the GitHub repo `eidetic-works/eidetic-daemon` (private at first; flip to public on Day-7 release per spec § 8). Empty repo is fine — the implementer will push the initial scaffold.
 
-Everything below is cc-main + Sonnet sub-agent work once the repo exists.
+Everything below is implementer + sub-agent work once the repo exists.
 
 ---
 
@@ -62,7 +62,7 @@ eidetic-daemon/
 └── .gitignore
 ```
 
-**File count:** ~25 files. Pure scaffolding (~10) + production code (~10) + tests (~5). Bulk delegation candidates: parsers + tests (Sonnet); production hot path (cc-main directly).
+**File count:** ~25 files. Pure scaffolding (~10) + production code (~10) + tests (~5). Bulk delegation candidates: parsers + tests (sub-agent); production hot path (implementer directly).
 
 ---
 
@@ -86,7 +86,7 @@ require (
 
 **No CGO.** Build is pure Go, single static binary, cross-compile to all 3 targets in <10sec each. Per ADR-016 spike measurements.
 
-**No MCP framing library in W1** per spec §7 Open Q #1 + cc-peer ADR-013 guardrail #4. Daemon ships UDS-only with HTTP framing. MCP bridge is post-W1 (Python wrapper around UDS API, lives in separate repo).
+**No MCP framing library in W1** per spec §7 Open Q #1 + review guardrail #4. Daemon ships UDS-only with HTTP framing. MCP bridge is post-W1 (Python wrapper around UDS API, lives in separate repo).
 
 ---
 
@@ -284,24 +284,24 @@ ADR-014 flagged 3 gaps the Pre-Day-1 spike didn't cover. State now:
 | **B. Cold P95** | <500ms first 10 reqs cold-start | **CLOSED 2026-05-12 by ADR-016 spike** (1.75s on modernc — exceeds 500ms but mitigated by spawn-at-app-startup mandate) | None — covered by ADR-016 mitigation. |
 | **C. Concurrent P95** | <100ms with 5 readers + 1 writer over 60s | OPEN | `bench/bench_concurrent_test.go` Day 4. Drives reader-pool size decisions. |
 
-A + C remain → Move B (next section) drafts a follow-on cc-tb [SPIKE-DIRECTIVE] for these, gated to fire when daemon scaffold has insert+retrieve handlers wired so the spike has real code to bench against.
+A + C remain → Move B (next section) drafts a follow-on [SPIKE-DIRECTIVE] for these, gated to fire when daemon scaffold has insert+retrieve handlers wired so the spike has real code to bench against.
 
 ---
 
 ## 11. Day 3 → Day 7 sequencing
 
-Activity-gated, not calendar (per `feedback_activity_gates_not_calendar`):
+Activity-gated, not calendar (phases fire on observable preconditions, not dates):
 
 | Phase | Gate (fires when) | Deliverable | Owner |
 |---|---|---|---|
-| **Phase 0** | GitHub repo `eidetic-works/eidetic-daemon` exists | Initial scaffold push (sections 1+2 of this doc — files, go.mod, schema.sql, README skeleton) | cc-main + Sonnet (bulk file creation) |
-| **Phase 1** | Phase 0 done | `internal/store` complete + `store_test.go` green (schema migration, WAL assertion, EXPLAIN check) | cc-main directly (hot path) |
-| **Phase 2** | Phase 1 done | `internal/api` complete + `server_test.go` green (request shape + JSON correctness) + first end-to-end `curl --unix-socket` smoke | cc-main directly |
-| **Phase 3** | Phase 2 done | `internal/capture` 3 parsers + `parser_test.go` (per-spec edge cases) | Sonnet sub-agent (charter: parsers per spec, no architectural decisions) |
-| **Phase 4** | Phase 3 done | Integration: `mirror_test.go` + `concurrency_test.go`. Real fixture validation (Cursor JSONL + Claude Code JSONL writes via fsnotify, no row loss). | cc-main directly (per ADR-013 concern #2 — capture-side correctness is the real W1 risk, not retrieval P95) |
-| **Phase 5** | Phase 4 green AND cc-tb spike-result on gaps A+C in hand | Bench gates wired in CI; benchmark numbers in README §Latency | cc-main + Sonnet (CI YAML) |
-| **Phase 6** | Phase 5 green | Cross-compile artifacts + install.sh + launchd/systemd files | Sonnet sub-agent |
-| **Phase 7** | Phase 6 green AND demo recorded AND cc-peer ship-review clean | GitHub release + Distribution Officer fires demo post | cc-main + operator (release click) |
+| **Phase 0** | GitHub repo `eidetic-works/eidetic-daemon` exists | Initial scaffold push (sections 1+2 of this doc — files, go.mod, schema.sql, README skeleton) | implementer + sub-agent (bulk file creation) |
+| **Phase 1** | Phase 0 done | `internal/store` complete + `store_test.go` green (schema migration, WAL assertion, EXPLAIN check) | implementer directly (hot path) |
+| **Phase 2** | Phase 1 done | `internal/api` complete + `server_test.go` green (request shape + JSON correctness) + first end-to-end `curl --unix-socket` smoke | implementer directly |
+| **Phase 3** | Phase 2 done | `internal/capture` 3 parsers + `parser_test.go` (per-spec edge cases) | sub-agent (charter: parsers per spec, no architectural decisions) |
+| **Phase 4** | Phase 3 done | Integration: `mirror_test.go` + `concurrency_test.go`. Real fixture validation (Cursor JSONL + Claude Code JSONL writes via fsnotify, no row loss). | implementer directly (per review concern #2 — capture-side correctness is the real W1 risk, not retrieval P95) |
+| **Phase 5** | Phase 4 green AND spike-result on gaps A+C in hand | Bench gates wired in CI; benchmark numbers in README §Latency | implementer + sub-agent (CI YAML) |
+| **Phase 6** | Phase 5 green | Cross-compile artifacts + install.sh + launchd/systemd files | sub-agent |
+| **Phase 7** | Phase 6 green AND demo recorded AND ship-review clean | GitHub release + distribution post | implementer + operator (release click) |
 
 Calendar sketch (per PLAN.md Day-3→Day-7) maps roughly to Phase 0 → Phase 1+2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7. If any phase slips, ADR-008 triage rule fires at the Phase-4-equivalent (capture correctness gate) — defer Phase 6 (MCP bridge / marketplace) and Phase 7 (Axis pitch deck) to W2 if not green.
 
@@ -309,11 +309,11 @@ Calendar sketch (per PLAN.md Day-3→Day-7) maps roughly to Phase 0 → Phase 1+
 
 ## 12. Cut-line (refuse if it grows beyond)
 
-Per spec §1 + cc-peer ADR-013 guardrail #5 (ADR-008 triage rule pre-committed):
+Per spec §1 + review guardrail #5 (triage rule pre-committed):
 
 - **NO** Cloudflare D1+R2+Workers wiring in W1 (W2)
 - **NO** Tauri UI in W1 (W2-3; ADR-016 validated the pattern but UI shell is post-W1)
-- **NO** MCP bridge in W1 binary (Day-6 stretch was already de-scoped per cc-peer ADR-013 #3)
+- **NO** MCP bridge in W1 binary (Day-6 stretch was already de-scoped per review guardrail #3)
 - **NO** Compliance daemon (W2)
 - **NO** Stripe / billing (W4)
 - **NO** Tag-filter retrieval beyond the canonical `(surface, ts DESC)` shape (ADR-014 architectural surprise — would require schema change; W2 if user signals)
@@ -327,11 +327,13 @@ If a Day-3+ commit touches any of the above, refuse + escalate to operator with 
 
 - `docs/specs/eidetic-daemon-w1.md` @ `b3caa126` — the binding spec
 - `DECISIONS.md` ADR-012 — Pre-Day-1 Go feasibility (P95 baseline)
-- `DECISIONS.md` ADR-013 — cc-peer 5-guardrail conditional GO
+- `DECISIONS.md` ADR-013 — 5-guardrail conditional GO (review)
 - `DECISIONS.md` ADR-014 — 5 carry-forward patterns + 3 measurement gaps
 - `DECISIONS.md` ADR-016 — Tauri sidecar + modernc.org/sqlite + spawn-at-app-startup
-- `~/.claude/projects/.../memory/feedback_cgo_cross_compile_silent_failure.md` — verify cross-compile with file+size+smoke
-- `~/.claude/projects/.../memory/feedback_activity_gates_not_calendar.md` — Phase gating rule
+- Cross-compile gate: verify produced binary with file + size + runtime smoke (CGO-silent-strip lesson)
+- Activity-gated sequencing: phases fire on observable preconditions, not calendar dates
 - `PLAN.md` § 7-Day Kickoff Sprint — original calendar (read activities, not dates)
 - `PLAN.md` Risks #4, #11, #12, #13 — spec §4 mitigations
+
+> **Note on ADR refs:** ADRs 011-016 governed broader cross-component decisions and live in the project archive (not surfaced in this public repo). The public `DECISIONS.md` log starts at ADR-017. References to ADR-011/-012/-013/-014/-016 above are retained for historical traceability of the Day-2 blueprint.
 - ADR-008 § triage rule — capacity-collapse pre-mortem trigger at Phase-4-equivalent
