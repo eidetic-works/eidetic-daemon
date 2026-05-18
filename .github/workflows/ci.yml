@@ -25,3 +25,21 @@ jobs:
         run: go test -bench=. -benchtime=1x -run=^$ -timeout=180s ./bench/...
       - name: Demo smoke (spec section 8 acceptance #3)
         run: make demo-smoke
+
+  windows-smoke:
+    # Closes ADR-017 Windows runtime gate — verifies the pure-Go modernc
+    # binary starts, prints version, and exits cleanly on Windows.
+    # No test suite run (that stays on macos-latest): just startup smoke.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: Build windows binary
+        run: go build -o dist\eideticd-windows-amd64.exe .\cmd\eideticd
+      - name: Smoke — version flag
+        run: .\dist\eideticd-windows-amd64.exe -version
+      - name: Smoke — help flag (exit 2 is OK; flag.Usage exits 2)
+        run: |
+          .\dist\eideticd-windows-amd64.exe -h 2>&1 || true
