@@ -43,6 +43,7 @@ func main() {
 	authFlag := flag.Bool("auth", false, "enable Bearer-token caller authentication (also EIDETIC_AUTH=1); writes <dataDir>/auth-token (0600)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	syncNow := flag.Bool("sync-now", false, "upload engrams.db to Cloudflare R2 immediately (requires sync.json in dataDir) and exit")
+	showStats := flag.Bool("stats", false, "print engram database statistics and exit")
 	flag.Parse()
 
 	if *showVersion {
@@ -80,6 +81,30 @@ func main() {
 		log.Printf("sync: config error (sync disabled): %v", err)
 	}
 	syncer := eidetic_sync.New(syncCfg, dbPath, s)
+
+	// --stats: print database statistics and exit.
+	if *showStats {
+		snap, err := s.Stats(context.Background())
+		if err != nil {
+			log.Fatalf("stats: %v", err)
+		}
+		fmt.Printf("eideticd %s — engram statistics\n\n", Version)
+		fmt.Printf("  engrams:    %d\n", snap.Total)
+		for surf, n := range snap.BySurface {
+			fmt.Printf("    %-20s %d\n", surf, n)
+		}
+		if snap.OldestNs > 0 {
+			oldest := time.Unix(0, snap.OldestNs).UTC()
+			newest := time.Unix(0, snap.NewestNs).UTC()
+			fmt.Printf("  oldest:     %s\n", oldest.Format("2006-01-02"))
+			fmt.Printf("  newest:     %s\n", newest.Format("2006-01-02"))
+		}
+		fmt.Printf("  db size:    %.1f MB\n", float64(snap.DBBytes)/1e6)
+		if snap.P95LatNs > 0 {
+			fmt.Printf("  P95 fetch:  %.2f ms\n", float64(snap.P95LatNs)/1e6)
+		}
+		return
+	}
 
 	// --sync-now: upload immediately and exit (no daemon loop needed)
 	if *syncNow {

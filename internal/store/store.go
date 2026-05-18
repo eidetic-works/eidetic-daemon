@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	_ "embed"
 	_ "modernc.org/sqlite"
@@ -558,6 +560,74 @@ func (s *Store) Recent(ctx context.Context, since, before int64, limit int) ([]e
 		return nil, fmt.Errorf("recent row iter: %w", err)
 	}
 	return out, nil
+}
+
+// StatsSnapshot holds a point-in-time summary of the engram database.
+type StatsSnapshot struct {
+	Total      int64            // total row count
+	BySurface  map[string]int64 // per-surface counts
+	OldestNs   int64            // min ts (unix nanoseconds), 0 if empty
+	NewestNs   int64            // max ts (unix nanoseconds), 0 if empty
+	DBBytes    int64            // file size on disk
+	P95LatNs   int64            // P95 latency of a single-row read (nanoseconds)
+}
+
+// Stats returns a point-in-time summary. Opens the DB file for size; all
+// queries run on the read pool. Safe to call while the daemon is running.
+func (s *Store) Stats(ctx context.Context) (StatsSnapshot, error) {
+	var snap StatsSnapshot
+
+	total, err := s.Count(ctx)
+	if err != nil {
+		return snap, err
+	}
+	snap.Total = total
+
+	by, err := s.CountBySurface(ctx)
+	if err != nil {
+		return snap, err
+	}
+	snap.BySurface = by
+
+	row := s.reader.QueryRowContext(ctx, `SELECT MIN(ts), MAX(ts) FROM engrams`)
+	var minTS, maxTS sql.NullInt64
+	if err := row.Scan(&minTS, &maxTS); err != nil {
+		return snap, fmt.Errorf("stats time range: %w", err)
+	}
+	if minTS.Valid {
+		snap.OldestNs = minTS.Int64
+	}
+	if maxTS.Valid {
+		snap.NewestNs = maxTS.Int64
+	}
+
+	if fi, err := os.Stat(s.path); err == nil {
+		snap.DBBytes = fi.Size()
+	}
+
+	// P95 latency: 20 timed GetByID probes across the rowid range.
+	if total > 0 {
+		step := total / 20
+		if step < 1 {
+			step = 1
+		}
+		var samples []int64
+		for i := int64(1); i <= total; i += step {
+			t0 := time.Now()
+			_, _ = s.GetByID(ctx, i)
+			samples = append(samples, time.Since(t0).Nanoseconds())
+		}
+		if len(samples) > 0 {
+			sort.Slice(samples, func(a, b int) bool { return samples[a] < samples[b] })
+			p95idx := int(float64(len(samples)) * 0.95)
+			if p95idx >= len(samples) {
+				p95idx = len(samples) - 1
+			}
+			snap.P95LatNs = samples[p95idx]
+		}
+	}
+
+	return snap, nil
 }
 
 // defaultDBPath resolves $EIDETIC_DATA_DIR or ~/.eidetic/engrams.db
