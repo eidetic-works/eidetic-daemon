@@ -6,6 +6,18 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.26] — 2026-05-18
+
+`--stats` flag for at-a-glance database summary.
+
+### Added
+
+- **`eideticd --stats`** — prints engram count, per-surface breakdown, oldest/newest timestamps, database file size, and P95 retrieval latency; then exits. Works whether the daemon is running or not (opens the SQLite file directly in read-only mode). Useful for sharing your own numbers ("run `eideticd --stats` to see yours").
+- **`store.Stats(ctx)`** — new method returning a `StatsSnapshot` struct (total, BySurface map, OldestNs, NewestNs, DBBytes, P95LatNs). P95 is measured via 20 timed `GetByID` probes across the rowid range.
+- **2 new tests** — `TestStatsEmptyStore` + `TestStatsWithEngrams` (`internal/store/stats_test.go`).
+
+---
+
 ## [v0.0.25] — 2026-05-18
 
 Compliance daemon, PyPI publish, and scheduler files.
