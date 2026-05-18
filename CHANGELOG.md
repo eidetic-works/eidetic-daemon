@@ -4,8 +4,32 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ## [Unreleased]
 
+---
+
+## [v0.0.14] — 2026-05-18
+
+Full-text search over engram payloads — the first endpoint that answers "what did I say about X?" rather than scrolling reverse-chronological. **Zero breaking change** to any prior caller.
+
 ### Added
-- **`GET /search?q=...`** — FTS5 full-text search over engram payloads (PR #47).
+
+- **`GET /search?q=...&surface=X&limit=N`** (`internal/api/routes.go`, `internal/store/store.go`):
+  - FTS5 full-text search over `engrams.payload`. Results ordered by relevance rank (best match first).
+  - `q` is an FTS5 match expression: bare keywords, `"phrase queries"`, `OR`/`AND`/`NOT` boolean operators.
+  - Optional `surface` filter restricts to one surface; optional `limit` (default 50, cap 500).
+  - Returns same `[]Engram` JSON shape as `GET /engrams` for client compatibility.
+  - `Store.Search(ctx, q, surface, limit)` + `store.ErrEmptyQuery` sentinel (callers get 400, not 500).
+  - `backfillFTS()` at `Open()`: detects empty FTS index on existing databases and bulk-populates from `engrams` in one `INSERT … SELECT`. `AFTER INSERT` / `AFTER DELETE` triggers keep the index live after backfill.
+  - **7 store tests** (`internal/store/search_test.go`): empty q, keyword, phrase, surface filter, limit clamp, no-results, backfill-on-reopen.
+  - **5 API tests** (`internal/api/server_test.go`): 400 on missing q, 405, returns matches, surface filter, empty array on no-match.
+
+- **MCP bridge — `search_engrams` tool** (`bridge/python/eidetic_mcp/server.py`, `client.py`):
+  - `DaemonClient.search_engrams(q, surface="", limit=50)` — `GET /search` exposed as a bridge method.
+  - `search_engrams` MCP tool with FTS5 expression examples in description (so AI clients know the syntax).
+  - **3 bridge tests** (`bridge/python/tests/test_client.py`): happy path, surface+limit, empty-q raises ValueError.
+
+### Reference
+
+- PR #47
 
 ---
 
