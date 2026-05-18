@@ -147,7 +147,9 @@ func TestEndToEndTCP_GetEngrams(t *testing.T) {
 	}
 }
 
-func TestGET_MissingSurfaceReturns400(t *testing.T) {
+func TestGET_MissingSurfaceReturns200CrossSurface(t *testing.T) {
+	// v0.0.23: surface is now optional — GET /engrams without surface= returns
+	// cross-surface results (200 + JSON array), not 400.
 	st := tempStore(t)
 	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
 	defer stop()
@@ -157,8 +159,16 @@ func TestGET_MissingSurfaceReturns400(t *testing.T) {
 		t.Fatalf("get: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status: want 400, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status: want 200, got %d", resp.StatusCode)
+	}
+	var rows []engram.Engram
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// Empty store → empty array, not error.
+	if rows == nil {
+		t.Fatal("expected non-nil slice")
 	}
 }
 
@@ -1422,5 +1432,135 @@ func TestGetEngramsDefaultOrderDesc(t *testing.T) {
 	// default: newest first (ts=3000, 2000, 1000)
 	if rows[0].TS <= rows[len(rows)-1].TS {
 		t.Errorf("want descending ts, got first=%d last=%d", rows[0].TS, rows[len(rows)-1].TS)
+	}
+}
+
+func TestGetEngramsNoSurface(t *testing.T) {
+	// v0.0.23: GET /engrams without surface= returns cross-surface results.
+	st := tempStore(t)
+	path := shortUDSPath(t)
+	_, shutdown := startServer(t, st, api.Options{UDSPath: path})
+	defer shutdown()
+	ctx := context.Background()
+	base := time.Now().UnixNano()
+
+	surfs := []string{"cursor", "claude_code", "cowork"}
+	for i, surf := range surfs {
+		if _, err := st.Insert(ctx, engram.Engram{Surface: surf, TS: base + int64(i*1000), Payload: "p"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	resp, err := udsClient(path).Get("http://unix/engrams")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("want 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var rows []engram.Engram
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("cross-surface: want 3 rows, got %d", len(rows))
+	}
+	seen := map[string]bool{}
+	for _, r := range rows {
+		seen[r.Surface] = true
+	}
+	for _, surf := range surfs {
+		if !seen[surf] {
+			t.Errorf("surface %q missing from cross-surface response", surf)
+		}
+	}
+}
+
+func TestGetEngramsNoSurfaceWithFilters(t *testing.T) {
+	// v0.0.23: GET /engrams without surface= still honours since, before, order.
+	st := tempStore(t)
+	path := shortUDSPath(t)
+	_, shutdown := startServer(t, st, api.Options{UDSPath: path})
+	defer shutdown()
+	ctx := context.Background()
+	base := time.Now().UnixNano()
+
+	for i := 0; i < 6; i++ {
+		surf := "cursor"
+		if i%2 == 0 {
+			surf = "claude_code"
+		}
+		if _, err := st.Insert(ctx, engram.Engram{Surface: surf, TS: base + int64(i*1000), Payload: "p"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// since=base+2000 → only i=3,4,5 (3 rows) across both surfaces.
+	url := "http://unix/engrams?since=" + strconv.FormatInt(base+2000, 10)
+	resp, err := udsClient(path).Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("want 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var rows []engram.Engram
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("cross-surface since filter: want 3, got %d", len(rows))
+	}
+	for _, r := range rows {
+		if r.TS <= base+2000 {
+			t.Errorf("since filter leaked ts=%d", r.TS)
+		}
+	}
+}
+
+func TestGetEngramsNoSurfaceAscOrder(t *testing.T) {
+	// v0.0.23: GET /engrams without surface= with order=asc returns oldest first.
+	st := tempStore(t)
+	path := shortUDSPath(t)
+	_, shutdown := startServer(t, st, api.Options{UDSPath: path})
+	defer shutdown()
+	ctx := context.Background()
+	base := time.Now().UnixNano()
+
+	for i := 0; i < 4; i++ {
+		surf := "cursor"
+		if i%2 == 0 {
+			surf = "claude_code"
+		}
+		if _, err := st.Insert(ctx, engram.Engram{Surface: surf, TS: base + int64(i*1000), Payload: "p"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	resp, err := udsClient(path).Get("http://unix/engrams?order=asc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("want 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var rows []engram.Engram
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) < 2 {
+		t.Fatalf("want at least 2 rows, got %d", len(rows))
+	}
+	if rows[0].TS >= rows[len(rows)-1].TS {
+		t.Errorf("cross-surface asc: want oldest first, got first=%d last=%d", rows[0].TS, rows[len(rows)-1].TS)
 	}
 }

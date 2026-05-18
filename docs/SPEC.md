@@ -12,7 +12,7 @@
 W1 ships a single Go binary that does **three things only**:
 
 1. **Engram capture** — `fsnotify` watchers on Cursor session JSONL, Cowork files, Claude Code session dir. New text → engram row in <50ms of file-write.
-2. **Engram retrieval** — Local Unix socket / TCP-localhost API: `GET /engrams?surface=X&limit=N` → JSON array. **P95 <100ms SLO** on 10K-row engrams table.
+2. **Engram retrieval** — Local Unix socket / TCP-localhost API: `GET /engrams?[surface=X]&limit=N` → JSON array. `surface` optional (v0.0.23+). **P95 <100ms SLO** on 10K-row engrams table.
 3. **Multi-surface mirror** — All three surfaces feed one SQLite-WAL store. Single canonical engrams table. B-tree index on `(surface, ts DESC)` is the retrieval hot path.
 
 **Explicitly NOT in W1** (deferred to W2-W7 per PLAN.md § 7-Day Kickoff Sprint and § Week 2-8 Arc):
@@ -78,21 +78,21 @@ Local Unix domain socket (UDS) at `/tmp/eidetic-daemon.sock` (Mac) / `/var/run/e
 **One endpoint:**
 
 ```
-GET /engrams?surface=<string>&limit=<int>&since=<unix-ns>
+GET /engrams?[surface=<string>]&[limit=<int>]&[since=<unix-ns>]&[before=<unix-ns>]&[order=asc]
 → 200 OK
 Content-Type: application/json
 
 [{"id":..., "surface":..., "ts":..., "payload":..., "meta":...}, ...]
 ```
 
-`limit` defaults to 50, capped at 500. `since` is optional (default = no lower bound).
+`surface` is optional (v0.0.23+); omit to retrieve across all surfaces. `limit` defaults to 50, capped at 500. `since`/`before` are optional (default = no bound). `order=asc` returns oldest-first (default newest-first).
 
-Query path:
+Query path (dynamic WHERE, v0.0.23+):
 ```sql
 SELECT id, surface, ts, payload, meta
 FROM engrams
-WHERE surface = ? AND (? IS NULL OR ts > ?)
-ORDER BY ts DESC
+[WHERE surface = ? [AND ts > ?] [AND ts < ?]]
+ORDER BY ts DESC [or ASC]
 LIMIT ?
 ```
 
