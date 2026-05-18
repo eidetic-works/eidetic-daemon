@@ -293,6 +293,32 @@ class DaemonClient:
             raise DaemonError(f"unexpected insert response: {result!r}")
         return int(result["id"])
 
+    def insert_engrams_batch(
+        self,
+        items: Sequence[dict],
+    ) -> int:
+        """POST /engrams/batch — bulk API-side insertion in one transaction (v0.0.17+).
+
+        items: list of dicts, each with keys surface (required), payload (required),
+               ts (optional, unix nanoseconds, defaults server-now), meta (optional).
+        Returns the number of engrams inserted (same as len(items) on success).
+        Any validation failure rolls back the entire batch.
+
+        Raises ValueError if items is empty or any item is missing surface/payload.
+        Raises DaemonError on transport failure or 4xx/5xx from daemon.
+        """
+        if not items:
+            raise ValueError("items must be non-empty")
+        for i, item in enumerate(items):
+            if not item.get("surface"):
+                raise ValueError(f"items[{i}]: surface required")
+            if not item.get("payload"):
+                raise ValueError(f"items[{i}]: payload required")
+        result = self._post_json("/engrams/batch", list(items))
+        if not isinstance(result, dict) or "inserted" not in result:
+            raise DaemonError(f"unexpected batch response: {result!r}")
+        return int(result["inserted"])
+
 
 def _parse_engram(row: object) -> Engram:
     if not isinstance(row, dict):

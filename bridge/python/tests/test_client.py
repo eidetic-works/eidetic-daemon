@@ -107,9 +107,21 @@ class _UDSHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):  # noqa: N802
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length)
+        if self.path == "/engrams/batch":
+            try:
+                items = json.loads(raw)
+            except json.JSONDecodeError:
+                items = []
+            self.send_response(201)
+            body = json.dumps({"inserted": len(items)}).encode()
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path.startswith("/engrams"):
-            length = int(self.headers.get("Content-Length", 0))
-            self.rfile.read(length)  # consume body, ignore
             self.send_response(201)
             body = json.dumps({"id": 42}).encode()
             self.send_header("Content-Type", "application/json")
@@ -381,3 +393,35 @@ def test_client_insert_engram_requires_payload(uds_socket_path: str):
     client = DaemonClient(uds_path=uds_socket_path)
     with pytest.raises(ValueError):
         client.insert_engram(surface="vim", payload="")
+
+
+def test_client_insert_engrams_batch_returns_count(uds_socket_path: str):
+    """POST /engrams/batch returns {"inserted": N}; method returns the int count."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    items = [
+        {"surface": "claude_code", "payload": "first", "ts": 1},
+        {"surface": "cursor", "payload": "second", "ts": 2},
+    ]
+    n = client.insert_engrams_batch(items)
+    assert n == 2
+
+
+def test_client_insert_engrams_batch_with_optional_fields(uds_socket_path: str):
+    """ts and meta are optional; round-trip completes."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    items = [{"surface": "vim", "payload": "annotated", "meta": '{"k":"v"}'}]
+    n = client.insert_engrams_batch(items)
+    assert isinstance(n, int)
+    assert n == 1
+
+
+def test_client_insert_engrams_batch_empty_raises(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    with pytest.raises(ValueError):
+        client.insert_engrams_batch([])
+
+
+def test_client_insert_engrams_batch_missing_surface_raises(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    with pytest.raises(ValueError):
+        client.insert_engrams_batch([{"payload": "no surface"}])

@@ -11,6 +11,7 @@ Part of [Nucleus](https://nucleusos.dev). 90-day public probe (started 2026-05-1
 - **Engram capture** — `fsnotify` watches each surface's session files; new text → engram row in <50ms of file-write.
 - **Engram retrieval** — `GET /engrams?surface=X&limit=N&since=unix-ns` over local Unix socket. P95 <100ms on 10K-row store.
 - **Engram insertion** — `POST /engrams` — direct API-side insert; bypasses the fsnotify capture path. Accepts `{"surface":"...","payload":"...","ts":unix-ns}`, returns `{"id": N}`. Enables injection from mobile, webhooks, relay pipelines.
+- **Bulk insertion** — `POST /engrams/batch` — JSON array of engrams in one atomic transaction; returns `{"inserted": N}`. Efficient for relay sync, session replay, bulk import.
 - **Engram purge** — `DELETE /engrams?surface=X[&before=unix-ns]` — remove by surface (with optional timestamp cutoff); returns `{"deleted": N}`.
 - **Surface listing** — `GET /surfaces` — map of every active surface to its engram count; live view of what the daemon has seen.
 - **Full-text search** — `GET /search?q=...` — FTS5 keyword/phrase/boolean search over engram payloads, ranked by relevance. Answers "what did I say about X?"
@@ -77,6 +78,13 @@ curl -X POST --unix-socket /tmp/eidetic-daemon.sock \
   -d '{"surface":"mobile","payload":"noted from phone"}' \
   http://localhost/engrams
 # → {"id": 1234}
+
+# Bulk insert — atomic, one round-trip (v0.0.17+).
+curl -X POST --unix-socket /tmp/eidetic-daemon.sock \
+  -H 'Content-Type: application/json' \
+  -d '[{"surface":"mobile","payload":"note 1"},{"surface":"mobile","payload":"note 2"}]' \
+  http://localhost/engrams/batch
+# → {"inserted": 2}
 
 # Recent activity across all surfaces, newest-first (v0.0.15+).
 curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/recent'
@@ -191,6 +199,7 @@ W1 complete — 14 releases v0.0.2 → v0.0.13 (v0.0.12/v0.0.13 pending CI). Tra
 | 18 | `GET /search` — FTS5 full-text search, ranked by relevance | ✅ v0.0.14 (#47) |
 | 19 | `GET /recent` — cross-surface recent engrams, newest-first | ✅ v0.0.15 (#48) |
 | 20 | `POST /engrams` — API-side direct insert, `ErrInvalidEngram` sentinel | ✅ v0.0.16 (#49) |
+| 21 | `POST /engrams/batch` — bulk atomic insert, 32 MiB body cap | ✅ v0.0.17 (#50) |
 
 ---
 

@@ -866,3 +866,125 @@ func TestPostEngramsIsRetrievable(t *testing.T) {
 		t.Errorf("inserted engram not retrievable: %+v", rows)
 	}
 }
+
+// ---- POST /engrams/batch tests (v0.0.17) ----
+
+func postBatch(t *testing.T, addr, body string) *http.Response {
+	t.Helper()
+	resp, err := http.Post(
+		fmt.Sprintf("http://%s/engrams/batch", addr),
+		"application/json",
+		strings.NewReader(body),
+	)
+	if err != nil {
+		t.Fatalf("POST /engrams/batch: %v", err)
+	}
+	return resp
+}
+
+func TestBatchInsertReturns201WithCount(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp := postBatch(t, srv.Addr().String(),
+		`[{"surface":"claude_code","payload":"first","ts":1},{"surface":"cursor","payload":"second","ts":2}]`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("want 201, got %d", resp.StatusCode)
+	}
+	var result map[string]int
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result["inserted"] != 2 {
+		t.Errorf("want inserted=2, got %d", result["inserted"])
+	}
+}
+
+func TestBatchInsertEmptyArrayReturns201Zero(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp := postBatch(t, srv.Addr().String(), `[]`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("want 201, got %d", resp.StatusCode)
+	}
+	var result map[string]int
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result["inserted"] != 0 {
+		t.Errorf("want inserted=0, got %d", result["inserted"])
+	}
+}
+
+func TestBatchInsertAllRetrievable(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp := postBatch(t, srv.Addr().String(),
+		`[{"surface":"vim","payload":"one","ts":10},{"surface":"vim","payload":"two","ts":20}]`)
+	resp.Body.Close()
+
+	rows, err := st.Retrieve(context.Background(), "vim", 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows retrievable, got %d", len(rows))
+	}
+}
+
+func TestBatchInsertAutoTimestamp(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp := postBatch(t, srv.Addr().String(),
+		`[{"surface":"cowork","payload":"no ts here"}]`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("want 201, got %d", resp.StatusCode)
+	}
+
+	rows, err := st.Retrieve(context.Background(), "cowork", 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].TS == 0 {
+		t.Errorf("want auto-ts != 0, got rows: %+v", rows)
+	}
+}
+
+func TestBatchInsertMissingSurfaceReturns400(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp := postBatch(t, srv.Addr().String(),
+		`[{"payload":"no surface","ts":1}]`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestBatchInsertMethodNotAllowed(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s/engrams/batch", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("want 405, got %d", resp.StatusCode)
+	}
+}
