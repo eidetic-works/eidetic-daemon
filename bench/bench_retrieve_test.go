@@ -52,13 +52,13 @@ func BenchmarkRetrievePer95(b *testing.B) {
 	for run := 1; run <= measureRuns; run++ {
 		// Warmup
 		for i := 0; i < warmupReqs; i++ {
-			_, _ = st.Retrieve(ctx, surfaceFor(i), 0, 0, 50)
+			_, _ = st.Retrieve(ctx, surfaceFor(i), 0, 0, 50, false)
 		}
 
 		samples := make([]time.Duration, 0, measureReqs)
 		for i := 0; i < measureReqs; i++ {
 			start := time.Now()
-			if _, err := st.Retrieve(ctx, surfaceFor(i), 0, 0, 50); err != nil {
+			if _, err := st.Retrieve(ctx, surfaceFor(i), 0, 0, 50, false); err != nil {
 				b.Fatal(err)
 			}
 			samples = append(samples, time.Since(start))

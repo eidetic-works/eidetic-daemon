@@ -160,6 +160,10 @@ def build_server(client: DaemonClient | None = None) -> Any:
                             "description": "Unix nanoseconds upper bound exclusive (0 = no bound, v0.0.21+)",
                             "minimum": 0,
                         },
+                        "asc": {
+                            "type": "boolean",
+                            "description": "If true, return oldest-first (default false = newest-first, v0.0.22+)",
+                        },
                         "raw_chunks": {
                             "type": "boolean",
                             "description": "If true, skip chunk-reassembly + return chunks as separate engrams (default false)",
@@ -424,9 +428,10 @@ def build_server(client: DaemonClient | None = None) -> Any:
             limit = int(arguments.get("limit", 50))
             since = int(arguments.get("since", 0))
             before = int(arguments.get("before", 0))
+            asc = bool(arguments.get("asc", False))
             raw_chunks = bool(arguments.get("raw_chunks", False))
             try:
-                rows = daemon.query_engrams(surface=surface, limit=limit, since=since, before=before)
+                rows = daemon.query_engrams(surface=surface, limit=limit, since=since, before=before, asc=asc)
             except (DaemonError, ValueError) as exc:
                 return [TextContent(type="text", text=f"error: {exc}")]
             if not raw_chunks:

@@ -9,7 +9,7 @@ Part of [Nucleus](https://nucleusos.dev). 90-day public probe (started 2026-05-1
 ## What it does
 
 - **Engram capture** — `fsnotify` watches each surface's session files; new text → engram row in <50ms of file-write.
-- **Engram retrieval** — `GET /engrams?surface=X&limit=N&since=unix-ns[&before=unix-ns]` over local Unix socket. P95 <100ms on 10K-row store. `since`+`before` together define a time window; either alone is a one-sided bound.
+- **Engram retrieval** — `GET /engrams?surface=X&limit=N&since=unix-ns[&before=unix-ns][&order=asc]` over local Unix socket. P95 <100ms on 10K-row store. `since`+`before` define a time window; `order=asc` returns oldest-first (default newest-first).
 - **Engram insertion** — `POST /engrams` — direct API-side insert; bypasses the fsnotify capture path. Accepts `{"surface":"...","payload":"...","ts":unix-ns}`, returns `{"id": N}`. Enables injection from mobile, webhooks, relay pipelines.
 - **Bulk insertion** — `POST /engrams/batch` — JSON array of engrams in one atomic transaction; returns `{"inserted": N}`. Efficient for relay sync, session replay, bulk import.
 - **Point lookup** — `GET /engrams/{id}` — fetch a single engram by primary key; 404 when not found. Use after a `POST /engrams` to confirm the stored row.
@@ -109,6 +109,10 @@ curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams/count?sinc
 curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams?surface=claude_code&before=1747500000000000000'
 curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams?surface=claude_code&since=1747000000000000000&before=1747500000000000000'
 # → []Engram JSON for the half-open window (since, before)
+
+# Oldest-first retrieval (v0.0.22+): order=asc for replay consumers.
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams?surface=claude_code&order=asc'
+# → []Engram JSON, ts ASC (oldest first)
 
 # Recent activity across all surfaces, newest-first (v0.0.15+).
 curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/recent'
@@ -228,7 +232,8 @@ W1 complete — 14 releases v0.0.2 → v0.0.13 (v0.0.12/v0.0.13 pending CI). Tra
 | 22 | `GET /engrams/{id}` — point lookup by primary key, `ErrNotFound` → 404 | ✅ v0.0.18 (#52) |
 | 23 | `DELETE /engrams/{id}` — surgical single-engram removal, `ErrNotFound` → 404 | ✅ v0.0.19 (#53) |
 | 24 | `GET /engrams/count` — fast count with optional surface+since filters | ✅ v0.0.20 (#54) |
-| 25 | `before=unix-ns` upper-bound filter on `GET /engrams` and `GET /recent` | ✅ v0.0.21 (#55) |
+| 25 | `before=unix-ns` upper-bound filter on `GET /engrams` and `GET /recent` | ✅ v0.0.21 (#54) |
+| 26 | `order=asc` on `GET /engrams` — oldest-first retrieval for replay consumers | ✅ v0.0.22 (#55) |
 
 ---
 

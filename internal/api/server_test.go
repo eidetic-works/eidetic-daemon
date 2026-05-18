@@ -348,7 +348,7 @@ func TestEngramsDELETEPurgeAll(t *testing.T) {
 	}
 
 	// Verify store is empty for that surface.
-	rows, err := st.Retrieve(context.Background(), "cursor", 0, 0, 100)
+	rows, err := st.Retrieve(context.Background(), "cursor", 0, 0, 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +387,7 @@ func TestEngramsDELETEPurgeBefore(t *testing.T) {
 	}
 
 	// 2 rows remain.
-	rows, err := st.Retrieve(context.Background(), "claude_code", 0, 0, 100)
+	rows, err := st.Retrieve(context.Background(), "claude_code", 0, 0, 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,7 +429,7 @@ func TestEngramsDELETEDoesNotTouchOtherSurfaces(t *testing.T) {
 	resp.Body.Close()
 
 	// cowork surface untouched.
-	rows, err := st.Retrieve(context.Background(), "cowork", 0, 0, 100)
+	rows, err := st.Retrieve(context.Background(), "cowork", 0, 0, 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -793,7 +793,7 @@ func TestPostEngramsAutoTimestamp(t *testing.T) {
 	}
 
 	// Verify the row is retrievable and has a non-zero TS
-	rows, err := st.Retrieve(context.Background(), "cursor", 0, 0, 10)
+	rows, err := st.Retrieve(context.Background(), "cursor", 0, 0, 10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -930,7 +930,7 @@ func TestBatchInsertAllRetrievable(t *testing.T) {
 		`[{"surface":"vim","payload":"one","ts":10},{"surface":"vim","payload":"two","ts":20}]`)
 	resp.Body.Close()
 
-	rows, err := st.Retrieve(context.Background(), "vim", 0, 0, 10)
+	rows, err := st.Retrieve(context.Background(), "vim", 0, 0, 10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -951,7 +951,7 @@ func TestBatchInsertAutoTimestamp(t *testing.T) {
 		t.Fatalf("want 201, got %d", resp.StatusCode)
 	}
 
-	rows, err := st.Retrieve(context.Background(), "cowork", 0, 0, 10)
+	rows, err := st.Retrieve(context.Background(), "cowork", 0, 0, 10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1360,5 +1360,67 @@ func TestGetRecentBeforeFilter(t *testing.T) {
 		if r.TS >= 3500 {
 			t.Errorf("before filter leaked ts=%d", r.TS)
 		}
+	}
+}
+
+// --- order=asc param tests (v0.0.22) ---
+
+func TestGetEngramsOrderAsc(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	for _, ts := range []int64{1000, 2000, 3000} {
+		resp := postEngram(t, srv.Addr().String(),
+			fmt.Sprintf(`{"surface":"test","payload":"p","ts":%d}`, ts))
+		resp.Body.Close()
+	}
+
+	u := fmt.Sprintf("http://%s/engrams?surface=test&order=asc", srv.Addr())
+	resp, err := http.Get(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var rows []engram.Engram
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("want 3 rows, got %d", len(rows))
+	}
+	// asc=true: oldest first (ts=1000, 2000, 3000)
+	if rows[0].TS >= rows[len(rows)-1].TS {
+		t.Errorf("want ascending ts, got first=%d last=%d", rows[0].TS, rows[len(rows)-1].TS)
+	}
+}
+
+func TestGetEngramsDefaultOrderDesc(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	for _, ts := range []int64{1000, 2000, 3000} {
+		resp := postEngram(t, srv.Addr().String(),
+			fmt.Sprintf(`{"surface":"test","payload":"p","ts":%d}`, ts))
+		resp.Body.Close()
+	}
+
+	u := fmt.Sprintf("http://%s/engrams?surface=test", srv.Addr())
+	resp, err := http.Get(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var rows []engram.Engram
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("want 3 rows, got %d", len(rows))
+	}
+	// default: newest first (ts=3000, 2000, 1000)
+	if rows[0].TS <= rows[len(rows)-1].TS {
+		t.Errorf("want descending ts, got first=%d last=%d", rows[0].TS, rows[len(rows)-1].TS)
 	}
 }
