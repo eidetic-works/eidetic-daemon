@@ -17,12 +17,16 @@ This is the cloud sync component for `eidetic-daemon` (ADR-019).
 
 ## Deploy the Worker
 
-**1. Authenticate Wrangler**
+**1. Enable R2 on your Cloudflare account (one-time)**
+
+Visit [dash.cloudflare.com → R2](https://dash.cloudflare.com/?to=/:account/r2/overview) and click **"Enable R2"** or **"Purchase R2"** (free tier is sufficient). This is a one-time account toggle — without it, `wrangler r2 bucket create` and `wrangler deploy` will fail with code 10042.
+
+**2. Authenticate Wrangler**
 ```sh
 wrangler login
 ```
 
-**2. Create the R2 bucket**
+**3. Create the R2 bucket**
 ```sh
 wrangler r2 bucket create eidetic-engrams
 ```
