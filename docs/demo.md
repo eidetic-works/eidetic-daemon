@@ -299,6 +299,36 @@ insert_engram(surface="webhook", payload="event body", ts=1747500123456789, meta
 
 ---
 
+## 5i. Count engrams (v0.0.20+)
+
+```sh
+# Total count across all surfaces
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams/count'
+
+# Count for one surface
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams/count?surface=claude_code'
+
+# Count since a timestamp (unix nanoseconds)
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams/count?since=1747500000000000000'
+```
+
+Expected:
+```json
+{"count": 42}
+```
+
+Returns `200 OK` always (empty store returns `{"count": 0}`). Useful for monitoring badges, health dashboards, and sync-diff checks without transferring row data.
+
+**Via MCP bridge** (`bridge/python/`, v0.0.20+):
+```python
+count_engrams()
+count_engrams(surface="claude_code")
+count_engrams(since=1747500000000000000)
+# → integer count
+```
+
+---
+
 ## 5h. Delete by ID (v0.0.19+)
 
 ```sh

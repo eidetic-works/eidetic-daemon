@@ -105,6 +105,7 @@ func New(s *store.Store, opts Options) (*Server, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/engrams", srv.handleEngrams)
 	mux.HandleFunc("/engrams/batch", srv.handleEngramsBatch)
+	mux.HandleFunc("/engrams/count", srv.handleEngramsCount)
 	mux.HandleFunc("/engrams/{id}", srv.handleEngramsByID)
 	mux.HandleFunc("/surfaces", srv.handleSurfaces)
 	mux.HandleFunc("/search", srv.handleSearch)

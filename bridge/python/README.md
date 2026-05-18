@@ -18,6 +18,7 @@ Per spec § 7 Open Q #5: this is the "separate Python wrapper" path — the daem
 | `insert_engram` | `surface` (required), `payload` (required), `ts` (unix ns, default server-now), `meta` (optional string) | Directly insert an engram, bypassing fsnotify. Returns `{"id": N}`. Immediately searchable + retrievable. Use for mobile, webhooks, relay pipelines, manual annotations (v0.0.16+). |
 | `insert_engrams_batch` | `items` (required — array of `{surface, payload, ts?, meta?}`) | Bulk insert N engrams in one atomic transaction. Returns `{"inserted": N}`. Efficient for relay sync, session replay, bulk import (v0.0.17+). |
 | `get_engram_by_id` | `id` (required — positive integer) | Fetch a single engram by primary key. Returns full Engram JSON. Error on non-existent ID or non-positive integer (v0.0.18+). |
+| `count_engrams` | `surface` (optional), `since` (unix ns, optional) | Return `{"count": N}` for engrams matching optional surface and time filters. Never fetches rows (v0.0.20+). |
 | `delete_engram_by_id` | `id` (required — positive integer) | Remove a single engram by primary key. Returns `{"deleted": 1}`. Error on non-existent ID or non-positive integer. Irreversible (v0.0.19+). |
 
 ### Chunked-record reassembly (ADR-018)
@@ -137,6 +138,10 @@ insert_engrams_batch([
 
 get_engram_by_id(id=1234)
 → Engram(id=1234, surface='mobile', ts=..., payload='noted from phone', meta='')
+
+count_engrams()                               # → 42  (all surfaces, all time)
+count_engrams(surface="claude_code")          # → 17  (one surface)
+count_engrams(since=1747500000000000000)      # → 5   (since timestamp)
 
 delete_engram_by_id(id=1234)
 → True   # boolean — True on success; DaemonError on 404

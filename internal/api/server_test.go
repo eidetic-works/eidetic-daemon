@@ -1180,3 +1180,85 @@ func TestDeleteByIDNonIntegerReturns400(t *testing.T) {
 		t.Fatalf("want 400, got %d", resp.StatusCode)
 	}
 }
+
+// --- GET /engrams/count tests ---
+
+func TestCountEndpointEmptyReturnsZero(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/engrams/count", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	var result map[string]int64
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if result["count"] != 0 {
+		t.Errorf("want count=0, got %d", result["count"])
+	}
+}
+
+func TestCountEndpointAllSurfaces(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	for i := 0; i < 3; i++ {
+		seedOneEngram(t, srv.Addr().String(), "claude_code", fmt.Sprintf("e%d", i))
+	}
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/engrams/count", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var result map[string]int64
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	if result["count"] != 3 {
+		t.Errorf("want count=3, got %d", result["count"])
+	}
+}
+
+func TestCountEndpointBySurface(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	for _, surface := range []string{"a", "a", "b"} {
+		seedOneEngram(t, srv.Addr().String(), surface, "x")
+	}
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/engrams/count?surface=a", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var result map[string]int64
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	if result["count"] != 2 {
+		t.Errorf("want count=2, got %d", result["count"])
+	}
+}
+
+func TestCountEndpointMethodNotAllowed(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/engrams/count", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("want 405, got %d", resp.StatusCode)
+	}
+}
