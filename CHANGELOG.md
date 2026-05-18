@@ -2,6 +2,17 @@
 
 All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](https://keepachangelog.com/); semver via git tags.
 
+## [Unreleased]
+
+### Added
+
+- **`cmd/eideticd-compliance`** — compliance daemon for per-surface data retention. Reads `~/.eidetic/retention-policy.json` (or `$EIDETIC_DATA_DIR/retention-policy.json`), purges rows older than configured day thresholds per surface, appends audit lines to `~/.eidetic/compliance.log`. `--dry-run` flag reports without deleting. Designed to run via cron / launchd timer / systemd timer — runs one pass and exits. Ships as a separate binary (`eideticd-compliance`). **Zero impact on daemon uptime** — operates against the same `engrams.db` via the existing writer pool.
+- **`scripts/retention-policy.example.json`** — example policy file (claude_code: 30d, cursor: 90d, cowork: 365d). Copy to `~/.eidetic/retention-policy.json` to enable.
+- **`make build-compliance`** — new Makefile target builds `bin/eideticd-compliance`.
+- **7 tests** (`cmd/eideticd-compliance/main_test.go`): policy load (valid/not-exist/invalid-JSON), data-path resolution (env override/db override), retention integration test (3 old rows deleted, 2 fresh rows kept), policy roundtrip.
+
+---
+
 ## [v0.0.24] — 2026-05-18
 
 Cloud sync, Windows CI gate, MCP integration guide, and pre-public docs cleanup.

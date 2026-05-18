@@ -1,5 +1,5 @@
 .PHONY: build build-all build-darwin-arm64 build-linux-amd64 build-windows-amd64 \
-        test bench smoke demo-smoke tidy clean verify-cross-compile
+        build-compliance test bench smoke demo-smoke tidy clean verify-cross-compile
 
 GO ?= go
 BIN_DIR := bin
@@ -14,6 +14,9 @@ LDFLAGS := -X main.Version=$(VERSION)
 
 build:
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/eideticd $(PKG)
+
+build-compliance:
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/eideticd-compliance ./cmd/eideticd-compliance
 
 build-darwin-arm64:
 	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/eideticd-darwin-arm64 $(PKG)
