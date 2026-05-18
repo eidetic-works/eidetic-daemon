@@ -36,7 +36,7 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ### Reference
 
-PR #55 · tag v0.0.21
+PR #54 · tag v0.0.21
 
 ---
 
@@ -60,7 +60,7 @@ Count endpoint — `GET /engrams/count` returns `{"count": N}` for fast badge co
 
 ### Reference
 
-PR #54 · tag v0.0.20
+PR #53 · tag v0.0.20
 
 ---
 
@@ -84,7 +84,7 @@ Surgical single-engram removal — `DELETE /engrams/{id}` completes the point-CR
 
 ### Reference
 
-PR #53 · tag v0.0.19
+PR #52 · tag v0.0.19
 
 ---
 
