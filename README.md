@@ -9,7 +9,7 @@ Part of [Nucleus](https://nucleusos.dev). 90-day public probe (started 2026-05-1
 ## What it does
 
 - **Engram capture** — `fsnotify` watches each surface's session files; new text → engram row in <50ms of file-write.
-- **Engram retrieval** — `GET /engrams?surface=X&limit=N&since=unix-ns` over local Unix socket. P95 <100ms on 10K-row store.
+- **Engram retrieval** — `GET /engrams?surface=X&limit=N&since=unix-ns[&before=unix-ns]` over local Unix socket. P95 <100ms on 10K-row store. `since`+`before` together define a time window; either alone is a one-sided bound.
 - **Engram insertion** — `POST /engrams` — direct API-side insert; bypasses the fsnotify capture path. Accepts `{"surface":"...","payload":"...","ts":unix-ns}`, returns `{"id": N}`. Enables injection from mobile, webhooks, relay pipelines.
 - **Bulk insertion** — `POST /engrams/batch` — JSON array of engrams in one atomic transaction; returns `{"inserted": N}`. Efficient for relay sync, session replay, bulk import.
 - **Point lookup** — `GET /engrams/{id}` — fetch a single engram by primary key; 404 when not found. Use after a `POST /engrams` to confirm the stored row.
@@ -18,7 +18,7 @@ Part of [Nucleus](https://nucleusos.dev). 90-day public probe (started 2026-05-1
 - **Engram purge** — `DELETE /engrams?surface=X[&before=unix-ns]` — remove by surface (with optional timestamp cutoff); returns `{"deleted": N}`.
 - **Surface listing** — `GET /surfaces` — map of every active surface to its engram count; live view of what the daemon has seen.
 - **Full-text search** — `GET /search?q=...` — FTS5 keyword/phrase/boolean search over engram payloads, ranked by relevance. Answers "what did I say about X?"
-- **Recent activity** — `GET /recent?since=unix-ns&limit=N` — newest engrams across all surfaces, newest-first. Answers "what happened lately?" without a keyword or surface filter.
+- **Recent activity** — `GET /recent?[since=unix-ns][&before=unix-ns]&limit=N` — newest engrams across all surfaces, newest-first. `since`+`before` enable sliding-window polling. Answers "what happened lately?" without a keyword or surface filter.
 - **Multi-surface mirror** — Cursor / Cowork / Claude Code all feed one canonical store, indexed `(surface, ts DESC)`.
 
 Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + windows-amd64.
@@ -105,9 +105,15 @@ curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams/count?surf
 curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams/count?since=1747500000000000000'
 # → {"count": N}
 
+# Time-window retrieval (v0.0.21+): before= upper bound on /engrams and /recent.
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams?surface=claude_code&before=1747500000000000000'
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams?surface=claude_code&since=1747000000000000000&before=1747500000000000000'
+# → []Engram JSON for the half-open window (since, before)
+
 # Recent activity across all surfaces, newest-first (v0.0.15+).
 curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/recent'
 curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/recent?since=1747500000000000000&limit=20'
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/recent?before=1747500000000000000&limit=20'
 # → []Engram JSON, ts DESC, max 500
 
 # Purge all engrams for a surface (v0.0.13+).
@@ -222,6 +228,7 @@ W1 complete — 14 releases v0.0.2 → v0.0.13 (v0.0.12/v0.0.13 pending CI). Tra
 | 22 | `GET /engrams/{id}` — point lookup by primary key, `ErrNotFound` → 404 | ✅ v0.0.18 (#52) |
 | 23 | `DELETE /engrams/{id}` — surgical single-engram removal, `ErrNotFound` → 404 | ✅ v0.0.19 (#53) |
 | 24 | `GET /engrams/count` — fast count with optional surface+since filters | ✅ v0.0.20 (#54) |
+| 25 | `before=unix-ns` upper-bound filter on `GET /engrams` and `GET /recent` | ✅ v0.0.21 (#55) |
 
 ---
 

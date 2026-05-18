@@ -263,7 +263,7 @@ func TestWatcherIntegrationWithRealStore(t *testing.T) {
 	}
 	waitFor(t, doneCh, 1, 2*time.Second)
 
-	rows, err := st.Retrieve(context.Background(), "claude_code", 0, 10)
+	rows, err := st.Retrieve(context.Background(), "claude_code", 0, 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +326,7 @@ func TestWatcherConcurrentSurfaces(t *testing.T) {
 
 	// Each surface should have produced ≥1 row (debounce may collapse some).
 	for _, s := range []string{"claude_code", "cowork", "cursor"} {
-		rows, err := st.Retrieve(context.Background(), s, 0, 100)
+		rows, err := st.Retrieve(context.Background(), s, 0, 0, 100)
 		if err != nil {
 			t.Fatal(err)
 		}

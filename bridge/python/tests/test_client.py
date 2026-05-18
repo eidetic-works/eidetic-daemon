@@ -516,3 +516,33 @@ def test_client_count_engrams_with_since(uds_socket_path: str):
     client = DaemonClient(uds_path=uds_socket_path)
     n = client.count_engrams(since=1747500000000000000)
     assert n == 42
+
+
+# --- before= param tests (v0.0.21) ---
+
+def test_client_query_engrams_with_before(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    rows = client.query_engrams(surface="claude_code", before=9999999999)
+    assert len(rows) == 1
+    assert rows[0].surface == "claude_code"
+
+
+def test_client_query_engrams_since_and_before(uds_socket_path: str):
+    """since + before together: both params forwarded, fake returns fixture."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    rows = client.query_engrams(surface="claude_code", since=100, before=9999999999)
+    assert len(rows) == 1
+
+
+def test_client_recent_engrams_with_before(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    rows = client.recent_engrams(before=9999999999)
+    assert len(rows) == 1
+    assert rows[0].payload == "latest thing"
+
+
+def test_client_recent_engrams_since_and_before(uds_socket_path: str):
+    """since + before both forwarded; fake returns fixture."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    rows = client.recent_engrams(since=100, before=9999999999)
+    assert len(rows) == 1

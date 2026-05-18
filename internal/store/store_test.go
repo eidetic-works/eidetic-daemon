@@ -52,7 +52,7 @@ func TestInsertAndRetrieveRoundTrip(t *testing.T) {
 		}
 	}
 
-	got, err := s.Retrieve(ctx, "cursor", 0, 10)
+	got, err := s.Retrieve(ctx, "cursor", 0, 0, 10)
 	if err != nil {
 		t.Fatalf("Retrieve: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestRetrieveSinceFilter(t *testing.T) {
 		}
 	}
 	// Only rows with ts > base+5000 should return.
-	got, err := s.Retrieve(ctx, "claude_code", base+5000, 100)
+	got, err := s.Retrieve(ctx, "claude_code", base+5000, 0, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestRetrieveSurfaceIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := s.Retrieve(ctx, "cursor", 0, 10)
+	got, err := s.Retrieve(ctx, "cursor", 0, 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestRetrieveLimitClamps(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := s.Retrieve(ctx, "cursor", 0, 999)
+	got, err := s.Retrieve(ctx, "cursor", 0, 0, 999)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestRetrieveSinceZeroReturnsAllRows(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := s.Retrieve(ctx, "cowork", 0, 100)
+	got, err := s.Retrieve(ctx, "cowork", 0, 0, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestWALModeAndIndexUsedForRetrieval(t *testing.T) {
 	if _, err := s.Insert(ctx, engram.Engram{Surface: "claude_code", TS: time.Now().UnixNano(), Payload: "p"}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.Retrieve(ctx, "claude_code", 0, 1)
+	got, err := s.Retrieve(ctx, "claude_code", 0, 0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestStorePurgeAll(t *testing.T) {
 	}
 
 	// claude_code rows gone.
-	rows, err := s.Retrieve(ctx, "claude_code", 0, 100)
+	rows, err := s.Retrieve(ctx, "claude_code", 0, 0, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestStorePurgeAll(t *testing.T) {
 	}
 
 	// cursor row untouched.
-	rows, err = s.Retrieve(ctx, "cursor", 0, 100)
+	rows, err = s.Retrieve(ctx, "cursor", 0, 0, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestStorePurgeBefore(t *testing.T) {
 	}
 
 	// Remaining: ts=300 and ts=400.
-	rows, err := s.Retrieve(ctx, "claude_code", 0, 100)
+	rows, err := s.Retrieve(ctx, "claude_code", 0, 0, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,6 +279,66 @@ func TestStorePurgeBefore(t *testing.T) {
 	for _, r := range rows {
 		if r.TS < 300 {
 			t.Errorf("Purge(before=300) left ts=%d which should have been deleted", r.TS)
+		}
+	}
+}
+
+func TestRetrieveBeforeFilter(t *testing.T) {
+	s := tempStore(t)
+	ctx := context.Background()
+	base := time.Now().UnixNano()
+
+	for i := 0; i < 10; i++ {
+		_, err := s.Insert(ctx, engram.Engram{
+			Surface: "claude_code",
+			TS:      base + int64(i*1000),
+			Payload: "p",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// before=base+5000 → only rows with ts < base+5000 (i=0..4, 5 rows).
+	got, err := s.Retrieve(ctx, "claude_code", 0, base+5000, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 5 {
+		t.Fatalf("want 5 rows before=base+5000, got %d", len(got))
+	}
+	for _, r := range got {
+		if r.TS >= base+5000 {
+			t.Errorf("before filter leaked ts=%d (>= cutoff)", r.TS)
+		}
+	}
+}
+
+func TestRetrieveSinceAndBefore(t *testing.T) {
+	s := tempStore(t)
+	ctx := context.Background()
+	base := time.Now().UnixNano()
+
+	for i := 0; i < 10; i++ {
+		_, err := s.Insert(ctx, engram.Engram{
+			Surface: "claude_code",
+			TS:      base + int64(i*1000),
+			Payload: "p",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// since=base+2000, before=base+7000 → ts in (base+2000, base+7000) exclusive: i=3,4,5,6 (4 rows).
+	got, err := s.Retrieve(ctx, "claude_code", base+2000, base+7000, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 4 {
+		t.Fatalf("want 4 rows in (since, before) window, got %d", len(got))
+	}
+	for _, r := range got {
+		if r.TS <= base+2000 || r.TS >= base+7000 {
+			t.Errorf("window filter leaked ts=%d", r.TS)
 		}
 	}
 }

@@ -155,6 +155,11 @@ def build_server(client: DaemonClient | None = None) -> Any:
                             "description": "Unix nanoseconds lower bound (0 = no bound)",
                             "minimum": 0,
                         },
+                        "before": {
+                            "type": "integer",
+                            "description": "Unix nanoseconds upper bound exclusive (0 = no bound, v0.0.21+)",
+                            "minimum": 0,
+                        },
                         "raw_chunks": {
                             "type": "boolean",
                             "description": "If true, skip chunk-reassembly + return chunks as separate engrams (default false)",
@@ -259,7 +264,8 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "(v0.0.15+). Useful for getting a quick snapshot of recent activity "
                     "without a surface filter or keyword query.\n\n"
                     "Optional `since`: Unix nanoseconds; only return engrams with "
-                    "ts > since (0 or omit = all). Optional `limit` (default 50, max 500)."
+                    "ts > since (0 or omit = all). Optional `before` (v0.0.21+): Unix "
+                    "nanoseconds upper bound exclusive. Optional `limit` (default 50, max 500)."
                 ),
                 inputSchema={
                     "type": "object",
@@ -267,6 +273,10 @@ def build_server(client: DaemonClient | None = None) -> Any:
                         "since": {
                             "type": "integer",
                             "description": "Unix nanoseconds lower bound (exclusive). 0 = no filter.",
+                        },
+                        "before": {
+                            "type": "integer",
+                            "description": "Unix nanoseconds upper bound (exclusive). 0 = no filter. (v0.0.21+)",
                         },
                         "limit": {
                             "type": "integer",
@@ -413,9 +423,10 @@ def build_server(client: DaemonClient | None = None) -> Any:
                 return [TextContent(type="text", text="error: surface required")]
             limit = int(arguments.get("limit", 50))
             since = int(arguments.get("since", 0))
+            before = int(arguments.get("before", 0))
             raw_chunks = bool(arguments.get("raw_chunks", False))
             try:
-                rows = daemon.query_engrams(surface=surface, limit=limit, since=since)
+                rows = daemon.query_engrams(surface=surface, limit=limit, since=since, before=before)
             except (DaemonError, ValueError) as exc:
                 return [TextContent(type="text", text=f"error: {exc}")]
             if not raw_chunks:
@@ -466,9 +477,10 @@ def build_server(client: DaemonClient | None = None) -> Any:
 
         if name == "recent_engrams":
             since = int(arguments.get("since", 0))
+            before = int(arguments.get("before", 0))
             limit = int(arguments.get("limit", 50))
             try:
-                rows = daemon.recent_engrams(since=since, limit=limit)
+                rows = daemon.recent_engrams(since=since, before=before, limit=limit)
             except DaemonError as exc:
                 return [TextContent(type="text", text=f"error: {exc}")]
             payload = [asdict(r) for r in rows]

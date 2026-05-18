@@ -165,10 +165,11 @@ class DaemonClient:
         return body
 
     def query_engrams(
-        self, surface: str, limit: int = 50, since: int = 0
+        self, surface: str, limit: int = 50, since: int = 0, before: int = 0
     ) -> Sequence[Engram]:
         """Spec § 2.4 retrieval endpoint. surface required; limit defaults to
-        50 (daemon-side capped at 500); since=0 means no lower bound."""
+        50 (daemon-side capped at 500); since=0 means no lower bound;
+        before=0 means no upper bound (v0.0.21+)."""
         if not surface:
             raise ValueError("surface required")
         params: dict[str, str] = {"surface": surface}
@@ -176,6 +177,8 @@ class DaemonClient:
             params["limit"] = str(limit)
         if since > 0:
             params["since"] = str(since)
+        if before > 0:
+            params["before"] = str(before)
         body = self._get_json(f"/engrams?{urlencode(params)}")
         if not isinstance(body, list):
             raise DaemonError(f"expected array, got {type(body).__name__}")
@@ -241,11 +244,13 @@ class DaemonClient:
     def recent_engrams(
         self,
         since: int = 0,
+        before: int = 0,
         limit: int = 50,
     ) -> tuple[Engram, ...]:
         """GET /recent — newest engrams across all surfaces (v0.0.15+).
 
         since: Unix nanoseconds; only return engrams with ts > since (0 = all).
+        before: Unix nanoseconds; only return engrams with ts < before (0 = all, v0.0.21+).
         limit: 1-500, default 50.
         Results are ordered newest-first. Returns the same Engram tuple shape
         as query_engrams for client compatibility.
@@ -255,6 +260,8 @@ class DaemonClient:
         params: dict[str, str] = {}
         if since > 0:
             params["since"] = str(since)
+        if before > 0:
+            params["before"] = str(before)
         if limit != 50:
             params["limit"] = str(limit)
         qs = f"?{urlencode(params)}" if params else ""

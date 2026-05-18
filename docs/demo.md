@@ -329,6 +329,45 @@ count_engrams(since=1747500000000000000)
 
 ---
 
+## 5j. Time-window queries — `before=` upper bound (v0.0.21+)
+
+```sh
+# Engrams strictly older than a cutoff (half-open window: ts < before)
+curl --unix-socket /tmp/eidetic-daemon.sock \
+  'http://localhost/engrams?surface=claude_code&before=1747500000000000000'
+
+# Time window: since < ts < before (closed poll window)
+curl --unix-socket /tmp/eidetic-daemon.sock \
+  'http://localhost/engrams?surface=claude_code&since=1747000000000000000&before=1747500000000000000'
+
+# Recent — newest-first, older than cutoff
+curl --unix-socket /tmp/eidetic-daemon.sock \
+  'http://localhost/recent?before=1747500000000000000&limit=20'
+
+# Recent — polling window (send since=<last-seen-ts>&before=<now>)
+curl --unix-socket /tmp/eidetic-daemon.sock \
+  'http://localhost/recent?since=1747000000000000000&before=1747500000000000000'
+```
+
+Expected (same `[]Engram` JSON shape, `ts` descending, ts < cutoff):
+```json
+[
+  {"id":N,"surface":"claude_code","ts":1747499999999999,"payload":"...","meta":"..."}
+]
+```
+
+`before` is exclusive (`ts < before`). Combine with `since` for a half-open time window `(since, before)`. Both are optional; omit for no bound on that side.
+
+**Via MCP bridge** (`bridge/python/`, v0.0.21+):
+```python
+query_engrams(surface="claude_code", before=1747500000000000000)
+query_engrams(surface="claude_code", since=1747000000000000000, before=1747500000000000000)
+recent_engrams(before=1747500000000000000, limit=20)
+recent_engrams(since=1747000000000000000, before=1747500000000000000)
+```
+
+---
+
 ## 5h. Delete by ID (v0.0.19+)
 
 ```sh

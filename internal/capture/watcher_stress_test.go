@@ -77,7 +77,7 @@ func TestWatcherBurstNoDoubleInsert(t *testing.T) {
 	// Allow the watcher to fully drain before the assertion.
 	drainExtra(doneCh, 1*time.Second)
 
-	rows, err := st.Retrieve(context.Background(), "claude_code", 0, N*4)
+	rows, err := st.Retrieve(context.Background(), "claude_code", 0, 0, N*4)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestWatcherPendingMapBounded(t *testing.T) {
 		t.Errorf("pending map size %d exceeds watched-file count %d (timer leak)", pendingSize, files)
 	}
 
-	rows, _ := st.Retrieve(context.Background(), "claude_code", 0, files*eventsPerFile*2)
+	rows, _ := st.Retrieve(context.Background(), "claude_code", 0, 0, files*eventsPerFile*2)
 	if len(rows) != files*eventsPerFile {
 		t.Errorf("got %d rows, want %d (file_count*events_per_file)", len(rows), files*eventsPerFile)
 	}
