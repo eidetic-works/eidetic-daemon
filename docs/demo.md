@@ -238,6 +238,35 @@ search_engrams(q='"meetup tomorrow"', surface="cursor", limit=3)
 
 ---
 
+## 5e. Recent activity — cross-surface (v0.0.15+)
+
+```sh
+# 50 most recent engrams across all surfaces, newest-first
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/recent'
+
+# Since a timestamp (Unix nanoseconds) — only newer engrams
+curl --unix-socket /tmp/eidetic-daemon.sock \
+  'http://localhost/recent?since=1747500000000000000&limit=20'
+```
+
+Expected (same `[]Engram` JSON shape, `ts` descending):
+```json
+[
+  {"id":N,"surface":"cursor","ts":1747500123456789,"payload":"...","meta":"..."},
+  {"id":N-1,"surface":"claude_code","ts":1747500100000000,"payload":"...","meta":"..."}
+]
+```
+
+No surface filter — returns engrams from all surfaces. Useful for a cross-surface activity snapshot, polling diffs (send `since=<last-seen-ts>`), or UI "recent" feeds.
+
+**Via MCP bridge** (`bridge/python/`, v0.0.15+):
+```python
+recent_engrams()
+recent_engrams(since=1747500000000000000, limit=20)
+```
+
+---
+
 ## 6. Latency
 
 The bench gates ship in CI:

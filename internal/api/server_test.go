@@ -640,3 +640,105 @@ func TestSearchNoMatchReturnsEmptyArray(t *testing.T) {
 		t.Errorf("want empty array, got %v", rows)
 	}
 }
+
+// ---- /recent tests ----
+
+func seedRecent(t *testing.T, s *store.Store, surface string, ts int64, payload string) {
+	t.Helper()
+	_, err := s.Insert(context.Background(), engram.Engram{Surface: surface, TS: ts, Payload: payload})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+}
+
+func TestRecentMethodNotAllowed(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/recent", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("want 405, got %d", resp.StatusCode)
+	}
+}
+
+func TestRecentReturnsNewestFirst(t *testing.T) {
+	st := tempStore(t)
+	seedRecent(t, st, "claude_code", 1000, "oldest")
+	seedRecent(t, st, "cursor", 2000, "middle")
+	seedRecent(t, st, "vim", 3000, "newest")
+
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/recent", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	var rows []engram.Engram
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("want 3 rows, got %d", len(rows))
+	}
+	if rows[0].TS != 3000 {
+		t.Errorf("want newest first (TS=3000), got TS=%d", rows[0].TS)
+	}
+}
+
+func TestRecentSinceParam(t *testing.T) {
+	st := tempStore(t)
+	seedRecent(t, st, "claude_code", 100, "old")
+	seedRecent(t, st, "claude_code", 200, "new")
+
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/recent?since=100", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var rows []engram.Engram
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("want 1 row (ts>100), got %d", len(rows))
+	}
+	if rows[0].TS != 200 {
+		t.Errorf("want TS=200, got %d", rows[0].TS)
+	}
+}
+
+func TestRecentEmptyReturnsEmptyArray(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/recent", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	var rows []engram.Engram
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows == nil || len(rows) != 0 {
+		t.Errorf("want empty array, got %v", rows)
+	}
+}

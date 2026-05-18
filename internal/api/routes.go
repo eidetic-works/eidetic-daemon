@@ -159,3 +159,29 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(rows)
 }
+
+// handleRecent serves GET /recent?since=unix-ns&limit=N.
+// Returns up to limit engrams ordered newest-first across all surfaces.
+// since (optional): Unix nanoseconds — only return engrams with ts > since.
+// limit: 1-500, default 50.
+func (s *Server) handleRecent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
+	limit, _ := strconv.Atoi(q.Get("limit"))
+
+	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
+	defer cancel()
+
+	rows, err := s.store.Recent(ctx, since, limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(rows)
+}

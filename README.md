@@ -12,7 +12,8 @@ Part of [Nucleus](https://nucleusos.dev). 90-day public probe (started 2026-05-1
 - **Engram retrieval** — `GET /engrams?surface=X&limit=N&since=unix-ns` over local Unix socket. P95 <100ms on 10K-row store.
 - **Engram purge** — `DELETE /engrams?surface=X[&before=unix-ns]` — remove by surface (with optional timestamp cutoff); returns `{"deleted": N}`.
 - **Surface listing** — `GET /surfaces` — map of every active surface to its engram count; live view of what the daemon has seen.
-- **Full-text search** — `GET /search?q=...` — FTS5 keyword/phrase/boolean search over engram payloads, ranked by relevance. First endpoint that answers "what did I say about X?" rather than scrolling reverse-chronological.
+- **Full-text search** — `GET /search?q=...` — FTS5 keyword/phrase/boolean search over engram payloads, ranked by relevance. Answers "what did I say about X?"
+- **Recent activity** — `GET /recent?since=unix-ns&limit=N` — newest engrams across all surfaces, newest-first. Answers "what happened lately?" without a keyword or surface filter.
 - **Multi-surface mirror** — Cursor / Cowork / Claude Code all feed one canonical store, indexed `(surface, ts DESC)`.
 
 Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + windows-amd64.
@@ -68,6 +69,11 @@ curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/surfaces
 curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/search?q=benchmark'
 curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/search?q="benchmark+result"&surface=claude_code&limit=10'
 # → same []Engram JSON shape as /engrams, ordered by relevance rank
+
+# Recent activity across all surfaces, newest-first (v0.0.15+).
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/recent'
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/recent?since=1747500000000000000&limit=20'
+# → []Engram JSON, ts DESC, max 500
 
 # Purge all engrams for a surface (v0.0.13+).
 curl -X DELETE --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams?surface=cursor'
@@ -174,7 +180,8 @@ W1 complete — 14 releases v0.0.2 → v0.0.13 (v0.0.12/v0.0.13 pending CI). Tra
 | 15 | Query latency tracker — P50/P95/P99 on `/metrics` | ✅ v0.0.12 (#37, pending CI) |
 | 16 | `DELETE /engrams` + `GET /surfaces` | ✅ v0.0.13 (#38 #39, pending CI) |
 | 17 | `uninstall.sh` — clean daemon removal + optional data purge | ✅ (#40, pending CI) |
-| 18 | `GET /search` — FTS5 full-text search, ranked by relevance | 🔄 v0.0.14 (#47, open) |
+| 18 | `GET /search` — FTS5 full-text search, ranked by relevance | ✅ v0.0.14 (#47) |
+| 19 | `GET /recent` — cross-surface recent engrams, newest-first | ✅ v0.0.15 (#48) |
 
 ---
 
