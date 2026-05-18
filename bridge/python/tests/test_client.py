@@ -142,6 +142,17 @@ class _UDSHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_DELETE(self):  # noqa: N802
+        if re.match(r"^/engrams/\d+$", self.path):
+            engram_id = int(self.path.split("/")[-1])
+            if engram_id == 999:
+                self.send_response(404)
+                body = b"engram not found\n"
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            self._send_json({"deleted": 1})
+            return
         if self.path.startswith("/engrams"):
             self._send_json({"deleted": 5})
             return
@@ -460,3 +471,27 @@ def test_client_get_engram_by_id_negative_raises_value_error(uds_socket_path: st
     client = DaemonClient(uds_path=uds_socket_path)
     with pytest.raises(ValueError):
         client.get_engram_by_id(-1)
+
+
+def test_client_delete_engram_by_id_returns_true(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    result = client.delete_engram_by_id(42)
+    assert result is True
+
+
+def test_client_delete_engram_by_id_not_found_raises(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    with pytest.raises(DaemonError):
+        client.delete_engram_by_id(999)
+
+
+def test_client_delete_engram_by_id_zero_raises_value_error(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    with pytest.raises(ValueError):
+        client.delete_engram_by_id(0)
+
+
+def test_client_delete_engram_by_id_negative_raises_value_error(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    with pytest.raises(ValueError):
+        client.delete_engram_by_id(-1)

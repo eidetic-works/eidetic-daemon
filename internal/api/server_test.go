@@ -1088,7 +1088,8 @@ func TestGetByIDMethodNotAllowed(t *testing.T) {
 	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
 	defer stop()
 
-	req, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("http://%s/engrams/1", srv.Addr()), nil)
+	// PUT is not a supported method on /engrams/{id} (GET + DELETE only).
+	req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("http://%s/engrams/1", srv.Addr()), nil)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -1096,5 +1097,86 @@ func TestGetByIDMethodNotAllowed(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Fatalf("want 405, got %d", resp.StatusCode)
+	}
+}
+
+// --- DELETE /engrams/{id} tests ---
+
+func TestDeleteByIDReturns200(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	id := seedOneEngram(t, srv.Addr().String(), "claude_code", "delete target")
+
+	req, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("http://%s/engrams/%d", srv.Addr(), id), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	var result map[string]int
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if result["deleted"] != 1 {
+		t.Errorf("want deleted=1, got %d", result["deleted"])
+	}
+}
+
+func TestDeleteByIDRemovesEngram(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	id := seedOneEngram(t, srv.Addr().String(), "claude_code", "should vanish")
+
+	req, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("http://%s/engrams/%d", srv.Addr(), id), nil)
+	resp, _ := http.DefaultClient.Do(req)
+	resp.Body.Close()
+
+	// GET after DELETE must return 404.
+	getResp, err := http.Get(fmt.Sprintf("http://%s/engrams/%d", srv.Addr(), id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("want 404 after delete, got %d", getResp.StatusCode)
+	}
+}
+
+func TestDeleteByIDNotFoundReturns404(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("http://%s/engrams/999999", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("want 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestDeleteByIDNonIntegerReturns400(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("http://%s/engrams/abc", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", resp.StatusCode)
 	}
 }

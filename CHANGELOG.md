@@ -6,6 +6,30 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.19] — 2026-05-18
+
+Surgical single-engram removal — `DELETE /engrams/{id}` completes the point-CRUD surface (GET + DELETE by primary key). The existing surface-level `DELETE /engrams?surface=X` is unchanged. **Zero breaking change.**
+
+### Added
+
+- **`DELETE /engrams/{id}`** (`internal/api/routes.go`):
+  - `handleEngramsByID` now dispatches both GET and DELETE on `/engrams/{id}` (renamed from `handleEngramsGetByID`; all existing GET tests continue to pass).
+  - Returns `200 + {"deleted": 1}` on success; 404 when id not found; 400 on non-integer or non-positive id; 405 on unsupported methods (e.g. PUT).
+  - **`store.DeleteByID(ctx, id)`** — single `DELETE FROM engrams WHERE id = ?`; returns `ErrNotFound` when `RowsAffected() == 0`. Runs on writer pool for WAL consistency.
+  - **3 store tests** (`internal/store/delete_by_id_test.go`): removes + confirms 404, 999999 → ErrNotFound, 0 → ErrNotFound.
+  - **4 API tests** (`internal/api/server_test.go`): 200+deleted=1, GET after DELETE → 404, 404 on unknown id, 400 on non-integer.
+
+- **MCP bridge — `delete_engram_by_id` tool** (`bridge/python/eidetic_mcp/server.py`, `client.py`):
+  - `DaemonClient.delete_engram_by_id(id)` → `bool` (True on success). Validates id > 0 client-side; raises ValueError on invalid, DaemonError on 404/transport failure.
+  - `delete_engram_by_id` MCP tool with `id` integer in inputSchema.
+  - **4 bridge tests** (`bridge/python/tests/test_client.py`): returns True, 404 raises DaemonError, zero raises ValueError, negative raises ValueError.
+
+### Reference
+
+PR #53 · tag v0.0.19
+
+---
+
 ## [v0.0.18] — 2026-05-18
 
 Point-lookup by primary key — `GET /engrams/{id}` lets callers fetch a single engram when they already know its ID (e.g. after a `POST /engrams` insert). Completes the basic CRUD surface. **Zero breaking change.**

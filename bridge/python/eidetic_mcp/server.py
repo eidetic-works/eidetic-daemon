@@ -54,6 +54,11 @@ Tools exposed:
     Fetch a single engram by its primary-key ID (v0.0.18+). Returns the full
     Engram JSON. Error when ID does not exist or is not a positive integer.
 
+  delete_engram_by_id(id)
+    Remove a single engram by its primary-key ID (v0.0.19+). Returns
+    {"deleted": 1} on success. Error when ID does not exist or is not a
+    positive integer. Irreversible — use with care.
+
 Run:
 
     eideticd &                          # daemon listens on UDS
@@ -351,6 +356,25 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "required": ["id"],
                 },
             ),
+            Tool(
+                name="delete_engram_by_id",
+                description=(
+                    "Remove a single engram by its primary-key ID (v0.0.19+). "
+                    "Returns {\"deleted\": 1} on success. "
+                    "Returns an error string when the ID does not exist or is invalid. "
+                    "Irreversible — use with care."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "integer",
+                            "description": "Positive integer primary key of the engram to delete.",
+                        },
+                    },
+                    "required": ["id"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -460,6 +484,18 @@ def build_server(client: DaemonClient | None = None) -> Any:
             except (DaemonError, ValueError) as exc:
                 return [TextContent(type="text", text=f"error: {exc}")]
             return [TextContent(type="text", text=json.dumps(asdict(e), indent=2))]
+
+        if name == "delete_engram_by_id":
+            raw_id = arguments.get("id")
+            try:
+                engram_id = int(raw_id)
+            except (TypeError, ValueError):
+                return [TextContent(type="text", text=f"error: id must be a positive integer")]
+            try:
+                ok = daemon.delete_engram_by_id(engram_id)
+            except (DaemonError, ValueError) as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            return [TextContent(type="text", text=json.dumps({"deleted": 1 if ok else 0}))]
 
         return [TextContent(type="text", text=f"error: unknown tool {name!r}")]
 

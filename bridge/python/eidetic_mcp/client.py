@@ -320,6 +320,33 @@ class DaemonClient:
         return int(result["inserted"])
 
 
+    def delete_engram_by_id(self, id: int) -> bool:
+        """DELETE /engrams/{id} — remove a single engram by primary key (v0.0.19+).
+
+        Returns True on success (deleted=1). Raises DaemonError with status 404
+        if no engram has that ID. Raises ValueError if id is not a positive integer.
+        """
+        if not isinstance(id, int) or id <= 0:
+            raise ValueError(f"id must be a positive integer, got {id!r}")
+        conn = self._conn()
+        try:
+            headers: dict[str, str] = {}
+            if self._auth_token:
+                headers["Authorization"] = f"Bearer {self._auth_token}"
+            conn.request("DELETE", f"/engrams/{id}", headers=headers)
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8")
+            if resp.status == 404:
+                raise DaemonError(f"daemon returned 404: {body}")
+            if resp.status != 200:
+                raise DaemonError(f"daemon returned {resp.status}: {body}")
+            result = json.loads(body)
+            return int(result.get("deleted", 0)) == 1
+        except (OSError, json.JSONDecodeError) as exc:
+            raise DaemonError(f"daemon transport / parse error: {exc}") from exc
+        finally:
+            conn.close()
+
     def get_engram_by_id(self, id: int) -> Engram:
         """GET /engrams/{id} — fetch a single engram by primary key (v0.0.18+).
 

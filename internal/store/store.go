@@ -323,6 +323,21 @@ func (s *Store) GetByID(ctx context.Context, id int64) (engram.Engram, error) {
 	return e, nil
 }
 
+// DeleteByID removes the engram with the given primary key. Returns
+// ErrNotFound when no row with that id exists. Runs on the writer pool so
+// WAL flush is consistent with other writes.
+func (s *Store) DeleteByID(ctx context.Context, id int64) error {
+	res, err := s.writer.ExecContext(ctx, `DELETE FROM engrams WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete by id: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // CountBySurface returns engram count grouped by surface. Reader-pool
 // query — does not block writers. Used by the /metrics endpoint to
 // surface per-surface ingest visibility.
