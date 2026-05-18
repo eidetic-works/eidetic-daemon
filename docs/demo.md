@@ -299,6 +299,28 @@ insert_engram(surface="webhook", payload="event body", ts=1747500123456789, meta
 
 ---
 
+## 5h. Delete by ID (v0.0.19+)
+
+```sh
+# Remove a single engram by its primary-key ID
+curl -X DELETE --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams/1234'
+```
+
+Expected:
+```json
+{"deleted": 1}
+```
+
+Returns `200 OK`. `404 Not Found` when the ID doesn't exist. `400 Bad Request` on a non-integer or zero id. Irreversible — use to remove accidentally captured sensitive data or relay duplicates.
+
+**Via MCP bridge** (`bridge/python/`, v0.0.19+):
+```python
+delete_engram_by_id(id=1234)
+# → True  (boolean — True on success)
+```
+
+---
+
 ## 5g. Point lookup by ID (v0.0.18+)
 
 ```sh

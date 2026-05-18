@@ -169,14 +169,10 @@ func (s *Server) handleEngramsPOST(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]int64{"id": id})
 }
 
-// handleEngramsGetByID serves GET /engrams/{id} — fetch a single engram by
-// primary key (v0.0.18+). Returns 200 + Engram JSON on success, 400 on
-// non-integer id, 404 when no row matches.
-func (s *Server) handleEngramsGetByID(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+// handleEngramsByID dispatches /engrams/{id} by method:
+//   - GET    → fetch a single engram by primary key (v0.0.18+)
+//   - DELETE → remove a single engram by primary key (v0.0.19+)
+func (s *Server) handleEngramsByID(w http.ResponseWriter, r *http.Request) {
 	rawID := r.PathValue("id")
 	id, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil || id <= 0 {
@@ -187,18 +183,35 @@ func (s *Server) handleEngramsGetByID(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
 	defer cancel()
 
-	e, err := s.store.GetByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
+	switch r.Method {
+	case http.MethodGet:
+		e, err := s.store.GetByID(ctx, id)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(e)
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(e)
+	case http.MethodDelete:
+		if err := s.store.DeleteByID(ctx, id); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]int{"deleted": 1})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 // handleEngramsBatch serves POST /engrams/batch — bulk API-side insertion
