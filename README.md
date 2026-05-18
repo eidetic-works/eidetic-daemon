@@ -14,6 +14,7 @@ Part of [Nucleus](https://nucleusos.dev). 90-day public probe (started 2026-05-1
 - **Bulk insertion** — `POST /engrams/batch` — JSON array of engrams in one atomic transaction; returns `{"inserted": N}`. Efficient for relay sync, session replay, bulk import.
 - **Point lookup** — `GET /engrams/{id}` — fetch a single engram by primary key; 404 when not found. Use after a `POST /engrams` to confirm the stored row.
 - **Point delete** — `DELETE /engrams/{id}` — surgical removal of a single engram by primary key; 404 when not found. Use to remove accidentally captured sensitive data or dedup relay noise.
+- **Count** — `GET /engrams/count?[surface=X][&since=unix-ns]` — returns `{"count": N}` without fetching rows. Use for monitoring badges, health dashboards, and sync-diff checks.
 - **Engram purge** — `DELETE /engrams?surface=X[&before=unix-ns]` — remove by surface (with optional timestamp cutoff); returns `{"deleted": N}`.
 - **Surface listing** — `GET /surfaces` — map of every active surface to its engram count; live view of what the daemon has seen.
 - **Full-text search** — `GET /search?q=...` — FTS5 keyword/phrase/boolean search over engram payloads, ranked by relevance. Answers "what did I say about X?"
@@ -97,6 +98,12 @@ curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams/1234'
 curl -X DELETE --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams/1234'
 # → {"deleted":1}
 # 404 when ID not found; 400 on non-integer or zero.
+
+# Count engrams (v0.0.20+): all, by surface, by time window.
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams/count'
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams/count?surface=claude_code'
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams/count?since=1747500000000000000'
+# → {"count": N}
 
 # Recent activity across all surfaces, newest-first (v0.0.15+).
 curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/recent'
@@ -214,6 +221,7 @@ W1 complete — 14 releases v0.0.2 → v0.0.13 (v0.0.12/v0.0.13 pending CI). Tra
 | 21 | `POST /engrams/batch` — bulk atomic insert, 32 MiB body cap | ✅ v0.0.17 (#50) |
 | 22 | `GET /engrams/{id}` — point lookup by primary key, `ErrNotFound` → 404 | ✅ v0.0.18 (#52) |
 | 23 | `DELETE /engrams/{id}` — surgical single-engram removal, `ErrNotFound` → 404 | ✅ v0.0.19 (#53) |
+| 24 | `GET /engrams/count` — fast count with optional surface+since filters | ✅ v0.0.20 (#54) |
 
 ---
 

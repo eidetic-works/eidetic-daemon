@@ -54,6 +54,11 @@ Tools exposed:
     Fetch a single engram by its primary-key ID (v0.0.18+). Returns the full
     Engram JSON. Error when ID does not exist or is not a positive integer.
 
+  count_engrams(surface="", since=0)
+    Return the count of engrams matching optional surface and since filters
+    (v0.0.20+). surface="" counts across all surfaces. since=0 counts all time.
+    Useful for monitoring badges and health checks without fetching rows.
+
   delete_engram_by_id(id)
     Remove a single engram by its primary-key ID (v0.0.19+). Returns
     {"deleted": 1} on success. Error when ID does not exist or is not a
@@ -357,6 +362,29 @@ def build_server(client: DaemonClient | None = None) -> Any:
                 },
             ),
             Tool(
+                name="count_engrams",
+                description=(
+                    "Return the count of engrams matching optional filters (v0.0.20+). "
+                    "surface (optional): count only engrams on that surface; omit to count all. "
+                    "since (optional): Unix epoch nanoseconds — count only engrams with ts > since. "
+                    "Returns {\"count\": N}. "
+                    "Use for monitoring badges or health checks without fetching rows."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "surface": {
+                            "type": "string",
+                            "description": "Surface name to filter on; omit to count across all surfaces.",
+                        },
+                        "since": {
+                            "type": "integer",
+                            "description": "Unix epoch nanoseconds; count only engrams with ts > since. 0 = all time.",
+                        },
+                    },
+                },
+            ),
+            Tool(
                 name="delete_engram_by_id",
                 description=(
                     "Remove a single engram by its primary-key ID (v0.0.19+). "
@@ -484,6 +512,15 @@ def build_server(client: DaemonClient | None = None) -> Any:
             except (DaemonError, ValueError) as exc:
                 return [TextContent(type="text", text=f"error: {exc}")]
             return [TextContent(type="text", text=json.dumps(asdict(e), indent=2))]
+
+        if name == "count_engrams":
+            surface = str(arguments.get("surface", "")).strip()
+            since = int(arguments.get("since", 0))
+            try:
+                n = daemon.count_engrams(surface=surface, since=since)
+            except DaemonError as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            return [TextContent(type="text", text=json.dumps({"count": n}))]
 
         if name == "delete_engram_by_id":
             raw_id = arguments.get("id")

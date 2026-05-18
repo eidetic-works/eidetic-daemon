@@ -75,6 +75,9 @@ class _UDSHandler(http.server.BaseHTTPRequestHandler):
         if self.path == "/healthz":
             self._send_json({"status": "ok"})
             return
+        if self.path == "/engrams/count" or self.path.startswith("/engrams/count?"):
+            self._send_json({"count": 42})
+            return
         if re.match(r"^/engrams/\d+$", self.path):
             engram_id = int(self.path.split("/")[-1])
             if engram_id == 999:
@@ -495,3 +498,21 @@ def test_client_delete_engram_by_id_negative_raises_value_error(uds_socket_path:
     client = DaemonClient(uds_path=uds_socket_path)
     with pytest.raises(ValueError):
         client.delete_engram_by_id(-1)
+
+
+def test_client_count_engrams_all(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    n = client.count_engrams()
+    assert n == 42
+
+
+def test_client_count_engrams_with_surface(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    n = client.count_engrams(surface="claude_code")
+    assert n == 42
+
+
+def test_client_count_engrams_with_since(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    n = client.count_engrams(since=1747500000000000000)
+    assert n == 42

@@ -320,6 +320,28 @@ class DaemonClient:
         return int(result["inserted"])
 
 
+    def count_engrams(
+        self,
+        surface: str = "",
+        since: int = 0,
+    ) -> int:
+        """GET /engrams/count — return the count of engrams matching the given filters (v0.0.20+).
+
+        surface: filter to a specific surface (empty = all surfaces).
+        since: Unix nanoseconds; only count engrams with ts > since (0 = all time).
+        Returns the integer count. Raises DaemonError on transport failure.
+        """
+        params: dict[str, str] = {}
+        if surface:
+            params["surface"] = surface
+        if since > 0:
+            params["since"] = str(since)
+        qs = f"?{urlencode(params)}" if params else ""
+        body = self._get_json(f"/engrams/count{qs}")
+        if not isinstance(body, dict) or "count" not in body:
+            raise DaemonError(f"unexpected count response: {body!r}")
+        return int(body["count"])
+
     def delete_engram_by_id(self, id: int) -> bool:
         """DELETE /engrams/{id} — remove a single engram by primary key (v0.0.19+).
 

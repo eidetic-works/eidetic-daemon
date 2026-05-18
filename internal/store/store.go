@@ -338,6 +338,35 @@ func (s *Store) DeleteByID(ctx context.Context, id int64) error {
 	return nil
 }
 
+// CountEngrams returns the number of engrams matching the given filters.
+// surface="" counts across all surfaces. since=0 includes all timestamps.
+// Reader-pool query — does not block writers. Used by GET /engrams/count (v0.0.20+).
+func (s *Store) CountEngrams(ctx context.Context, surface string, since int64) (int64, error) {
+	var (
+		query string
+		args  []any
+	)
+	switch {
+	case surface != "" && since > 0:
+		query = `SELECT COUNT(*) FROM engrams WHERE surface = ? AND ts > ?`
+		args = []any{surface, since}
+	case surface != "":
+		query = `SELECT COUNT(*) FROM engrams WHERE surface = ?`
+		args = []any{surface}
+	case since > 0:
+		query = `SELECT COUNT(*) FROM engrams WHERE ts > ?`
+		args = []any{since}
+	default:
+		query = `SELECT COUNT(*) FROM engrams`
+	}
+	row := s.reader.QueryRowContext(ctx, query, args...)
+	var n int64
+	if err := row.Scan(&n); err != nil {
+		return 0, fmt.Errorf("count: %w", err)
+	}
+	return n, nil
+}
+
 // CountBySurface returns engram count grouped by surface. Reader-pool
 // query — does not block writers. Used by the /metrics endpoint to
 // surface per-surface ingest visibility.

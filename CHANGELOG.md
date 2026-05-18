@@ -6,6 +6,30 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.20] — 2026-05-18
+
+Count endpoint — `GET /engrams/count` returns `{"count": N}` for fast badge counts and monitoring without fetching rows. Surface and since filters match the `/engrams` retrieval semantics. **Zero breaking change.**
+
+### Added
+
+- **`GET /engrams/count?[surface=X][&since=unix-ns]`** (`internal/api/routes.go`, `internal/api/server.go`):
+  - Returns `{"count": N}`. surface is optional (empty = all surfaces). since (optional) filters to engrams with ts > since.
+  - Registered as a literal pattern before `/engrams/{id}` (Go 1.22+ routing: literal always wins over wildcard).
+  - **`store.CountEngrams(ctx, surface, since)`** — single `SELECT COUNT(*)` with 0-2 WHERE clauses; reader-pool query, does not block writers.
+  - **5 store tests** (`internal/store/count_test.go`): empty, all surfaces, by surface, by since, surface+since combined.
+  - **4 API tests** (`internal/api/server_test.go`): empty → 0, all surfaces → N, by surface → N, 405 on POST.
+
+- **MCP bridge — `count_engrams` tool** (`bridge/python/eidetic_mcp/server.py`, `client.py`):
+  - `DaemonClient.count_engrams(surface="", since=0)` → `int`. Raises DaemonError on transport failure.
+  - `count_engrams` MCP tool with optional surface + since in inputSchema.
+  - **3 bridge tests** (`bridge/python/tests/test_client.py`): no args, with surface, with since.
+
+### Reference
+
+PR #54 · tag v0.0.20
+
+---
+
 ## [v0.0.19] — 2026-05-18
 
 Surgical single-engram removal — `DELETE /engrams/{id}` completes the point-CRUD surface (GET + DELETE by primary key). The existing surface-level `DELETE /engrams?surface=X` is unchanged. **Zero breaking change.**

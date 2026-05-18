@@ -169,6 +169,31 @@ func (s *Server) handleEngramsPOST(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]int64{"id": id})
 }
 
+// handleEngramsCount serves GET /engrams/count?[surface=X][&since=unix-ns].
+// Returns 200 + {"count": N}. surface is optional; omit to count across all
+// surfaces. since (optional) filters to engrams with ts > since. 405 on
+// non-GET. (v0.0.20+)
+func (s *Server) handleEngramsCount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+	surface := q.Get("surface")
+	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
+
+	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
+	defer cancel()
+
+	n, err := s.store.CountEngrams(ctx, surface, since)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]int64{"count": n})
+}
+
 // handleEngramsByID dispatches /engrams/{id} by method:
 //   - GET    → fetch a single engram by primary key (v0.0.18+)
 //   - DELETE → remove a single engram by primary key (v0.0.19+)
