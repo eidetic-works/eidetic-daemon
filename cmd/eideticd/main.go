@@ -22,6 +22,7 @@ import (
 	"github.com/eidetic-works/eidetic-daemon/internal/api"
 	"github.com/eidetic-works/eidetic-daemon/internal/auth"
 	"github.com/eidetic-works/eidetic-daemon/internal/capture"
+	eidetic_sync "github.com/eidetic-works/eidetic-daemon/internal/sync"
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
 )
 
@@ -41,12 +42,15 @@ func main() {
 	tcpAddr := flag.String("tcp", "", "TCP listen address (overrides default; opt-in via EIDETIC_TCP=1)")
 	authFlag := flag.Bool("auth", false, "enable Bearer-token caller authentication (also EIDETIC_AUTH=1); writes <dataDir>/auth-token (0600)")
 	showVersion := flag.Bool("version", false, "print version and exit")
+	syncNow := flag.Bool("sync-now", false, "upload engrams.db to Cloudflare R2 immediately (requires sync.json in dataDir) and exit")
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Println("eideticd", Version)
 		return
 	}
+
+	_ = syncNow // used below after store is open
 
 	dataDir := os.Getenv("EIDETIC_DATA_DIR")
 	if dataDir == "" {
@@ -69,6 +73,22 @@ func main() {
 		log.Fatalf("store open: %v", err)
 	}
 	defer s.Close()
+
+	// v0.0.24+: optional Cloudflare R2 sync (ADR-019). Opt-in via sync.json.
+	syncCfg, err := eidetic_sync.LoadConfig(dataDir)
+	if err != nil {
+		log.Printf("sync: config error (sync disabled): %v", err)
+	}
+	syncer := eidetic_sync.New(syncCfg, dbPath, s)
+
+	// --sync-now: upload immediately and exit (no daemon loop needed)
+	if *syncNow {
+		if err := syncer.SyncNow(); err != nil {
+			log.Fatalf("sync-now: %v", err)
+		}
+		log.Printf("sync-now: upload complete")
+		return
+	}
 
 	// v0.0.9+: opt-in caller authentication. Off by default — preserves
 	// W1 single-user UDS-trust model (SECURITY.md). On via -auth flag OR
@@ -164,6 +184,23 @@ func main() {
 		defer close(captureDone)
 		if err := watcher.Run(ctx); err != nil {
 			log.Printf("capture: %v", err)
+		}
+	}()
+
+	// v0.0.24+: periodic R2 sync poll — fires TriggerIfDue every 60s.
+	// No-ops if syncer is nil (sync.json absent → opt-out).
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := syncer.TriggerIfDue(); err != nil {
+					log.Printf("sync: %v", err)
+				}
+			}
 		}
 	}()
 

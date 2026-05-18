@@ -4,6 +4,19 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ## [Unreleased]
 
+### Added (v0.0.24 candidate — Cloudflare R2 sync, ADR-019)
+
+- **`internal/sync` package** — opt-in Cloudflare R2 file-level sync (ADR-019). Zero runtime cost when sync.json absent (disabled by default). Config: `~/.eidetic/sync.json` with `{worker_url, api_key, device_id, sync_interval}`. `Syncer.TriggerIfDue()` uploads when `sync_interval` elapsed + idle (no new rows for one 60s poll). `Syncer.SyncNow()` uploads immediately.
+- **`bridge/cloudflare/worker.js`** — Cloudflare Worker receiving upload POSTs from daemon. Auth: `Authorization: Bearer <EIDETIC_API_KEY>` + `X-Device-ID` header. Stores at R2 key `engrams/{device_id}/engrams-{ts}.db`. Auto-prunes: keeps 5 most recent backups per device. Endpoints: `POST /sync`, `GET /latest`, `GET /healthz`. 500 MB guard matches Worker R2 put limit.
+- **`bridge/cloudflare/wrangler.toml`** — Wrangler deploy config. R2 bucket binding `EIDETIC_SYNC_BUCKET`. API key is a Wrangler secret (`wrangler secret put EIDETIC_API_KEY`).
+- **`eideticd --sync-now` flag** — upload engrams.db immediately and exit. Useful for manual one-shot backup or post-export before machine wipe.
+- **60s sync poll goroutine in `cmd/eideticd/main.go`** — calls `syncer.TriggerIfDue()` every 60s. No-ops (nil guard) when sync.json absent.
+- **10 unit tests** (`internal/sync/syncer_test.go`): config load (missing/valid/bad-fields/malformed-json), nil-Syncer nil-safety (TriggerIfDue+SyncNow), HTTP contract (correct auth headers/body/Content-Type), non-201 worker response surfaces as error, missing-DB surfaces as error.
+
+### Decision recorded
+
+- **ADR-019 (2026-05-18)** in `docs/DECISIONS.md` — R2 file-level sync ($0.38/mo) chosen over D1 row-level sync ($5/mo paid floor). R2 stays in free tier at current 25MB dataset. See ADR for full cost table and architectural rationale.
+
 ---
 
 ## [v0.0.23] — 2026-05-18
