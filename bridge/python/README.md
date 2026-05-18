@@ -15,6 +15,7 @@ Per spec § 7 Open Q #5: this is the "separate Python wrapper" path — the daem
 | `purge_engrams` | `surface` (required), `before` (unix ns, default 0) | `{"deleted": N}`. Removes all engrams for the surface when `before=0`; only removes engrams with `ts < before` when set. Irreversible (v0.0.13+). |
 | `search_engrams` | `q` (required — FTS5 expression), `surface` (default all), `limit` (default 50, cap 500) | JSON array of engrams ordered by relevance rank (best match first). Same shape as `query_engrams`. `q` accepts bare keywords, `"phrase queries"`, `OR`/`AND`/`NOT` boolean operators (v0.0.14+). |
 | `recent_engrams` | `since` (unix ns, default 0), `limit` (default 50, cap 500) | JSON array of newest engrams across **all surfaces**, newest-first. `since=0` = no lower bound. Poll diff: pass last-seen `ts` as `since`. Same `[]Engram` shape (v0.0.15+). |
+| `insert_engram` | `surface` (required), `payload` (required), `ts` (unix ns, default server-now), `meta` (optional string) | Directly insert an engram, bypassing fsnotify. Returns `{"id": N}`. Immediately searchable + retrievable. Use for mobile, webhooks, relay pipelines, manual annotations (v0.0.16+). |
 
 ### Chunked-record reassembly (ADR-018)
 
@@ -118,6 +119,12 @@ recent_engrams()
 
 recent_engrams(since=1747500000000000000, limit=20)
 → [...]   # only engrams with ts > since, newest-first
+
+insert_engram(surface="mobile", payload="noted from phone")
+→ 1234   # integer engram ID
+
+insert_engram(surface="webhook", payload="stripe event body", meta='{"source":"stripe"}')
+→ 1235
 ```
 
 Surfaces depend on what the daemon is watching (default: `claude_code`, `cowork`, `cursor`). Use `list_surfaces()` to discover what's currently in the store.

@@ -106,6 +106,20 @@ class _UDSHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
+    def do_POST(self):  # noqa: N802
+        if self.path.startswith("/engrams"):
+            length = int(self.headers.get("Content-Length", 0))
+            self.rfile.read(length)  # consume body, ignore
+            self.send_response(201)
+            body = json.dumps({"id": 42}).encode()
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_response(404)
+        self.end_headers()
+
     def do_DELETE(self):  # noqa: N802
         if self.path.startswith("/engrams"):
             self._send_json({"deleted": 5})
@@ -338,3 +352,32 @@ def test_client_recent_engrams_empty_params_omitted(uds_socket_path: str):
     # If the fake server returns data, params were correctly omitted or ignored
     rows = client.recent_engrams(since=0, limit=50)
     assert isinstance(rows, tuple)
+
+
+def test_client_insert_engram_returns_id(uds_socket_path: str):
+    """POST /engrams returns {"id": N}; insert_engram returns the int id."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    engram_id = client.insert_engram(surface="claude_code", payload="hello api")
+    assert engram_id == 42
+
+
+def test_client_insert_engram_with_ts_and_meta(uds_socket_path: str):
+    """ts and meta params accepted; fake server ignores them but round-trip completes."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    engram_id = client.insert_engram(
+        surface="cursor", payload="annotated", ts=999_000_000, meta='{"k":"v"}'
+    )
+    assert isinstance(engram_id, int)
+    assert engram_id > 0
+
+
+def test_client_insert_engram_requires_surface(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    with pytest.raises(ValueError):
+        client.insert_engram(surface="", payload="x")
+
+
+def test_client_insert_engram_requires_payload(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    with pytest.raises(ValueError):
+        client.insert_engram(surface="vim", payload="")

@@ -41,6 +41,11 @@ Tools exposed:
     (v0.0.15+). `since` is unix epoch nanoseconds; 0 = no lower bound.
     Useful for a cross-surface activity snapshot without a keyword query.
 
+  insert_engram(surface, payload, ts=0, meta="")
+    Directly insert an engram into the daemon store (v0.0.16+). Bypasses
+    the fsnotify capture path. surface + payload required; ts defaults to
+    server-side now; meta is optional. Returns {"id": N}.
+
 Run:
 
     eideticd &                          # daemon listens on UDS
@@ -255,6 +260,41 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "required": [],
                 },
             ),
+            Tool(
+                name="insert_engram",
+                description=(
+                    "Directly insert an engram into the daemon store (v0.0.16+). "
+                    "Bypasses the fsnotify capture path — use this to inject engrams "
+                    "from sources the daemon doesn't watch (mobile, webhooks, API calls, "
+                    "manual annotations).\n\n"
+                    "`surface` and `payload` are required. `ts` defaults to now "
+                    "(Unix nanoseconds). `meta` is optional free-form JSON string.\n\n"
+                    "Returns the assigned engram ID. The engram is immediately "
+                    "searchable via search_engrams and retrievable via query_engrams."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "surface": {
+                            "type": "string",
+                            "description": "Surface tag, e.g. claude_code, cursor, mobile.",
+                        },
+                        "payload": {
+                            "type": "string",
+                            "description": "The engram content — text, JSON, markdown, etc.",
+                        },
+                        "ts": {
+                            "type": "integer",
+                            "description": "Timestamp in Unix nanoseconds. 0 or omit = server now.",
+                        },
+                        "meta": {
+                            "type": "string",
+                            "description": "Optional free-form JSON metadata string.",
+                        },
+                    },
+                    "required": ["surface", "payload"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -325,6 +365,23 @@ def build_server(client: DaemonClient | None = None) -> Any:
                 return [TextContent(type="text", text=f"error: {exc}")]
             payload = [asdict(r) for r in rows]
             return [TextContent(type="text", text=json.dumps(payload, indent=2))]
+
+        if name == "insert_engram":
+            surface = str(arguments.get("surface", "")).strip()
+            payload_text = str(arguments.get("payload", "")).strip()
+            if not surface:
+                return [TextContent(type="text", text="error: surface required")]
+            if not payload_text:
+                return [TextContent(type="text", text="error: payload required")]
+            ts = int(arguments.get("ts", 0))
+            meta = str(arguments.get("meta", ""))
+            try:
+                engram_id = daemon.insert_engram(
+                    surface=surface, payload=payload_text, ts=ts, meta=meta
+                )
+            except (DaemonError, ValueError) as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            return [TextContent(type="text", text=json.dumps({"id": engram_id}))]
 
         return [TextContent(type="text", text=f"error: unknown tool {name!r}")]
 

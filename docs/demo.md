@@ -267,6 +267,38 @@ recent_engrams(since=1747500000000000000, limit=20)
 
 ---
 
+## 5f. Direct API-side insert (v0.0.16+)
+
+```sh
+# Insert an engram bypassing the fsnotify capture path
+curl -X POST --unix-socket /tmp/eidetic-daemon.sock \
+  -H 'Content-Type: application/json' \
+  -d '{"surface":"mobile","payload":"noted from phone"}' \
+  http://localhost/engrams
+
+# With explicit timestamp (unix nanoseconds) and metadata
+curl -X POST --unix-socket /tmp/eidetic-daemon.sock \
+  -H 'Content-Type: application/json' \
+  -d '{"surface":"webhook","payload":"event body here","ts":1747500123456789,"meta":"{\"source\":\"stripe\"}"}' \
+  http://localhost/engrams
+```
+
+Expected:
+```json
+{"id": 1234}
+```
+
+Returns `201 Created`. `surface` and `payload` required; `ts` defaults to `time.Now().UnixNano()` server-side. The inserted engram is immediately searchable via `GET /search` and retrievable via `GET /engrams`.
+
+**Via MCP bridge** (`bridge/python/`, v0.0.16+):
+```python
+insert_engram(surface="mobile", payload="noted from phone")
+insert_engram(surface="webhook", payload="event body", ts=1747500123456789, meta='{"source":"stripe"}')
+# → 1234  (integer ID)
+```
+
+---
+
 ## 6. Latency
 
 The bench gates ship in CI:
