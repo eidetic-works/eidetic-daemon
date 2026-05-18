@@ -20,7 +20,7 @@ GUIDE (delete before submitting):
 `Week-scope:` short reference: "Day N daemon-X", "W2 substrate", etc.
 
 Avoid in diff (tripwires Track-C-word-block CI gate):
-  BFSI, SOC2, Axis Bank, enterprise tier, single-tenant deployment
+  BFSI, SOC2, enterprise tier, single-tenant deployment
   (SECURITY.md is excluded from the grep — that file may legitimately mention "trust boundary".)
 
 If a tripwire is intentional, reference `track-c-gate-fired` or an `ADR-NNN ... track-c` ADR in the description.

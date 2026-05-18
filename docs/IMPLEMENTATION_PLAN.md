@@ -303,7 +303,7 @@ Activity-gated, not calendar (phases fire on observable preconditions, not dates
 | **Phase 6** | Phase 5 green | Cross-compile artifacts + install.sh + launchd/systemd files | sub-agent |
 | **Phase 7** | Phase 6 green AND demo recorded AND ship-review clean | GitHub release + distribution post | implementer + operator (release click) |
 
-Calendar sketch (per PLAN.md Day-3→Day-7) maps roughly to Phase 0 → Phase 1+2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7. If any phase slips, ADR-008 triage rule fires at the Phase-4-equivalent (capture correctness gate) — defer Phase 6 (MCP bridge / marketplace) and Phase 7 (Axis pitch deck) to W2 if not green.
+Calendar sketch (per PLAN.md Day-3→Day-7) maps roughly to Phase 0 → Phase 1+2 → Phase 3 → Phase 4 → Phase 5 → Phase 6 → Phase 7. If any phase slips, ADR-008 triage rule fires at the Phase-4-equivalent (capture correctness gate) — defer Phase 6 (MCP bridge / marketplace) and Phase 7 (investor pitch deck) to W2 if not green.
 
 ---
 
