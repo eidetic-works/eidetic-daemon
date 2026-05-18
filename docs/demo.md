@@ -299,6 +299,28 @@ insert_engram(surface="webhook", payload="event body", ts=1747500123456789, meta
 
 ---
 
+## 5g. Point lookup by ID (v0.0.18+)
+
+```sh
+# Fetch a single engram by its primary-key ID
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/engrams/1234'
+```
+
+Expected:
+```json
+{"id":1234,"surface":"mobile","ts":1747500000000000000,"payload":"noted from phone","meta":""}
+```
+
+Returns `200 OK`. `404 Not Found` when the ID doesn't exist. `400 Bad Request` on a non-integer or zero id.
+
+**Via MCP bridge** (`bridge/python/`, v0.0.18+):
+```python
+e = get_engram_by_id(id=1234)
+# → Engram(id=1234, surface='mobile', ts=..., payload='noted from phone', meta='')
+```
+
+---
+
 ## 6. Latency
 
 The bench gates ship in CI:

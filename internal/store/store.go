@@ -308,6 +308,21 @@ func (s *Store) Count(ctx context.Context) (int64, error) {
 	return n, nil
 }
 
+// GetByID fetches a single engram by primary key. Uses the reader pool.
+// Returns ErrNotFound when id has no matching row.
+func (s *Store) GetByID(ctx context.Context, id int64) (engram.Engram, error) {
+	row := s.reader.QueryRowContext(ctx,
+		`SELECT id, surface, ts, payload, COALESCE(meta, '') FROM engrams WHERE id = ?`, id)
+	var e engram.Engram
+	if err := row.Scan(&e.ID, &e.Surface, &e.TS, &e.Payload, &e.Meta); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return engram.Engram{}, ErrNotFound
+		}
+		return engram.Engram{}, fmt.Errorf("get by id: %w", err)
+	}
+	return e, nil
+}
+
 // CountBySurface returns engram count grouped by surface. Reader-pool
 // query — does not block writers. Used by the /metrics endpoint to
 // surface per-surface ingest visibility.
@@ -429,6 +444,9 @@ var ErrEmptyQuery = errors.New("search query required")
 // ErrInvalidEngram wraps validation failures from Insert/InsertBatch so HTTP
 // handlers can map them to 400 rather than 500.
 var ErrInvalidEngram = errors.New("invalid engram")
+
+// ErrNotFound is returned by GetByID when no row matches the given id.
+var ErrNotFound = errors.New("engram not found")
 
 // Recent returns the N most recent engrams across ALL surfaces, ordered by
 // ts DESC. When since > 0 only engrams with ts > since are returned (unix ns).

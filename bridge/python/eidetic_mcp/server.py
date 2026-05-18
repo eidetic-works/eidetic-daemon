@@ -50,6 +50,10 @@ Tools exposed:
     Bulk insert a list of engram dicts in one atomic transaction (v0.0.17+).
     Each item needs surface + payload; ts + meta optional. Returns {"inserted": N}.
 
+  get_engram_by_id(id)
+    Fetch a single engram by its primary-key ID (v0.0.18+). Returns the full
+    Engram JSON. Error when ID does not exist or is not a positive integer.
+
 Run:
 
     eideticd &                          # daemon listens on UDS
@@ -329,6 +333,24 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "required": ["items"],
                 },
             ),
+            Tool(
+                name="get_engram_by_id",
+                description=(
+                    "Fetch a single engram by its primary-key ID (v0.0.18+). "
+                    "Returns the full Engram JSON on success. "
+                    "Returns an error string when the ID does not exist or is invalid."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "id": {
+                            "type": "integer",
+                            "description": "Positive integer primary key of the engram.",
+                        },
+                    },
+                    "required": ["id"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -426,6 +448,18 @@ def build_server(client: DaemonClient | None = None) -> Any:
             except (DaemonError, ValueError) as exc:
                 return [TextContent(type="text", text=f"error: {exc}")]
             return [TextContent(type="text", text=json.dumps({"inserted": n}))]
+
+        if name == "get_engram_by_id":
+            raw_id = arguments.get("id")
+            try:
+                engram_id = int(raw_id)
+            except (TypeError, ValueError):
+                return [TextContent(type="text", text=f"error: id must be a positive integer")]
+            try:
+                e = daemon.get_engram_by_id(engram_id)
+            except (DaemonError, ValueError) as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            return [TextContent(type="text", text=json.dumps(asdict(e), indent=2))]
 
         return [TextContent(type="text", text=f"error: unknown tool {name!r}")]
 

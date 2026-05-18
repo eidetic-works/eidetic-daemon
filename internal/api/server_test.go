@@ -988,3 +988,113 @@ func TestBatchInsertMethodNotAllowed(t *testing.T) {
 		t.Fatalf("want 405, got %d", resp.StatusCode)
 	}
 }
+
+// --- GET /engrams/{id} tests ---
+
+func seedOneEngram(t *testing.T, addr, surface, payload string) int64 {
+	t.Helper()
+	resp := postEngram(t, addr, fmt.Sprintf(`{"surface":%q,"payload":%q,"ts":1000000}`, surface, payload))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("seed: want 201, got %d", resp.StatusCode)
+	}
+	var result struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("seed decode: %v", err)
+	}
+	return result.ID
+}
+
+func TestGetByIDReturns200AndEngram(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	id := seedOneEngram(t, srv.Addr().String(), "claude_code", "hello world")
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/engrams/%d", srv.Addr(), id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+
+	var e engram.Engram
+	if err := json.NewDecoder(resp.Body).Decode(&e); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if e.ID != id {
+		t.Errorf("want id=%d, got %d", id, e.ID)
+	}
+	if e.Payload != "hello world" {
+		t.Errorf("want payload='hello world', got %q", e.Payload)
+	}
+	if e.Surface != "claude_code" {
+		t.Errorf("want surface='claude_code', got %q", e.Surface)
+	}
+}
+
+func TestGetByIDNotFoundReturns404(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/engrams/999999", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("want 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetByIDNonIntegerReturns400(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/engrams/abc", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetByIDZeroReturns400(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/engrams/0", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestGetByIDMethodNotAllowed(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("http://%s/engrams/1", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("want 405, got %d", resp.StatusCode)
+	}
+}

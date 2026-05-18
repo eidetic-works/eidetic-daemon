@@ -6,6 +6,30 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.18] — 2026-05-18
+
+Point-lookup by primary key — `GET /engrams/{id}` lets callers fetch a single engram when they already know its ID (e.g. after a `POST /engrams` insert). Completes the basic CRUD surface. **Zero breaking change.**
+
+### Added
+
+- **`GET /engrams/{id}`** (`internal/api/routes.go`, `internal/api/server.go`):
+  - Path parameter `{id}` parsed via Go 1.22 `r.PathValue("id")`.
+  - Returns `200 + Engram JSON` on success; 400 on non-integer or non-positive id; 404 when no row matches; 405 on non-GET.
+  - **`store.ErrNotFound`** sentinel: `GetByID` returns `ErrNotFound` wrapping `sql.ErrNoRows`; HTTP handler maps to 404.
+  - **3 store tests** (`internal/store/get_by_id_test.go`): returns engram, 999999 → ErrNotFound, 0 → ErrNotFound.
+  - **5 API tests** (`internal/api/server_test.go`): 200+engram, 404 on unknown id, 400 on non-integer, 400 on zero, 405 on DELETE.
+
+- **MCP bridge — `get_engram_by_id` tool** (`bridge/python/eidetic_mcp/server.py`, `client.py`):
+  - `DaemonClient.get_engram_by_id(id)` → `Engram`. Validates id > 0 client-side; raises ValueError on invalid, DaemonError on 404/transport failure.
+  - `get_engram_by_id` MCP tool with `id` integer in inputSchema.
+  - **4 bridge tests** (`bridge/python/tests/test_client.py`): returns Engram, 404 raises DaemonError, zero raises ValueError, negative raises ValueError.
+
+### Reference
+
+PR #52 · tag v0.0.18
+
+---
+
 ## [v0.0.17] — 2026-05-18
 
 Bulk insert via `POST /engrams/batch` — one round-trip for N engrams in a single transaction. Complements the single-insert `POST /engrams` from v0.0.16. **Zero breaking change.**
