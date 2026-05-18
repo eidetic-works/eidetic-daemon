@@ -1,0 +1,10 @@
+name = "eidetic-sync"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+[[r2_buckets]]
+binding = "EIDETIC_SYNC_BUCKET"
+bucket_name = "eidetic-engrams"
+
+# EIDETIC_API_KEY must be set as a secret (not in wrangler.toml):
+#   wrangler secret put EIDETIC_API_KEY
