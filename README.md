@@ -28,7 +28,12 @@ Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + win
 ## Install
 
 ```sh
-curl -fsSL https://nucleusos.dev/install.sh | sh
+# One-liner (macOS + Linux)
+curl -fsSL https://eidetic.works/install.sh | sh
+
+# Homebrew (macOS, recommended)
+brew tap eidetic-works/nucleus
+brew install eideticd
 ```
 
 To remove:
@@ -38,17 +43,18 @@ curl -fsSL https://eidetic.works/uninstall.sh | sh          # stops service, rem
 curl -fsSL https://eidetic.works/uninstall.sh | sh -s -- --purge-data  # also wipes engram data (irreversible)
 ```
 
-Latest release: [v0.0.23](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.23) (3 cross-compile assets + `SHA256SUMS.txt` attached; pure-Go, no CGO). See `scripts/install.sh` and `scripts/uninstall.sh` for what the one-line installers run.
+Latest release: [v0.0.25](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.25) (darwin-arm64, linux-amd64, windows-amd64; pure-Go, no CGO). See `scripts/install.sh` and `scripts/uninstall.sh` for what the one-line installers run.
 
 Full demo flow with expected outputs at every step: [`docs/demo.md`](./docs/demo.md). Architecture decisions: [`docs/DECISIONS.md`](./docs/DECISIONS.md). Release notes per version: [`CHANGELOG.md`](./CHANGELOG.md).
 
 ### MCP bridge (Cursor / Claude Code / Cline / any MCP client)
 
-Optional Python wrapper exposing the daemon's UDS API as MCP tools. Lives at [`bridge/python/`](./bridge/python). Process-isolated from the daemon (separate install, separate crash surface).
+Python wrapper exposing the daemon's UDS API as MCP tools. Process-isolated from the daemon (separate install, separate crash surface).
 
 ```sh
-pip install -e bridge/python
-# Then add to your MCP client config:
+pip install eidetic-mcp
+claude mcp add eidetic -- python -m eidetic_mcp.server
+# Or for Cursor / other MCP clients:
 #   {"eidetic": {"command": "python", "args": ["-m", "eidetic_mcp.server"]}}
 ```
 
