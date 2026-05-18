@@ -63,7 +63,7 @@ func TestWatcherOversizedPayloadChunked(t *testing.T) {
 		t.Errorf("SkippedPayloadTooLarge() = %d, want 0 (chunking handles oversized; pre-filter is defense-only)", got)
 	}
 
-	rows, err := st.Retrieve(context.Background(), "claude_code", 0, 50)
+	rows, err := st.Retrieve(context.Background(), "claude_code", 0, 0, 50)
 	if err != nil {
 		t.Fatal(err)
 	}

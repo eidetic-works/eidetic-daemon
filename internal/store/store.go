@@ -223,7 +223,7 @@ func validateEngram(e engram.Engram) error {
 // shape `WHERE surface=? AND (?=0 OR ts>?)` worked but was fragile to refactor:
 // dropping the `hasSince` flag would silently turn unfiltered queries into
 // 0-row results.
-func (s *Store) Retrieve(ctx context.Context, surface string, since int64, limit int) ([]engram.Engram, error) {
+func (s *Store) Retrieve(ctx context.Context, surface string, since, before int64, limit int) ([]engram.Engram, error) {
 	if surface == "" {
 		return nil, errors.New("surface required")
 	}
@@ -240,12 +240,23 @@ func (s *Store) Retrieve(ctx context.Context, surface string, since int64, limit
 		rows *sql.Rows
 		err  error
 	)
-	if since > 0 {
+	switch {
+	case since > 0 && before > 0:
+		rows, err = s.reader.QueryContext(ctx,
+			baseSelect+`WHERE surface = ? AND ts > ? AND ts < ?`+orderLimit,
+			surface, since, before, limit,
+		)
+	case since > 0:
 		rows, err = s.reader.QueryContext(ctx,
 			baseSelect+`WHERE surface = ? AND ts > ?`+orderLimit,
 			surface, since, limit,
 		)
-	} else {
+	case before > 0:
+		rows, err = s.reader.QueryContext(ctx,
+			baseSelect+`WHERE surface = ? AND ts < ?`+orderLimit,
+			surface, before, limit,
+		)
+	default:
 		rows, err = s.reader.QueryContext(ctx,
 			baseSelect+`WHERE surface = ?`+orderLimit,
 			surface, limit,
@@ -499,7 +510,7 @@ var ErrNotFound = errors.New("engram not found")
 //
 // This is the "what have I been doing?" cross-surface query; callers that
 // need surface isolation should use Retrieve instead.
-func (s *Store) Recent(ctx context.Context, since int64, limit int) ([]engram.Engram, error) {
+func (s *Store) Recent(ctx context.Context, since, before int64, limit int) ([]engram.Engram, error) {
 	if limit <= 0 {
 		limit = 50
 	} else if limit > 500 {
@@ -513,12 +524,23 @@ func (s *Store) Recent(ctx context.Context, since int64, limit int) ([]engram.En
 		rows *sql.Rows
 		err  error
 	)
-	if since > 0 {
+	switch {
+	case since > 0 && before > 0:
+		rows, err = s.reader.QueryContext(ctx,
+			baseSelect+`WHERE ts > ? AND ts < ?`+orderLimit,
+			since, before, limit,
+		)
+	case since > 0:
 		rows, err = s.reader.QueryContext(ctx,
 			baseSelect+`WHERE ts > ?`+orderLimit,
 			since, limit,
 		)
-	} else {
+	case before > 0:
+		rows, err = s.reader.QueryContext(ctx,
+			baseSelect+`WHERE ts < ?`+orderLimit,
+			before, limit,
+		)
+	default:
 		rows, err = s.reader.QueryContext(ctx,
 			baseSelect+orderLimit,
 			limit,

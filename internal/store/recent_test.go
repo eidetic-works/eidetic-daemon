@@ -31,7 +31,7 @@ func TestRecentDefaultLimit(t *testing.T) {
 		}
 	}
 
-	rows, err := s.Recent(ctx, 0, 0)
+	rows, err := s.Recent(ctx, 0, 0, 0)
 	if err != nil {
 		t.Fatalf("recent: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestRecentLimitClamped(t *testing.T) {
 		}
 	}
 
-	rows, err := s.Recent(ctx, 0, 3)
+	rows, err := s.Recent(ctx, 0, 0, 3)
 	if err != nil {
 		t.Fatalf("recent: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestRecentSinceFilter(t *testing.T) {
 		}
 	}
 
-	rows, err := s.Recent(ctx, 2, 50)
+	rows, err := s.Recent(ctx, 2, 0, 50)
 	if err != nil {
 		t.Fatalf("recent with since: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestRecentCrossSurface(t *testing.T) {
 		}
 	}
 
-	rows, err := s.Recent(ctx, 0, 50)
+	rows, err := s.Recent(ctx, 0, 0, 50)
 	if err != nil {
 		t.Fatalf("recent: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestRecentCrossSurface(t *testing.T) {
 func TestRecentEmptyDB(t *testing.T) {
 	s := tempStore(t)
 
-	rows, err := s.Recent(context.Background(), 0, 50)
+	rows, err := s.Recent(context.Background(), 0, 0, 50)
 	if err != nil {
 		t.Fatalf("recent on empty db: %v", err)
 	}
@@ -140,11 +140,68 @@ func TestRecentLimitMax500(t *testing.T) {
 	}
 
 	// limit > 500 should be clamped; still returns only 10 available
-	rows, err := s.Recent(ctx, 0, 9999)
+	rows, err := s.Recent(ctx, 0, 0, 9999)
 	if err != nil {
 		t.Fatalf("recent: %v", err)
 	}
 	if len(rows) != 10 {
 		t.Fatalf("want 10 rows, got %d", len(rows))
+	}
+}
+
+func TestRecentBeforeFilter(t *testing.T) {
+	s := tempStore(t)
+	ctx := context.Background()
+	base := int64(1000)
+
+	for i := 0; i < 10; i++ {
+		_, err := s.Insert(ctx, engram.Engram{
+			Surface: "x", TS: base + int64(i*100), Payload: "p",
+		})
+		if err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+	// before=base+500 → ts < 1500: i=0..4 (5 rows).
+	rows, err := s.Recent(ctx, 0, base+500, 50)
+	if err != nil {
+		t.Fatalf("recent: %v", err)
+	}
+	if len(rows) != 5 {
+		t.Fatalf("want 5 rows, got %d", len(rows))
+	}
+	for _, r := range rows {
+		if r.TS >= base+500 {
+			t.Errorf("before filter leaked ts=%d", r.TS)
+		}
+	}
+}
+
+func TestRecentSinceAndBefore(t *testing.T) {
+	s := tempStore(t)
+	ctx := context.Background()
+	base := int64(1000)
+
+	for i := 0; i < 10; i++ {
+		_, err := s.Insert(ctx, engram.Engram{
+			Surface: "x", TS: base + int64(i*100), Payload: "p",
+		})
+		if err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+	// since=base+200, before=base+700 → ts in (1200, 1700): i=3,4,5 (3 rows: 1300,1400,1500,1600 = 4).
+	rows, err := s.Recent(ctx, base+200, base+700, 50)
+	if err != nil {
+		t.Fatalf("recent: %v", err)
+	}
+	// ts > 1200 AND ts < 1700: 1300,1400,1500,1600 = 4 rows
+	if len(rows) != 4 {
+		t.Fatalf("want 4 rows in window, got %d", len(rows))
+	}
+	for _, r := range rows {
+		if r.TS <= base+200 || r.TS >= base+700 {
+			t.Errorf("window filter leaked ts=%d", r.TS)
+		}
 	}
 }

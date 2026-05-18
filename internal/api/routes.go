@@ -79,12 +79,13 @@ func (s *Server) handleEngramsGET(w http.ResponseWriter, r *http.Request) {
 
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
+	before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
 
 	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
 	defer cancel()
 
 	start := time.Now()
-	rows, err := s.store.Retrieve(ctx, surface, since, limit)
+	rows, err := s.store.Retrieve(ctx, surface, since, before, limit)
 	if s.queryLatency != nil {
 		s.queryLatency.Record(time.Since(start))
 	}
@@ -348,12 +349,13 @@ func (s *Server) handleRecent(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
+	before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
 	limit, _ := strconv.Atoi(q.Get("limit"))
 
 	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
 	defer cancel()
 
-	rows, err := s.store.Recent(ctx, since, limit)
+	rows, err := s.store.Recent(ctx, since, before, limit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

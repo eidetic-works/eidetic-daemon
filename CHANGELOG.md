@@ -6,6 +6,40 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.21] — 2026-05-18
+
+`before` upper-bound filter on `GET /engrams` and `GET /recent` — callers can now scope queries to a time window (`since=<lower>&before=<upper>`) or just a ceiling (`before=<cutoff>`). Enables polling diffs, sliding windows, and cursor-based pagination without fetching all rows. **Zero breaking change — all existing calls omit `before` and see unchanged behaviour.**
+
+### Added
+
+- **`GET /engrams?…&before=unix-ns`** (`internal/api/routes.go`, `internal/store/store.go`):
+  - `store.Retrieve` now accepts `before int64` between `since` and `limit` (4-branch switch: neither, since-only, before-only, both).
+  - `handleEngramsGET` parses `before` from query params; zero/absent = no upper bound.
+  - **2 store tests** (`internal/store/store_test.go`): `TestRetrieveBeforeFilter`, `TestRetrieveSinceAndBefore`.
+  - **2 API tests** (`internal/api/server_test.go`): `TestGetEngramsBeforeFilter`, `TestGetEngramsSinceAndBefore`.
+
+- **`GET /recent?…&before=unix-ns`** (`internal/api/routes.go`, `internal/store/store.go`):
+  - `store.Recent` now accepts `before int64` between `since` and `limit`; same 4-branch switch.
+  - `handleRecent` parses `before` from query params; zero/absent = no upper bound.
+  - **2 store tests** (`internal/store/recent_test.go`): `TestRecentBeforeFilter`, `TestRecentSinceAndBefore`.
+  - **1 API test** (`internal/api/server_test.go`): `TestGetRecentBeforeFilter`.
+
+- **MCP bridge — `before` kwarg on `query_engrams` and `recent_engrams`** (`bridge/python/eidetic_mcp/client.py`, `server.py`):
+  - `DaemonClient.query_engrams(…, before=0)` — forwards `before` to `GET /engrams` when non-zero.
+  - `DaemonClient.recent_engrams(…, before=0, …)` — forwards `before` to `GET /recent` when non-zero.
+  - Tool inputSchemas updated to expose `before` as optional integer.
+  - **4 bridge tests** (`bridge/python/tests/test_client.py`): query with before, query with since+before, recent with before, recent with since+before.
+
+### Changed (non-breaking)
+
+- `store.Retrieve` and `store.Recent` signatures gain `before int64` as a new positional arg (between `since` and `limit`). All internal callers (bench, capture, api tests) updated to pass `0`.
+
+### Reference
+
+PR #55 · tag v0.0.21
+
+---
+
 ## [v0.0.20] — 2026-05-18
 
 Count endpoint — `GET /engrams/count` returns `{"count": N}` for fast badge counts and monitoring without fetching rows. Surface and since filters match the `/engrams` retrieval semantics. **Zero breaking change.**
