@@ -9,6 +9,7 @@ from __future__ import annotations
 import http.server
 import json
 import os
+import re
 import socket
 import socketserver
 import threading
@@ -73,6 +74,14 @@ class _UDSHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802
         if self.path == "/healthz":
             self._send_json({"status": "ok"})
+            return
+        if re.match(r"^/engrams/\d+$", self.path):
+            engram_id = int(self.path.split("/")[-1])
+            if engram_id == 999:
+                self.send_response(404)
+                self.end_headers()
+                return
+            self._send_json({"id": engram_id, "surface": "claude_code", "ts": 100, "payload": "hi", "meta": ""})
             return
         if self.path.startswith("/engrams"):
             self._send_json([
@@ -425,3 +434,29 @@ def test_client_insert_engrams_batch_missing_surface_raises(uds_socket_path: str
     client = DaemonClient(uds_path=uds_socket_path)
     with pytest.raises(ValueError):
         client.insert_engrams_batch([{"payload": "no surface"}])
+
+
+def test_client_get_engram_by_id_returns_engram(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    e = client.get_engram_by_id(42)
+    assert e.id == 42
+    assert e.surface == "claude_code"
+    assert e.payload == "hi"
+
+
+def test_client_get_engram_by_id_not_found_raises(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    with pytest.raises(DaemonError):
+        client.get_engram_by_id(999)
+
+
+def test_client_get_engram_by_id_zero_raises_value_error(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    with pytest.raises(ValueError):
+        client.get_engram_by_id(0)
+
+
+def test_client_get_engram_by_id_negative_raises_value_error(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    with pytest.raises(ValueError):
+        client.get_engram_by_id(-1)

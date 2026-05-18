@@ -320,6 +320,19 @@ class DaemonClient:
         return int(result["inserted"])
 
 
+    def get_engram_by_id(self, id: int) -> Engram:
+        """GET /engrams/{id} — fetch a single engram by primary key (v0.0.18+).
+
+        Returns the matching Engram. Raises DaemonError with status 404 if no
+        engram has that ID, or on any transport / parse failure.
+        Raises ValueError if id is not a positive integer.
+        """
+        if not isinstance(id, int) or id <= 0:
+            raise ValueError(f"id must be a positive integer, got {id!r}")
+        body = self._get_json(f"/engrams/{id}")
+        return _parse_engram(body)
+
+
 def _parse_engram(row: object) -> Engram:
     if not isinstance(row, dict):
         raise DaemonError(f"engram row not object: {row!r}")
