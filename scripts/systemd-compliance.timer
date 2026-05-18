@@ -1,0 +1,14 @@
+[Unit]
+Description=eidetic-daemon compliance timer — daily retention pass
+Requires=eideticd-compliance.service
+
+[Timer]
+# Fire once daily at 03:00 local time.
+OnCalendar=*-*-* 03:00:00
+# Catch up if machine was off at scheduled time.
+Persistent=true
+# Randomize up to 10 minutes to avoid thundering-herd on multi-user machines.
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

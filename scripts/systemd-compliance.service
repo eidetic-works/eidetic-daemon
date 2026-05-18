@@ -1,0 +1,23 @@
+# eideticd-compliance systemd service + timer
+# Runs once daily at 03:00 local time.
+#
+# Install:
+#   cp scripts/systemd-compliance.service ~/.config/systemd/user/eideticd-compliance.service
+#   cp scripts/systemd-compliance.timer ~/.config/systemd/user/eideticd-compliance.timer
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now eideticd-compliance.timer
+#
+# Status:
+#   systemctl --user status eideticd-compliance.timer
+#   journalctl --user -u eideticd-compliance
+
+[Unit]
+Description=eidetic-daemon compliance — per-surface data retention
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/eideticd-compliance
+# Captures audit output — also written to ~/.eidetic/compliance.log by the binary.
+StandardOutput=journal
+StandardError=journal
