@@ -4,6 +4,12 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ## [Unreleased]
 
+---
+
+## [v0.0.25] — 2026-05-18
+
+Compliance daemon, PyPI publish, and scheduler files.
+
 ### Added
 
 - **`cmd/eideticd-compliance`** — compliance daemon for per-surface data retention. Reads `~/.eidetic/retention-policy.json` (or `$EIDETIC_DATA_DIR/retention-policy.json`), purges rows older than configured day thresholds per surface, appends audit lines to `~/.eidetic/compliance.log`. `--dry-run` flag reports without deleting. Designed to run via cron / launchd timer / systemd timer — runs one pass and exits. Ships as a separate binary (`eideticd-compliance`). **Zero impact on daemon uptime** — operates against the same `engrams.db` via the existing writer pool.
