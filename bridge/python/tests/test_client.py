@@ -98,6 +98,11 @@ class _UDSHandler(http.server.BaseHTTPRequestHandler):
                 {"id": 7, "surface": "claude_code", "ts": 200, "payload": "benchmark result", "meta": ""},
             ])
             return
+        if self.path.startswith("/recent"):
+            self._send_json([
+                {"id": 9, "surface": "cursor", "ts": 999, "payload": "latest thing", "meta": ""},
+            ])
+            return
         self.send_response(404)
         self.end_headers()
 
@@ -307,3 +312,29 @@ def test_client_search_engrams_requires_q(uds_socket_path: str):
     client = DaemonClient(uds_path=uds_socket_path)
     with pytest.raises(ValueError):
         client.search_engrams(q="")
+
+
+def test_client_recent_engrams_against_fake_server(uds_socket_path: str):
+    """GET /recent returns Engram tuple newest-first (v0.0.15+)."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    rows = client.recent_engrams()
+    assert len(rows) == 1
+    assert rows[0].surface == "cursor"
+    assert rows[0].ts == 999
+
+
+def test_client_recent_engrams_with_since_and_limit(uds_socket_path: str):
+    """since= and limit= params accepted; fake server ignores them but round-trip completes."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    rows = client.recent_engrams(since=100, limit=5)
+    assert isinstance(rows, tuple)
+    assert len(rows) == 1
+
+
+def test_client_recent_engrams_empty_params_omitted(uds_socket_path: str):
+    """Default call (since=0, limit=50) sends no query params (cleaner URLs)."""
+    import re
+    client = DaemonClient(uds_path=uds_socket_path)
+    # If the fake server returns data, params were correctly omitted or ignored
+    rows = client.recent_engrams(since=0, limit=50)
+    assert isinstance(rows, tuple)

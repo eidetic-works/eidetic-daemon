@@ -220,6 +220,31 @@ class DaemonClient:
             raise DaemonError(f"expected array, got {type(body).__name__}")
         return tuple(_parse_engram(row) for row in body)
 
+    def recent_engrams(
+        self,
+        since: int = 0,
+        limit: int = 50,
+    ) -> tuple[Engram, ...]:
+        """GET /recent — newest engrams across all surfaces (v0.0.15+).
+
+        since: Unix nanoseconds; only return engrams with ts > since (0 = all).
+        limit: 1-500, default 50.
+        Results are ordered newest-first. Returns the same Engram tuple shape
+        as query_engrams for client compatibility.
+
+        Raises DaemonError on transport failure or if daemon predates v0.0.15.
+        """
+        params: dict[str, str] = {}
+        if since > 0:
+            params["since"] = str(since)
+        if limit != 50:
+            params["limit"] = str(limit)
+        qs = f"?{urlencode(params)}" if params else ""
+        body = self._get_json(f"/recent{qs}")
+        if not isinstance(body, list):
+            raise DaemonError(f"expected array, got {type(body).__name__}")
+        return tuple(_parse_engram(row) for row in body)
+
 
 def _parse_engram(row: object) -> Engram:
     if not isinstance(row, dict):

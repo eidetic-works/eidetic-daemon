@@ -36,6 +36,11 @@ Tools exposed:
     ("benchmark result"), OR/AND/NOT boolean operators. Results ordered
     by relevance rank. Optional `surface` filter narrows to one surface.
 
+  recent_engrams(since=0, limit=50)
+    Return newest engrams across all surfaces, ordered newest-first
+    (v0.0.15+). `since` is unix epoch nanoseconds; 0 = no lower bound.
+    Useful for a cross-surface activity snapshot without a keyword query.
+
 Run:
 
     eideticd &                          # daemon listens on UDS
@@ -224,6 +229,32 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "required": ["q"],
                 },
             ),
+            Tool(
+                name="recent_engrams",
+                description=(
+                    "Return the most recent engrams across all surfaces, newest first "
+                    "(v0.0.15+). Useful for getting a quick snapshot of recent activity "
+                    "without a surface filter or keyword query.\n\n"
+                    "Optional `since`: Unix nanoseconds; only return engrams with "
+                    "ts > since (0 or omit = all). Optional `limit` (default 50, max 500)."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "since": {
+                            "type": "integer",
+                            "description": "Unix nanoseconds lower bound (exclusive). 0 = no filter.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results (default 50, max 500).",
+                            "minimum": 1,
+                            "maximum": 500,
+                        },
+                    },
+                    "required": [],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -281,6 +312,16 @@ def build_server(client: DaemonClient | None = None) -> Any:
             try:
                 rows = daemon.search_engrams(q=q, surface=surface, limit=limit)
             except (DaemonError, ValueError) as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            payload = [asdict(r) for r in rows]
+            return [TextContent(type="text", text=json.dumps(payload, indent=2))]
+
+        if name == "recent_engrams":
+            since = int(arguments.get("since", 0))
+            limit = int(arguments.get("limit", 50))
+            try:
+                rows = daemon.recent_engrams(since=since, limit=limit)
+            except DaemonError as exc:
                 return [TextContent(type="text", text=f"error: {exc}")]
             payload = [asdict(r) for r in rows]
             return [TextContent(type="text", text=json.dumps(payload, indent=2))]

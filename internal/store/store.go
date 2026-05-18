@@ -426,6 +426,57 @@ func (s *Store) Search(ctx context.Context, q, surface string, limit int) ([]eng
 // ErrEmptyQuery is returned by Search when the query string is empty.
 var ErrEmptyQuery = errors.New("search query required")
 
+// Recent returns the N most recent engrams across ALL surfaces, ordered by
+// ts DESC. When since > 0 only engrams with ts > since are returned (unix ns).
+// limit follows the same clamping as Retrieve (default 50, max 500). Uses the
+// reader pool — does not block writers.
+//
+// This is the "what have I been doing?" cross-surface query; callers that
+// need surface isolation should use Retrieve instead.
+func (s *Store) Recent(ctx context.Context, since int64, limit int) ([]engram.Engram, error) {
+	if limit <= 0 {
+		limit = 50
+	} else if limit > 500 {
+		limit = 500
+	}
+
+	const baseSelect = `SELECT id, surface, ts, payload, COALESCE(meta, '') FROM engrams `
+	const orderLimit = ` ORDER BY ts DESC LIMIT ?`
+
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if since > 0 {
+		rows, err = s.reader.QueryContext(ctx,
+			baseSelect+`WHERE ts > ?`+orderLimit,
+			since, limit,
+		)
+	} else {
+		rows, err = s.reader.QueryContext(ctx,
+			baseSelect+orderLimit,
+			limit,
+		)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("recent query: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]engram.Engram, 0, limit)
+	for rows.Next() {
+		var e engram.Engram
+		if err := rows.Scan(&e.ID, &e.Surface, &e.TS, &e.Payload, &e.Meta); err != nil {
+			return nil, fmt.Errorf("recent scan: %w", err)
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("recent row iter: %w", err)
+	}
+	return out, nil
+}
+
 // defaultDBPath resolves $EIDETIC_DATA_DIR or ~/.eidetic/engrams.db
 // per spec § 2.2.
 func defaultDBPath() (string, error) {

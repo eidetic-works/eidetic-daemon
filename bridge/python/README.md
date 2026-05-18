@@ -14,6 +14,7 @@ Per spec § 7 Open Q #5: this is the "separate Python wrapper" path — the daem
 | `list_surfaces` | (none) | `{"surface": count, ...}` — every surface the daemon has seen with its engram count (v0.0.13+). Empty store → `{}`. Use for discovery before `query_engrams`. |
 | `purge_engrams` | `surface` (required), `before` (unix ns, default 0) | `{"deleted": N}`. Removes all engrams for the surface when `before=0`; only removes engrams with `ts < before` when set. Irreversible (v0.0.13+). |
 | `search_engrams` | `q` (required — FTS5 expression), `surface` (default all), `limit` (default 50, cap 500) | JSON array of engrams ordered by relevance rank (best match first). Same shape as `query_engrams`. `q` accepts bare keywords, `"phrase queries"`, `OR`/`AND`/`NOT` boolean operators (v0.0.14+). |
+| `recent_engrams` | `since` (unix ns, default 0), `limit` (default 50, cap 500) | JSON array of newest engrams across **all surfaces**, newest-first. `since=0` = no lower bound. Poll diff: pass last-seen `ts` as `since`. Same `[]Engram` shape (v0.0.15+). |
 
 ### Chunked-record reassembly (ADR-018)
 
@@ -111,6 +112,12 @@ search_engrams(q="benchmark latency")
 
 search_engrams(q='"meetup tomorrow"', surface="cursor", limit=3)
 → [...]   # phrase query, surface-filtered, top 3 by relevance
+
+recent_engrams()
+→ [{"id":N, "surface":"cursor", "ts":..., "payload":"...", "meta":"..."}, ...]  # 50 newest, all surfaces
+
+recent_engrams(since=1747500000000000000, limit=20)
+→ [...]   # only engrams with ts > since, newest-first
 ```
 
 Surfaces depend on what the daemon is watching (default: `claude_code`, `cowork`, `cursor`). Use `list_surfaces()` to discover what's currently in the store.
