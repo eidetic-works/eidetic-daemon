@@ -10,6 +10,7 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 - **`scripts/retention-policy.example.json`** — example policy file (claude_code: 30d, cursor: 90d, cowork: 365d). Copy to `~/.eidetic/retention-policy.json` to enable.
 - **`make build-compliance`** — new Makefile target builds `bin/eideticd-compliance`.
 - **7 tests** (`cmd/eideticd-compliance/main_test.go`): policy load (valid/not-exist/invalid-JSON), data-path resolution (env override/db override), retention integration test (3 old rows deleted, 2 fresh rows kept), policy roundtrip.
+- **`eidetic-mcp` published to PyPI** — `pip install eidetic-mcp` now works. `docs/mcp-integration.md` updated to use PyPI install path. `bridge/python` is still the source of truth; PyPI follows each release.
 
 ---
 

@@ -29,8 +29,7 @@ Once connected, your AI assistant gets 12 new tools — `query_engrams`, `search
 ## Install the bridge
 
 ```sh
-# From the root of this repo:
-pip install -e bridge/python
+pip install eidetic-mcp
 ```
 
 Verify:
@@ -39,7 +38,11 @@ Verify:
 eidetic-mcp --version 2>&1 || python -m eidetic_mcp.server --help
 ```
 
-The bridge is not yet on PyPI — install from this repo until `mcp-server-nucleus` fold-in ships.
+Or install from source (for development / latest unreleased):
+
+```sh
+pip install -e path/to/eidetic-daemon/bridge/python
+```
 
 ## Configure Claude Code
 
