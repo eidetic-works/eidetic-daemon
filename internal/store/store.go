@@ -223,7 +223,7 @@ func validateEngram(e engram.Engram) error {
 // shape `WHERE surface=? AND (?=0 OR ts>?)` worked but was fragile to refactor:
 // dropping the `hasSince` flag would silently turn unfiltered queries into
 // 0-row results.
-func (s *Store) Retrieve(ctx context.Context, surface string, since, before int64, limit int) ([]engram.Engram, error) {
+func (s *Store) Retrieve(ctx context.Context, surface string, since, before int64, limit int, asc bool) ([]engram.Engram, error) {
 	if surface == "" {
 		return nil, errors.New("surface required")
 	}
@@ -234,7 +234,10 @@ func (s *Store) Retrieve(ctx context.Context, surface string, since, before int6
 	}
 
 	const baseSelect = `SELECT id, surface, ts, payload, COALESCE(meta, '') FROM engrams `
-	const orderLimit = ` ORDER BY ts DESC LIMIT ?`
+	orderLimit := ` ORDER BY ts DESC LIMIT ?`
+	if asc {
+		orderLimit = ` ORDER BY ts ASC LIMIT ?`
+	}
 
 	var (
 		rows *sql.Rows

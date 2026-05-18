@@ -66,7 +66,7 @@ func BenchmarkConcurrentReadWritePer95(b *testing.B) {
 			local := make([]time.Duration, 0, 1024)
 			for time.Now().Before(stopAt) {
 				start := time.Now()
-				_, err := st.Retrieve(ctx, Surfaces[r.Intn(len(Surfaces))], 0, 0, 50)
+				_, err := st.Retrieve(ctx, Surfaces[r.Intn(len(Surfaces))], 0, 0, 50, false)
 				if err != nil {
 					b.Errorf("reader %d query: %v", id, err)
 					return

@@ -20,7 +20,7 @@ func TestInsertBatchTransactional(t *testing.T) {
 	if err := s.InsertBatch(ctx, batch); err != nil {
 		t.Fatalf("InsertBatch: %v", err)
 	}
-	got, err := s.Retrieve(ctx, "cursor", 0, 0, 50)
+	got, err := s.Retrieve(ctx, "cursor", 0, 0, 50, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestInsertBatchValidationRejectsAtomically(t *testing.T) {
 		t.Errorf("error should name batch index 1: %v", err)
 	}
 	// Zero rows committed — pre-flight validation runs before tx open.
-	got, _ := s.Retrieve(ctx, "cursor", 0, 0, 50)
+	got, _ := s.Retrieve(ctx, "cursor", 0, 0, 50, false)
 	if len(got) != 0 {
 		t.Errorf("got %d rows, want 0 (atomic rejection)", len(got))
 	}

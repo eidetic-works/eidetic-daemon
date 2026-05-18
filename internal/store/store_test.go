@@ -52,7 +52,7 @@ func TestInsertAndRetrieveRoundTrip(t *testing.T) {
 		}
 	}
 
-	got, err := s.Retrieve(ctx, "cursor", 0, 0, 10)
+	got, err := s.Retrieve(ctx, "cursor", 0, 0, 10, false)
 	if err != nil {
 		t.Fatalf("Retrieve: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestRetrieveSinceFilter(t *testing.T) {
 		}
 	}
 	// Only rows with ts > base+5000 should return.
-	got, err := s.Retrieve(ctx, "claude_code", base+5000, 0, 100)
+	got, err := s.Retrieve(ctx, "claude_code", base+5000, 0, 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestRetrieveSurfaceIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := s.Retrieve(ctx, "cursor", 0, 0, 10)
+	got, err := s.Retrieve(ctx, "cursor", 0, 0, 10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestRetrieveLimitClamps(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := s.Retrieve(ctx, "cursor", 0, 0, 999)
+	got, err := s.Retrieve(ctx, "cursor", 0, 0, 999, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestRetrieveSinceZeroReturnsAllRows(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := s.Retrieve(ctx, "cowork", 0, 0, 100)
+	got, err := s.Retrieve(ctx, "cowork", 0, 0, 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestWALModeAndIndexUsedForRetrieval(t *testing.T) {
 	if _, err := s.Insert(ctx, engram.Engram{Surface: "claude_code", TS: time.Now().UnixNano(), Payload: "p"}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.Retrieve(ctx, "claude_code", 0, 0, 1)
+	got, err := s.Retrieve(ctx, "claude_code", 0, 0, 1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestStorePurgeAll(t *testing.T) {
 	}
 
 	// claude_code rows gone.
-	rows, err := s.Retrieve(ctx, "claude_code", 0, 0, 100)
+	rows, err := s.Retrieve(ctx, "claude_code", 0, 0, 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestStorePurgeAll(t *testing.T) {
 	}
 
 	// cursor row untouched.
-	rows, err = s.Retrieve(ctx, "cursor", 0, 0, 100)
+	rows, err = s.Retrieve(ctx, "cursor", 0, 0, 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestStorePurgeBefore(t *testing.T) {
 	}
 
 	// Remaining: ts=300 and ts=400.
-	rows, err := s.Retrieve(ctx, "claude_code", 0, 0, 100)
+	rows, err := s.Retrieve(ctx, "claude_code", 0, 0, 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func TestRetrieveBeforeFilter(t *testing.T) {
 		}
 	}
 	// before=base+5000 → only rows with ts < base+5000 (i=0..4, 5 rows).
-	got, err := s.Retrieve(ctx, "claude_code", 0, base+5000, 100)
+	got, err := s.Retrieve(ctx, "claude_code", 0, base+5000, 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +329,7 @@ func TestRetrieveSinceAndBefore(t *testing.T) {
 		}
 	}
 	// since=base+2000, before=base+7000 → ts in (base+2000, base+7000) exclusive: i=3,4,5,6 (4 rows).
-	got, err := s.Retrieve(ctx, "claude_code", base+2000, base+7000, 100)
+	got, err := s.Retrieve(ctx, "claude_code", base+2000, base+7000, 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -361,5 +361,49 @@ func TestStorePurgeNonExistentSurface(t *testing.T) {
 	}
 	if n != 0 {
 		t.Errorf("purge non-existent surface: want 0 deleted, got %d", n)
+	}
+}
+
+func TestRetrieveAscOrder(t *testing.T) {
+	s := tempStore(t)
+	ctx := context.Background()
+	base := time.Now().UnixNano()
+
+	for i := 0; i < 5; i++ {
+		_, err := s.Insert(ctx, engram.Engram{
+			Surface: "claude_code",
+			TS:      base + int64(i*1000),
+			Payload: "p",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Default (asc=false): newest first.
+	desc, err := s.Retrieve(ctx, "claude_code", 0, 0, 10, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if desc[0].TS <= desc[len(desc)-1].TS {
+		t.Errorf("desc order: want first > last, got first=%d last=%d", desc[0].TS, desc[len(desc)-1].TS)
+	}
+
+	// asc=true: oldest first.
+	asc, err := s.Retrieve(ctx, "claude_code", 0, 0, 10, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asc[0].TS >= asc[len(asc)-1].TS {
+		t.Errorf("asc order: want first < last, got first=%d last=%d", asc[0].TS, asc[len(asc)-1].TS)
+	}
+	// Same rows, reversed.
+	if len(desc) != len(asc) {
+		t.Fatalf("want same row count, got desc=%d asc=%d", len(desc), len(asc))
+	}
+	for i := range desc {
+		if desc[i].ID != asc[len(asc)-1-i].ID {
+			t.Errorf("row %d: desc[%d].ID=%d != asc[%d].ID=%d", i, i, desc[i].ID, len(asc)-1-i, asc[len(asc)-1-i].ID)
+		}
 	}
 }

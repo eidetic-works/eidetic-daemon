@@ -80,12 +80,13 @@ func (s *Server) handleEngramsGET(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
 	before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
+	asc := q.Get("order") == "asc"
 
 	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
 	defer cancel()
 
 	start := time.Now()
-	rows, err := s.store.Retrieve(ctx, surface, since, before, limit)
+	rows, err := s.store.Retrieve(ctx, surface, since, before, limit, asc)
 	if s.queryLatency != nil {
 		s.queryLatency.Record(time.Since(start))
 	}

@@ -70,7 +70,7 @@ func TestInsertIsRetrievable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert: %v", err)
 	}
-	rows, err := s.Retrieve(ctx, "cowork", 0, 0, 10)
+	rows, err := s.Retrieve(ctx, "cowork", 0, 0, 10, false)
 	if err != nil {
 		t.Fatalf("retrieve: %v", err)
 	}

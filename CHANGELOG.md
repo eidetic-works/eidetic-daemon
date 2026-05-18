@@ -6,6 +6,33 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.22] — 2026-05-18
+
+`order=asc` on `GET /engrams` — callers can now retrieve engrams oldest-first by appending `?order=asc`. Enables replay consumers, incremental import pipelines, and chronological feed UIs without a post-sort. Default (`order=desc` or omitted) is unchanged. **Zero breaking change.**
+
+### Added
+
+- **`GET /engrams?…&order=asc`** (`internal/api/routes.go`, `internal/store/store.go`):
+  - `store.Retrieve` gains `asc bool` as the last parameter. `false` (default) = `ORDER BY ts DESC`; `true` = `ORDER BY ts ASC`.
+  - `handleEngramsGET` parses `q.Get("order") == "asc"` and passes through. Any value other than `"asc"` retains DESC.
+  - **1 store test** (`internal/store/store_test.go`): `TestRetrieveAscOrder` — inserts 5 rows, asserts desc[0]>desc[-1] and asc[0]<asc[-1], verifies same IDs reversed.
+  - **2 API tests** (`internal/api/server_test.go`): `TestGetEngramsOrderAsc`, `TestGetEngramsDefaultOrderDesc`.
+
+- **MCP bridge — `asc` kwarg on `query_engrams`** (`bridge/python/eidetic_mcp/client.py`, `server.py`):
+  - `DaemonClient.query_engrams(…, asc=False)` — adds `order=asc` to query params when `asc=True`.
+  - `query_engrams` MCP tool inputSchema gains optional `asc` boolean.
+  - **2 bridge tests** (`bridge/python/tests/test_client.py`): `asc=True` round-trips, `asc=False` default round-trips.
+
+### Changed (non-breaking)
+
+- `store.Retrieve` signature gains `asc bool` as the new last arg. All internal callers updated to pass `false`.
+
+### Reference
+
+PR #55 · tag v0.0.22
+
+---
+
 ## [v0.0.21] — 2026-05-18
 
 `before` upper-bound filter on `GET /engrams` and `GET /recent` — callers can now scope queries to a time window (`since=<lower>&before=<upper>`) or just a ceiling (`before=<cutoff>`). Enables polling diffs, sliding windows, and cursor-based pagination without fetching all rows. **Zero breaking change — all existing calls omit `before` and see unchanged behaviour.**

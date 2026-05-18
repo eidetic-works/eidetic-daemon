@@ -546,3 +546,19 @@ def test_client_recent_engrams_since_and_before(uds_socket_path: str):
     client = DaemonClient(uds_path=uds_socket_path)
     rows = client.recent_engrams(since=100, before=9999999999)
     assert len(rows) == 1
+
+
+# --- order=asc param tests (v0.0.22) ---
+
+def test_client_query_engrams_asc(uds_socket_path: str):
+    """asc=True forwards order=asc; fake server returns fixture regardless."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    rows = client.query_engrams(surface="claude_code", asc=True)
+    assert len(rows) == 1
+
+
+def test_client_query_engrams_default_is_desc(uds_socket_path: str):
+    """asc=False (default) does not add order= param; fake returns fixture."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    rows = client.query_engrams(surface="claude_code", asc=False)
+    assert len(rows) == 1
