@@ -523,3 +523,120 @@ func TestSurfacesMethodNotAllowed(t *testing.T) {
 		t.Errorf("POST /surfaces: want 405, got %d", resp.StatusCode)
 	}
 }
+
+// ── GET /search tests (v0.0.14+) ────────────────────────────────────────────
+
+func seedSearch(t *testing.T, st *store.Store, surface, payload string) {
+	t.Helper()
+	_, err := st.Insert(context.Background(), engram.Engram{
+		Surface: surface, TS: time.Now().UnixNano(), Payload: payload,
+	})
+	if err != nil {
+		t.Fatalf("seedSearch insert: %v", err)
+	}
+}
+
+func TestSearchMissingQReturns400(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/search", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("want 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestSearchMethodNotAllowed(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/search?q=x", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST /search: want 405, got %d", resp.StatusCode)
+	}
+}
+
+func TestSearchReturnsMatchingEngrams(t *testing.T) {
+	st := tempStore(t)
+	seedSearch(t, st, "claude_code", `benchmark latency P95 under 1ms`)
+	seedSearch(t, st, "claude_code", `nothing relevant here`)
+
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/search?q=benchmark", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	var rows []engram.Engram
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("want 1 match, got %d", len(rows))
+	}
+}
+
+func TestSearchSurfaceFilter(t *testing.T) {
+	st := tempStore(t)
+	seedSearch(t, st, "claude_code", "needle haystack")
+	seedSearch(t, st, "cursor", "needle haystack")
+
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/search?q=needle&surface=cursor", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var rows []engram.Engram
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("want 1 result (cursor only), got %d", len(rows))
+	}
+	if rows[0].Surface != "cursor" {
+		t.Errorf("wrong surface: %s", rows[0].Surface)
+	}
+}
+
+func TestSearchNoMatchReturnsEmptyArray(t *testing.T) {
+	st := tempStore(t)
+	seedSearch(t, st, "claude_code", "nothing special")
+
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/search?q=xyzzy", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	var rows []engram.Engram
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows == nil || len(rows) != 0 {
+		t.Errorf("want empty array, got %v", rows)
+	}
+}

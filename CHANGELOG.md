@@ -2,6 +2,13 @@
 
 All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](https://keepachangelog.com/); semver via git tags.
 
+## [Unreleased]
+
+### Added
+- **`GET /search?q=...`** — FTS5 full-text search over engram payloads (PR #47).
+
+---
+
 ## [v0.0.13] — 2026-05-18
 
 Engram purge endpoint + surface listing + uninstall script. Three independent

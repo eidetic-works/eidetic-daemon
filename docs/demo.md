@@ -199,6 +199,45 @@ purge_engrams(surface="cursor")
 
 ---
 
+## 5d. Full-text search (v0.0.14+)
+
+```sh
+# Bare keyword — find engrams that mention "benchmark"
+curl --unix-socket /tmp/eidetic-daemon.sock \
+  'http://localhost/search?q=benchmark'
+
+# Phrase query — exact phrase match
+curl --unix-socket /tmp/eidetic-daemon.sock \
+  'http://localhost/search?q="benchmark+result"'
+
+# Surface filter + limit
+curl --unix-socket /tmp/eidetic-daemon.sock \
+  'http://localhost/search?q=latency&surface=claude_code&limit=5'
+
+# Boolean operators
+curl --unix-socket /tmp/eidetic-daemon.sock \
+  'http://localhost/search?q=Anjali+AND+meetup'
+```
+
+Expected (same `[]Engram` JSON shape as `/engrams`, ordered by relevance rank):
+```json
+[
+  {"id":N,"surface":"claude_code","ts":...,"payload":"...benchmark...","meta":"..."}
+]
+```
+
+**q** is an FTS5 match expression — bare keywords, `"phrase queries"`, `OR`/`AND`/`NOT`. Returns `[]` on no match (never 404).
+
+**Upgrade path for existing installs:** on first start after v0.0.14, the daemon backfills the FTS index from `engrams` in one bulk insert. After that, triggers keep it live automatically.
+
+**Via MCP bridge** (`bridge/python/`, v0.0.14+):
+```python
+search_engrams(q="benchmark latency")
+search_engrams(q='"meetup tomorrow"', surface="cursor", limit=3)
+```
+
+---
+
 ## 6. Latency
 
 The bench gates ship in CI:

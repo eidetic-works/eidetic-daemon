@@ -30,6 +30,12 @@ Tools exposed:
     nanoseconds; 0 (default) removes all engrams for that surface.
     Returns {"deleted": N}. Irreversible — use with care.
 
+  search_engrams(q, surface="", limit=50)
+    Full-text search over engram payloads (v0.0.14+). `q` is an FTS5
+    match expression — bare keywords, phrase queries in double quotes
+    ("benchmark result"), OR/AND/NOT boolean operators. Results ordered
+    by relevance rank. Optional `surface` filter narrows to one surface.
+
 Run:
 
     eideticd &                          # daemon listens on UDS
@@ -184,6 +190,40 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "required": ["surface"],
                 },
             ),
+            Tool(
+                name="search_engrams",
+                description=(
+                    "Full-text search over engram payloads (v0.0.14+). Results are "
+                    "ordered by relevance rank (best match first) and use the same "
+                    "JSON shape as query_engrams.\n\n"
+                    "`q` is an FTS5 match expression:\n"
+                    "  - bare keywords: benchmark latency\n"
+                    '  - phrase query: "benchmark result"\n'
+                    "  - boolean: benchmark AND NOT cursor\n\n"
+                    "Optional `surface` filter restricts to one surface. Optional "
+                    "`limit` (default 50, max 500)."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "q": {
+                            "type": "string",
+                            "description": "FTS5 match expression. Bare keywords or quoted phrase.",
+                        },
+                        "surface": {
+                            "type": "string",
+                            "description": "Restrict to one surface, e.g. claude_code. Empty = search all.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max results (default 50, max 500).",
+                            "minimum": 1,
+                            "maximum": 500,
+                        },
+                    },
+                    "required": ["q"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -231,6 +271,19 @@ def build_server(client: DaemonClient | None = None) -> Any:
             except (DaemonError, ValueError) as exc:
                 return [TextContent(type="text", text=f"error: {exc}")]
             return [TextContent(type="text", text=json.dumps({"deleted": deleted}))]
+
+        if name == "search_engrams":
+            q = str(arguments.get("q", "")).strip()
+            if not q:
+                return [TextContent(type="text", text="error: q required")]
+            surface = str(arguments.get("surface", "")).strip()
+            limit = int(arguments.get("limit", 50))
+            try:
+                rows = daemon.search_engrams(q=q, surface=surface, limit=limit)
+            except (DaemonError, ValueError) as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            payload = [asdict(r) for r in rows]
+            return [TextContent(type="text", text=json.dumps(payload, indent=2))]
 
         return [TextContent(type="text", text=f"error: unknown tool {name!r}")]
 

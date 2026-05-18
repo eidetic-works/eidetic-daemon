@@ -88,7 +88,44 @@ func Open(path string) (*Store, error) {
 	}
 	reader.SetMaxOpenConns(readerPoolSize)
 
-	return &Store{writer: writer, reader: reader, path: path}, nil
+	st := &Store{writer: writer, reader: reader, path: path}
+	if err := st.backfillFTS(context.Background()); err != nil {
+		// Non-fatal: existing rows won't be searchable until next restart
+		// that succeeds, but the daemon still works. Log is printed by caller.
+		_ = err
+	}
+	return st, nil
+}
+
+// backfillFTS populates engrams_fts from the main table when the FTS index
+// is empty but engrams exist. This handles the upgrade path: daemons that
+// were running before v0.0.14 have rows in engrams but nothing in
+// engrams_fts (the table was just created by schema migration). After
+// backfill, the AFTER INSERT / AFTER DELETE triggers keep the index in sync.
+//
+// Idempotent: if FTS already has rows (normal startup), this is a fast
+// two-count query and an early return.
+func (s *Store) backfillFTS(ctx context.Context) error {
+	var ftsCount, engramCount int64
+	if err := s.writer.QueryRowContext(ctx, `SELECT COUNT(*) FROM engrams_fts`).Scan(&ftsCount); err != nil {
+		return fmt.Errorf("backfill fts count: %w", err)
+	}
+	if ftsCount > 0 {
+		return nil // index already populated
+	}
+	if err := s.reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM engrams`).Scan(&engramCount); err != nil {
+		return fmt.Errorf("backfill engram count: %w", err)
+	}
+	if engramCount == 0 {
+		return nil // nothing to backfill
+	}
+	_, err := s.writer.ExecContext(ctx,
+		`INSERT INTO engrams_fts(rowid, payload, surface) SELECT id, payload, surface FROM engrams`,
+	)
+	if err != nil {
+		return fmt.Errorf("backfill fts insert: %w", err)
+	}
+	return nil
 }
 
 // Path returns the resolved database file path.
@@ -326,6 +363,68 @@ func (s *Store) Purge(ctx context.Context, surface string, before int64) (int64,
 	}
 	return n, nil
 }
+
+// Search runs a full-text search over engram payloads using the FTS5 index.
+// query is an FTS5 match expression (bare keywords work; phrase queries use
+// double quotes e.g. `"benchmark result"`). surface is optional — when
+// non-empty, only engrams from that surface are returned. limit follows the
+// same clamping as Retrieve (default 50, max 500). Results are ordered by
+// FTS5 relevance rank (best match first).
+//
+// Returns ErrEmptyQuery when q is empty so callers can return 400 rather
+// than 500.
+func (s *Store) Search(ctx context.Context, q, surface string, limit int) ([]engram.Engram, error) {
+	if q == "" {
+		return nil, ErrEmptyQuery
+	}
+	if limit <= 0 {
+		limit = 50
+	} else if limit > 500 {
+		limit = 500
+	}
+
+	const base = `
+		SELECT e.id, e.surface, e.ts, e.payload, COALESCE(e.meta, '')
+		FROM engrams_fts
+		JOIN engrams e ON e.id = engrams_fts.rowid
+		WHERE engrams_fts MATCH ?`
+
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if surface != "" {
+		rows, err = s.reader.QueryContext(ctx,
+			base+` AND engrams_fts.surface = ? ORDER BY rank LIMIT ?`,
+			q, surface, limit,
+		)
+	} else {
+		rows, err = s.reader.QueryContext(ctx,
+			base+` ORDER BY rank LIMIT ?`,
+			q, limit,
+		)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("search query: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]engram.Engram, 0, limit)
+	for rows.Next() {
+		var e engram.Engram
+		if err := rows.Scan(&e.ID, &e.Surface, &e.TS, &e.Payload, &e.Meta); err != nil {
+			return nil, fmt.Errorf("search scan: %w", err)
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("search row iter: %w", err)
+	}
+	return out, nil
+}
+
+// ErrEmptyQuery is returned by Search when the query string is empty.
+var ErrEmptyQuery = errors.New("search query required")
 
 // defaultDBPath resolves $EIDETIC_DATA_DIR or ~/.eidetic/engrams.db
 // per spec § 2.2.

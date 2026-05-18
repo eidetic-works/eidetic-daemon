@@ -13,6 +13,7 @@ Per spec § 7 Open Q #5: this is the "separate Python wrapper" path — the daem
 | `daemon_metrics` | (none) | Daemon's `/metrics` JSON (v0.0.7+): `version`, `uptime_seconds`, `engram_total`, `engram_by_surface`, `capture_skipped`, `db_path`, `db_size_bytes`. Schema additive-only across versions. Daemons predating v0.0.7 return `error: metrics not configured`. |
 | `list_surfaces` | (none) | `{"surface": count, ...}` — every surface the daemon has seen with its engram count (v0.0.13+). Empty store → `{}`. Use for discovery before `query_engrams`. |
 | `purge_engrams` | `surface` (required), `before` (unix ns, default 0) | `{"deleted": N}`. Removes all engrams for the surface when `before=0`; only removes engrams with `ts < before` when set. Irreversible (v0.0.13+). |
+| `search_engrams` | `q` (required — FTS5 expression), `surface` (default all), `limit` (default 50, cap 500) | JSON array of engrams ordered by relevance rank (best match first). Same shape as `query_engrams`. `q` accepts bare keywords, `"phrase queries"`, `OR`/`AND`/`NOT` boolean operators (v0.0.14+). |
 
 ### Chunked-record reassembly (ADR-018)
 
@@ -104,6 +105,12 @@ purge_engrams(surface="cursor")
 
 purge_engrams(surface="claude_code", before=1715000000000000000)
 → {"deleted": 98214}   # only engrams older than the timestamp
+
+search_engrams(q="benchmark latency")
+→ [{"id":N, "surface":"claude_code", "ts":..., "payload":"...", "meta":"..."}, ...]
+
+search_engrams(q='"meetup tomorrow"', surface="cursor", limit=3)
+→ [...]   # phrase query, surface-filtered, top 3 by relevance
 ```
 
 Surfaces depend on what the daemon is watching (default: `claude_code`, `cowork`, `cursor`). Use `list_surfaces()` to discover what's currently in the store.
