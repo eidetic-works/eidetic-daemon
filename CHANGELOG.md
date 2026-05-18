@@ -2,9 +2,11 @@
 
 All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](https://keepachangelog.com/); semver via git tags.
 
-## [Unreleased]
+## [v0.0.24] — 2026-05-18
 
-### Added (v0.0.24 candidate — Cloudflare R2 sync, ADR-019)
+Cloud sync, Windows CI gate, MCP integration guide, and pre-public docs cleanup.
+
+### Added
 
 - **`internal/sync` package** — opt-in Cloudflare R2 file-level sync (ADR-019). Zero runtime cost when sync.json absent (disabled by default). Config: `~/.eidetic/sync.json` with `{worker_url, api_key, device_id, sync_interval}`. `Syncer.TriggerIfDue()` uploads when `sync_interval` elapsed + idle (no new rows for one 60s poll). `Syncer.SyncNow()` uploads immediately.
 - **`bridge/cloudflare/worker.js`** — Cloudflare Worker receiving upload POSTs from daemon. Auth: `Authorization: Bearer <EIDETIC_API_KEY>` + `X-Device-ID` header. Stores at R2 key `engrams/{device_id}/engrams-{ts}.db`. Auto-prunes: keeps 5 most recent backups per device. Endpoints: `POST /sync`, `GET /latest`, `GET /healthz`. 500 MB guard matches Worker R2 put limit.
@@ -12,6 +14,8 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 - **`eideticd --sync-now` flag** — upload engrams.db immediately and exit. Useful for manual one-shot backup or post-export before machine wipe.
 - **60s sync poll goroutine in `cmd/eideticd/main.go`** — calls `syncer.TriggerIfDue()` every 60s. No-ops (nil guard) when sync.json absent.
 - **10 unit tests** (`internal/sync/syncer_test.go`): config load (missing/valid/bad-fields/malformed-json), nil-Syncer nil-safety (TriggerIfDue+SyncNow), HTTP contract (correct auth headers/body/Content-Type), non-201 worker response surfaces as error, missing-DB surfaces as error.
+- **Windows CI smoke job** (`.github/workflows/ci.yml`) — `windows-latest` runner builds `eideticd.exe` natively (pure-Go, no cross-compile toolchain), validates `-version` and `-h` flags. Closes ADR-017's deferred Windows runtime gate without Wine dependency.
+- **`docs/mcp-integration.md`** — user-facing MCP setup guide for Claude Code (`claude mcp add`), Cursor, Cline, and any MCP stdio client. Covers all 12 MCP tools, env overrides, quick-start prompts, chunked-record reassembly, and troubleshooting.
 
 ### Decision recorded
 
@@ -605,11 +609,13 @@ Query latency percentiles on `/metrics`. Every `/engrams` call is timed; P50/P95
 
 W2+ candidates (per spec § 1 cuts list, none of these target a current PR):
 - Counter `_created` timestamps on OpenMetrics output (per spec optional extension).
-- Cloudflare D1+R2+Workers cloud sync (per ADR-005, encrypted blobs only).
 - Compliance daemon (W2 per spec § 1).
 - PyPI publication of `eidetic-mcp` package.
-- GH-Actions ubuntu+wine matrix step for Windows runtime smoke (deferred per ADR-017).
+- Client-side encryption of R2 backups (W3+ per ADR-019 privacy posture).
+- `wrangler deploy` live-fire validation (blocked on account-level R2 enable — one-time dashboard toggle).
 
+[v0.0.24]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.24
+[v0.0.23]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.23
 [v0.0.13]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.13
 [v0.0.12]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.12
 [v0.0.11]: https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.11
