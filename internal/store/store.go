@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "embed"
 	_ "modernc.org/sqlite"
@@ -215,56 +216,47 @@ func validateEngram(e engram.Engram) error {
 	return nil
 }
 
-// Retrieve runs the canonical lookup: surface + optional since (unix ns)
-// + limit. Uses the read-only reader pool. Returns rows in (surface, ts DESC)
-// order — covered by idx_surface_ts.
-//
-// Two-branch query path per PR#1 review concern #2 — the prior single-query
-// shape `WHERE surface=? AND (?=0 OR ts>?)` worked but was fragile to refactor:
-// dropping the `hasSince` flag would silently turn unfiltered queries into
-// 0-row results.
+// Retrieve runs the canonical lookup with optional filters. surface="" returns
+// engrams across all surfaces (uses idx_ts; surface!="" uses idx_surface_ts).
+// since and before are unix epoch nanoseconds; zero means no bound.
+// asc=false returns newest-first (default); asc=true returns oldest-first.
+// limit defaults to 50, clamped to 500. Uses the read-only reader pool.
 func (s *Store) Retrieve(ctx context.Context, surface string, since, before int64, limit int, asc bool) ([]engram.Engram, error) {
-	if surface == "" {
-		return nil, errors.New("surface required")
-	}
 	if limit <= 0 {
 		limit = 50
 	} else if limit > 500 {
 		limit = 500
 	}
 
-	const baseSelect = `SELECT id, surface, ts, payload, COALESCE(meta, '') FROM engrams `
-	orderLimit := ` ORDER BY ts DESC LIMIT ?`
+	const baseSelect = `SELECT id, surface, ts, payload, COALESCE(meta, '') FROM engrams`
+	order := ` ORDER BY ts DESC LIMIT ?`
 	if asc {
-		orderLimit = ` ORDER BY ts ASC LIMIT ?`
+		order = ` ORDER BY ts ASC LIMIT ?`
 	}
 
-	var (
-		rows *sql.Rows
-		err  error
-	)
-	switch {
-	case since > 0 && before > 0:
-		rows, err = s.reader.QueryContext(ctx,
-			baseSelect+`WHERE surface = ? AND ts > ? AND ts < ?`+orderLimit,
-			surface, since, before, limit,
-		)
-	case since > 0:
-		rows, err = s.reader.QueryContext(ctx,
-			baseSelect+`WHERE surface = ? AND ts > ?`+orderLimit,
-			surface, since, limit,
-		)
-	case before > 0:
-		rows, err = s.reader.QueryContext(ctx,
-			baseSelect+`WHERE surface = ? AND ts < ?`+orderLimit,
-			surface, before, limit,
-		)
-	default:
-		rows, err = s.reader.QueryContext(ctx,
-			baseSelect+`WHERE surface = ?`+orderLimit,
-			surface, limit,
-		)
+	var clauses []string
+	var args []interface{}
+	if surface != "" {
+		clauses = append(clauses, "surface = ?")
+		args = append(args, surface)
 	}
+	if since > 0 {
+		clauses = append(clauses, "ts > ?")
+		args = append(args, since)
+	}
+	if before > 0 {
+		clauses = append(clauses, "ts < ?")
+		args = append(args, before)
+	}
+	args = append(args, limit)
+
+	q := baseSelect
+	if len(clauses) > 0 {
+		q += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	q += order
+
+	rows, err := s.reader.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("retrieve query: %w", err)
 	}

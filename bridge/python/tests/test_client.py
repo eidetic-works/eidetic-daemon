@@ -216,10 +216,11 @@ def test_client_query_engrams_against_fake_server(uds_socket_path: str):
     assert rows[0].payload == "hi"
 
 
-def test_client_query_engrams_requires_surface(uds_socket_path: str):
+def test_client_query_engrams_empty_surface_is_valid(uds_socket_path: str):
+    # v0.0.23: surface="" (or omitted) is now valid — retrieves across all surfaces.
     client = DaemonClient(uds_path=uds_socket_path)
-    with pytest.raises(ValueError):
-        client.query_engrams(surface="")
+    rows = client.query_engrams(surface="")
+    assert len(rows) == 1  # fake server returns fixture
 
 
 def test_client_uses_env_uds_path(monkeypatch, uds_socket_path: str):
@@ -561,4 +562,27 @@ def test_client_query_engrams_default_is_desc(uds_socket_path: str):
     """asc=False (default) does not add order= param; fake returns fixture."""
     client = DaemonClient(uds_path=uds_socket_path)
     rows = client.query_engrams(surface="claude_code", asc=False)
+    assert len(rows) == 1
+
+
+# --- optional surface tests (v0.0.23) ---
+
+def test_client_query_engrams_no_surface(uds_socket_path: str):
+    """Omitting surface="" calls /engrams (no surface= param); fake returns fixture."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    rows = client.query_engrams()
+    assert len(rows) == 1
+
+
+def test_client_query_engrams_empty_surface_string(uds_socket_path: str):
+    """Explicit surface="" also omits the surface= param."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    rows = client.query_engrams(surface="")
+    assert len(rows) == 1
+
+
+def test_client_query_engrams_no_surface_with_filters(uds_socket_path: str):
+    """Omitting surface with since+before still forwards those params."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    rows = client.query_engrams(since=1000, before=9999999999)
     assert len(rows) == 1

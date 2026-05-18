@@ -407,3 +407,112 @@ func TestRetrieveAscOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestRetrieveAllSurfaces(t *testing.T) {
+	// v0.0.23: surface="" returns engrams across all surfaces.
+	s := tempStore(t)
+	ctx := context.Background()
+	base := time.Now().UnixNano()
+
+	surfaces := []string{"cursor", "claude_code", "cowork"}
+	for i, surf := range surfaces {
+		if _, err := s.Insert(ctx, engram.Engram{Surface: surf, TS: base + int64(i), Payload: "p"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.Retrieve(ctx, "", 0, 0, 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("cross-surface retrieve: want 3 rows, got %d", len(got))
+	}
+	// Collect surfaces returned.
+	seen := map[string]bool{}
+	for _, e := range got {
+		seen[e.Surface] = true
+	}
+	for _, surf := range surfaces {
+		if !seen[surf] {
+			t.Errorf("surface %q missing from cross-surface result", surf)
+		}
+	}
+}
+
+func TestRetrieveAllSurfacesRespectsSince(t *testing.T) {
+	s := tempStore(t)
+	ctx := context.Background()
+	base := time.Now().UnixNano()
+
+	for i := 0; i < 6; i++ {
+		surf := "cursor"
+		if i%2 == 0 {
+			surf = "claude_code"
+		}
+		if _, err := s.Insert(ctx, engram.Engram{Surface: surf, TS: base + int64(i*1000), Payload: "p"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// since=base+2000 → only rows with ts > base+2000: i=3,4,5 (3 rows).
+	got, err := s.Retrieve(ctx, "", base+2000, 0, 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("cross-surface since filter: want 3, got %d", len(got))
+	}
+	for _, r := range got {
+		if r.TS <= base+2000 {
+			t.Errorf("since filter leaked ts=%d", r.TS)
+		}
+	}
+}
+
+func TestRetrieveAllSurfacesDescOrder(t *testing.T) {
+	s := tempStore(t)
+	ctx := context.Background()
+	base := time.Now().UnixNano()
+
+	for i := 0; i < 4; i++ {
+		surf := "cursor"
+		if i%2 == 0 {
+			surf = "claude_code"
+		}
+		if _, err := s.Insert(ctx, engram.Engram{Surface: surf, TS: base + int64(i*1000), Payload: "p"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.Retrieve(ctx, "", 0, 0, 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) < 2 {
+		t.Fatalf("want at least 2 rows, got %d", len(got))
+	}
+	if got[0].TS <= got[len(got)-1].TS {
+		t.Errorf("cross-surface: want desc order, got first=%d last=%d", got[0].TS, got[len(got)-1].TS)
+	}
+}
+
+func TestRetrieveNoFiltersReturnsAll(t *testing.T) {
+	// Retrieve("", 0, 0, 500, false) = full table dump, newest first.
+	s := tempStore(t)
+	ctx := context.Background()
+	base := time.Now().UnixNano()
+
+	for i := 0; i < 10; i++ {
+		if _, err := s.Insert(ctx, engram.Engram{Surface: "cursor", TS: base + int64(i), Payload: "p"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.Retrieve(ctx, "", 0, 0, 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 10 {
+		t.Fatalf("no-filter retrieve: want 10, got %d", len(got))
+	}
+}

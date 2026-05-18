@@ -165,15 +165,16 @@ class DaemonClient:
         return body
 
     def query_engrams(
-        self, surface: str, limit: int = 50, since: int = 0, before: int = 0, asc: bool = False
+        self, surface: str = "", limit: int = 50, since: int = 0, before: int = 0, asc: bool = False
     ) -> Sequence[Engram]:
-        """Spec § 2.4 retrieval endpoint. surface required; limit defaults to
+        """Spec § 2.4 retrieval endpoint. surface is optional (v0.0.23+);
+        omit or pass "" to retrieve across all surfaces. limit defaults to
         50 (daemon-side capped at 500); since=0 means no lower bound;
         before=0 means no upper bound (v0.0.21+); asc=False = newest-first,
         asc=True = oldest-first (v0.0.22+)."""
-        if not surface:
-            raise ValueError("surface required")
-        params: dict[str, str] = {"surface": surface}
+        params: dict[str, str] = {}
+        if surface:
+            params["surface"] = surface
         if limit:
             params["limit"] = str(limit)
         if since > 0:
@@ -182,7 +183,8 @@ class DaemonClient:
             params["before"] = str(before)
         if asc:
             params["order"] = "asc"
-        body = self._get_json(f"/engrams?{urlencode(params)}")
+        qs = f"?{urlencode(params)}" if params else ""
+        body = self._get_json(f"/engrams{qs}")
         if not isinstance(body, list):
             raise DaemonError(f"expected array, got {type(body).__name__}")
         return tuple(_parse_engram(row) for row in body)

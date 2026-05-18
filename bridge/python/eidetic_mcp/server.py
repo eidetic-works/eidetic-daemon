@@ -6,10 +6,11 @@ Cline, etc.) can list + call tools.
 
 Tools exposed:
 
-  query_engrams(surface, limit=50, since=0)
-    Returns a list of engrams from the daemon's local store, indexed by
-    (surface, ts DESC). Use surface ∈ {claude_code, cowork, cursor, ...}.
-    `since` is unix epoch nanoseconds; 0 = no lower bound.
+  query_engrams(surface="", limit=50, since=0, before=0, asc=False)
+    Returns a list of engrams from the daemon's local store. surface is
+    optional (v0.0.23+); omit to retrieve across all surfaces. Use surface
+    ∈ {claude_code, cowork, cursor, ...} to filter to one surface.
+    `since`/`before` are unix epoch nanoseconds; 0 = no bound.
 
   daemon_status()
     Returns {'healthy': bool} via /healthz round-trip. Useful as a
@@ -126,11 +127,12 @@ def build_server(client: DaemonClient | None = None) -> Any:
             Tool(
                 name="query_engrams",
                 description=(
-                    "Query the local eidetic-daemon engram store for recent records "
-                    "from a specific surface. Returns up to `limit` rows ordered by "
-                    "timestamp descending. Surfaces are tool-specific tags like "
-                    "'claude_code', 'cowork', 'cursor'. Use `since` (unix ns) to "
-                    "page. P95 retrieval latency on a 10K-row store is ~0.27 ms.\n\n"
+                    "Query the local eidetic-daemon engram store for recent records. "
+                    "Returns up to `limit` rows ordered by timestamp descending. "
+                    "Surfaces are tool-specific tags like 'claude_code', 'cowork', "
+                    "'cursor'. Omit `surface` to retrieve across all surfaces (v0.0.23+). "
+                    "Use `since` (unix ns) to page. P95 retrieval latency on a "
+                    "10K-row store is ~0.27 ms.\n\n"
                     "By default, chunked records (per ADR-018: lines >7 MiB split "
                     "into N chunks tagged with chunk_id/seq/total in meta) are "
                     "reassembled into single rows before return. Set `raw_chunks=true` "
@@ -142,7 +144,7 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "properties": {
                         "surface": {
                             "type": "string",
-                            "description": "Surface tag, e.g. claude_code | cowork | cursor",
+                            "description": "Surface tag, e.g. claude_code | cowork | cursor. Omit to retrieve across all surfaces (v0.0.23+).",
                         },
                         "limit": {
                             "type": "integer",
@@ -169,7 +171,7 @@ def build_server(client: DaemonClient | None = None) -> Any:
                             "description": "If true, skip chunk-reassembly + return chunks as separate engrams (default false)",
                         },
                     },
-                    "required": ["surface"],
+                    "required": [],
                 },
             ),
             Tool(
@@ -423,8 +425,6 @@ def build_server(client: DaemonClient | None = None) -> Any:
     async def _call_tool(name: str, arguments: dict) -> list:  # type: ignore[misc]
         if name == "query_engrams":
             surface = str(arguments.get("surface", "")).strip()
-            if not surface:
-                return [TextContent(type="text", text="error: surface required")]
             limit = int(arguments.get("limit", 50))
             since = int(arguments.get("since", 0))
             before = int(arguments.get("before", 0))

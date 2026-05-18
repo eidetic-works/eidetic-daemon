@@ -8,7 +8,7 @@ Per spec § 7 Open Q #5: this is the "separate Python wrapper" path — the daem
 
 | Tool | Args | Returns |
 |---|---|---|
-| `query_engrams` | `surface` (required), `limit` (default 50, cap 500), `since` (unix ns, default 0), `before` (unix ns, default 0, v0.0.21+), `asc` (bool, default false, v0.0.22+), `raw_chunks` (bool, default false) | JSON array of engrams ordered by timestamp descending (or ascending when `asc=true`). `since`+`before` define a half-open time window. Chunked records (per ADR-018) are reassembled by default; `raw_chunks=true` returns chunks as separate engrams. |
+| `query_engrams` | `surface` (optional v0.0.23+, omit for all surfaces), `limit` (default 50, cap 500), `since` (unix ns, default 0), `before` (unix ns, default 0, v0.0.21+), `asc` (bool, default false, v0.0.22+), `raw_chunks` (bool, default false) | JSON array of engrams ordered by timestamp descending (or ascending when `asc=true`). Omit `surface` to retrieve across all surfaces. `since`+`before` define a half-open time window. Chunked records (per ADR-018) are reassembled by default; `raw_chunks=true` returns chunks as separate engrams. |
 | `daemon_status` | (none) | `{"healthy": bool}` from `/healthz` round-trip |
 | `daemon_metrics` | (none) | Daemon's `/metrics` JSON (v0.0.7+): `version`, `uptime_seconds`, `engram_total`, `engram_by_surface`, `capture_skipped`, `db_path`, `db_size_bytes`. Schema additive-only across versions. Daemons predating v0.0.7 return `error: metrics not configured`. |
 | `list_surfaces` | (none) | `{"surface": count, ...}` — every surface the daemon has seen with its engram count (v0.0.13+). Empty store → `{}`. Use for discovery before `query_engrams`. |

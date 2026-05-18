@@ -9,7 +9,7 @@ Part of [Nucleus](https://nucleusos.dev). 90-day public probe (started 2026-05-1
 ## What it does
 
 - **Engram capture** — `fsnotify` watches each surface's session files; new text → engram row in <50ms of file-write.
-- **Engram retrieval** — `GET /engrams?surface=X&limit=N&since=unix-ns[&before=unix-ns][&order=asc]` over local Unix socket. P95 <100ms on 10K-row store. `since`+`before` define a time window; `order=asc` returns oldest-first (default newest-first).
+- **Engram retrieval** — `GET /engrams?[surface=X]&limit=N&since=unix-ns[&before=unix-ns][&order=asc]` over local Unix socket. P95 <100ms on 10K-row store. `surface` is optional (v0.0.23+) — omit to retrieve across all surfaces. `since`+`before` define a time window; `order=asc` returns oldest-first (default newest-first).
 - **Engram insertion** — `POST /engrams` — direct API-side insert; bypasses the fsnotify capture path. Accepts `{"surface":"...","payload":"...","ts":unix-ns}`, returns `{"id": N}`. Enables injection from mobile, webhooks, relay pipelines.
 - **Bulk insertion** — `POST /engrams/batch` — JSON array of engrams in one atomic transaction; returns `{"inserted": N}`. Efficient for relay sync, session replay, bulk import.
 - **Point lookup** — `GET /engrams/{id}` — fetch a single engram by primary key; 404 when not found. Use after a `POST /engrams` to confirm the stored row.
@@ -234,6 +234,7 @@ W1 complete — 14 releases v0.0.2 → v0.0.13 (v0.0.12/v0.0.13 pending CI). Tra
 | 24 | `GET /engrams/count` — fast count with optional surface+since filters | ✅ v0.0.20 (#54) |
 | 25 | `before=unix-ns` upper-bound filter on `GET /engrams` and `GET /recent` | ✅ v0.0.21 (#54) |
 | 26 | `order=asc` on `GET /engrams` — oldest-first retrieval for replay consumers | ✅ v0.0.22 (#55) |
+| 27 | `surface` optional on `GET /engrams` — cross-surface retrieval with full query power | ✅ v0.0.23 (#56) |
 
 ---
 

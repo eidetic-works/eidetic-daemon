@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS engrams (
 
 CREATE INDEX IF NOT EXISTS idx_surface_ts ON engrams(surface, ts DESC);
 
+-- v0.0.23: cross-surface ts-ordered queries (GET /engrams without surface=).
+-- Used when Retrieve is called with surface="" to avoid a full-table scan.
+CREATE INDEX IF NOT EXISTS idx_ts ON engrams(ts DESC);
+
 -- v0.0.14: FTS5 full-text search over payload. Non-content table (stores
 -- payload text in both engrams + the FTS index) for simplicity and
 -- robustness; storage overhead is acceptable for a personal-use daemon.

@@ -66,16 +66,13 @@ func (s *Server) handleEngrams(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleEngramsGET serves GET /engrams?surface=X&limit=N&since=unix-ns.
-// Returns 200 + JSON array on success, 400 on missing surface, 500 on store
-// error. Param parse failures map to store defaults ("forgiving param parse").
+// handleEngramsGET serves GET /engrams?[surface=X]&[limit=N]&[since=unix-ns]&[before=unix-ns]&[order=asc].
+// surface is optional (v0.0.23+); omit to retrieve across all surfaces using idx_ts.
+// Returns 200 + JSON array on success, 500 on store error.
+// Param parse failures map to store defaults ("forgiving param parse").
 func (s *Server) handleEngramsGET(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	surface := q.Get("surface")
-	if surface == "" {
-		http.Error(w, "surface required", http.StatusBadRequest)
-		return
-	}
 
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)

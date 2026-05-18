@@ -6,6 +6,37 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.23] — 2026-05-18
+
+`surface` is now optional on `GET /engrams` — omitting it returns engrams across **all** surfaces, ordered by timestamp (respects `order`, `since`, `before`, `limit`). This gives callers the full retrieval query power of `/engrams` (paging, ordering, time windows) on cross-surface data, which `/recent` did not expose. **Zero breaking change — all existing surface-scoped calls are unaffected.**
+
+### Added
+
+- **`GET /engrams` with optional `surface=`** (`internal/store/store.go`, `internal/api/routes.go`):
+  - `store.Retrieve` no longer errors on `surface=""`. Uses a dynamic WHERE-clause builder (`strings.Join`) instead of the previous 4-branch switch, eliminating the 8-branch explosion that optional surface would have required. `surface=""` drops the `surface = ?` predicate; all other filters (since, before, order) still apply.
+  - `handleEngramsGET` removes the `surface required` → 400 guard; empty surface now passes through.
+  - Cross-surface queries use `idx_ts ON engrams(ts DESC)` added to `schema.sql` to avoid full-table scans.
+  - **4 store tests** (`internal/store/store_test.go`): `TestRetrieveAllSurfaces`, `TestRetrieveAllSurfacesRespectsSince`, `TestRetrieveAllSurfacesDescOrder`, `TestRetrieveNoFiltersReturnsAll`.
+  - **3 API tests** (`internal/api/server_test.go`): `TestGetEngramsNoSurface`, `TestGetEngramsNoSurfaceWithFilters`, `TestGetEngramsNoSurfaceAscOrder`.
+
+- **MCP bridge — `surface` now optional on `query_engrams`** (`bridge/python/eidetic_mcp/client.py`, `server.py`):
+  - `DaemonClient.query_engrams(surface="", …)` — `surface` defaults to `""`. When empty, the `surface=` query param is omitted from the request.
+  - `query_engrams` MCP tool inputSchema: `surface` moved out of `required`; description updated.
+  - **3 bridge tests** (`bridge/python/tests/test_client.py`): no-surface default, explicit `surface=""`, no-surface with filters.
+
+### Changed (non-breaking)
+
+- `store.Retrieve` internal implementation: 4-branch `switch` on since/before combinations replaced by dynamic WHERE-clause builder (`[]string clauses + strings.Join`). Behaviour for all non-empty-surface call sites is identical; refactor is covered by existing tests.
+- `schema.sql` gains `idx_ts ON engrams(ts DESC)` for cross-surface ts-ordered queries.
+- `TestGET_MissingSurfaceReturns400` renamed to `TestGET_MissingSurfaceReturns200CrossSurface` and expectation flipped to 200.
+- `test_client_query_engrams_requires_surface` renamed to `test_client_query_engrams_empty_surface_is_valid` and expectation updated.
+
+### Reference
+
+PR #56 · tag v0.0.23
+
+---
+
 ## [v0.0.22] — 2026-05-18
 
 `order=asc` on `GET /engrams` — callers can now retrieve engrams oldest-first by appending `?order=asc`. Enables replay consumers, incremental import pipelines, and chronological feed UIs without a post-sort. Default (`order=desc` or omitted) is unchanged. **Zero breaking change.**
