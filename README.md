@@ -25,7 +25,7 @@ Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + win
 
 ---
 
-## Install (Day 7+)
+## Install
 
 ```sh
 curl -fsSL https://nucleusos.dev/install.sh | sh
@@ -38,7 +38,7 @@ curl -fsSL https://eidetic.works/uninstall.sh | sh          # stops service, rem
 curl -fsSL https://eidetic.works/uninstall.sh | sh -s -- --purge-data  # also wipes engram data (irreversible)
 ```
 
-Not yet shipped publicly. Latest release: [v0.0.11](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.11) (3 cross-compile assets + `SHA256SUMS.txt` attached; pure-Go, no CGO). See `scripts/install.sh` and `scripts/uninstall.sh` for what the one-line installers run.
+Latest release: [v0.0.23](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.23) (3 cross-compile assets + `SHA256SUMS.txt` attached; pure-Go, no CGO). See `scripts/install.sh` and `scripts/uninstall.sh` for what the one-line installers run.
 
 Full demo flow with expected outputs at every step: [`docs/demo.md`](./docs/demo.md). Architecture decisions: [`docs/DECISIONS.md`](./docs/DECISIONS.md). Release notes per version: [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -203,7 +203,7 @@ See [docs/SPEC.md](docs/SPEC.md) for the binding W1 spec, [docs/IMPLEMENTATION_P
 
 ## Status
 
-W1 complete — 14 releases v0.0.2 → v0.0.13 (v0.0.12/v0.0.13 pending CI). Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase sequencing.
+W1 complete — 22 releases v0.0.2 → v0.0.23. Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase sequencing.
 
 | Phase | What | State |
 |---|---|---|
@@ -214,7 +214,7 @@ W1 complete — 14 releases v0.0.2 → v0.0.13 (v0.0.12/v0.0.13 pending CI). Tra
 | 4 | Integration: mirror + concurrency tests | ✅ (rolled into #4) |
 | 5 | Bench gates wired | ✅ (#5) |
 | 6 | Cross-compile artifacts + install.sh + service files | ✅ (#5) |
-| 7 | GitHub release + demo post | ✅ v0.0.2 → v0.0.13 released; demo at `docs/demo.md`; public-flip + DO post pending |
+| 7 | GitHub release + demo post | ✅ v0.0.2 → v0.0.23 released; demo at `docs/demo.md`; repo public; DO post fired Day 8 |
 | 8 | MCP bridge (Python stdio server) | ✅ v0.0.4 (#12); reassembly v0.0.5 (#15); `daemon_metrics()` v0.0.8 (#22) |
 | 9 | Chunked-capture (no payload-size hard wall) | ✅ v0.0.5 (#14) |
 | 10 | Shutdown drain (issue #17) | ✅ v0.0.6 (#18) |
