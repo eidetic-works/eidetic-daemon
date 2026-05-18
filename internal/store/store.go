@@ -142,7 +142,7 @@ func (s *Store) Close() error {
 // per ADR-014 pattern #4 — see InsertBatch.
 func (s *Store) Insert(ctx context.Context, e engram.Engram) (int64, error) {
 	if err := validateEngram(e); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("%w: %w", ErrInvalidEngram, err)
 	}
 	res, err := s.writer.ExecContext(ctx,
 		`INSERT INTO engrams (surface, ts, payload, meta) VALUES (?, ?, ?, ?)`,
@@ -168,7 +168,7 @@ func (s *Store) InsertBatch(ctx context.Context, batch []engram.Engram) error {
 	}
 	for i, e := range batch {
 		if err := validateEngram(e); err != nil {
-			return fmt.Errorf("batch[%d]: %w", i, err)
+			return fmt.Errorf("batch[%d]: %w: %w", i, ErrInvalidEngram, err)
 		}
 	}
 	tx, err := s.writer.BeginTx(ctx, nil)
@@ -425,6 +425,10 @@ func (s *Store) Search(ctx context.Context, q, surface string, limit int) ([]eng
 
 // ErrEmptyQuery is returned by Search when the query string is empty.
 var ErrEmptyQuery = errors.New("search query required")
+
+// ErrInvalidEngram wraps validation failures from Insert/InsertBatch so HTTP
+// handlers can map them to 400 rather than 500.
+var ErrInvalidEngram = errors.New("invalid engram")
 
 // Recent returns the N most recent engrams across ALL surfaces, ordered by
 // ts DESC. When since > 0 only engrams with ts > since are returned (unix ns).

@@ -125,6 +125,24 @@ class DaemonClient:
     def _delete_json(self, path: str) -> object:
         return self._request_json("DELETE", path)
 
+    def _post_json(self, path: str, payload: object) -> object:
+        conn = self._conn()
+        try:
+            body_bytes = json.dumps(payload).encode("utf-8")
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if self._auth_token:
+                headers["Authorization"] = f"Bearer {self._auth_token}"
+            conn.request("POST", path, body=body_bytes, headers=headers)
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8")
+            if resp.status not in (200, 201):
+                raise DaemonError(f"daemon returned {resp.status}: {body}")
+            return json.loads(body)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise DaemonError(f"daemon transport / parse error: {exc}") from exc
+        finally:
+            conn.close()
+
     def healthy(self) -> bool:
         """Return True iff /healthz responds 200 with {'status':'ok'}."""
         try:
@@ -244,6 +262,36 @@ class DaemonClient:
         if not isinstance(body, list):
             raise DaemonError(f"expected array, got {type(body).__name__}")
         return tuple(_parse_engram(row) for row in body)
+
+    def insert_engram(
+        self,
+        surface: str,
+        payload: str,
+        ts: int = 0,
+        meta: str = "",
+    ) -> int:
+        """POST /engrams — direct API-side engram insertion (v0.0.16+).
+
+        surface and payload are required. ts defaults to time.Now().UnixNano()
+        server-side when 0 or omitted. meta is optional free-form JSON string.
+        Returns the newly assigned engram ID.
+
+        Raises ValueError if surface or payload is empty.
+        Raises DaemonError on transport failure or 4xx/5xx from daemon.
+        """
+        if not surface:
+            raise ValueError("surface required")
+        if not payload:
+            raise ValueError("payload required")
+        body: dict[str, object] = {"surface": surface, "payload": payload}
+        if ts:
+            body["ts"] = ts
+        if meta:
+            body["meta"] = meta
+        result = self._post_json("/engrams", body)
+        if not isinstance(result, dict) or "id" not in result:
+            raise DaemonError(f"unexpected insert response: {result!r}")
+        return int(result["id"])
 
 
 def _parse_engram(row: object) -> Engram:

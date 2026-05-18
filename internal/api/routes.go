@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/eidetic-works/eidetic-daemon/internal/engram"
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
 )
 
@@ -48,12 +50,15 @@ func (s *Server) handleSurfaces(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleEngrams dispatches /engrams by method:
-//   - GET  → handleEngramsGET  (retrieve)
+//   - GET    → handleEngramsGET    (retrieve)
+//   - POST   → handleEngramsPOST   (direct insert, v0.0.16+)
 //   - DELETE → handleEngramsDELETE (purge)
 func (s *Server) handleEngrams(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		s.handleEngramsGET(w, r)
+	case http.MethodPost:
+		s.handleEngramsPOST(w, r)
 	case http.MethodDelete:
 		s.handleEngramsDELETE(w, r)
 	default:
@@ -118,6 +123,50 @@ func (s *Server) handleEngramsDELETE(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]int64{"deleted": n})
+}
+
+// handleEngramsPOST serves POST /engrams — direct API-side engram insertion
+// (v0.0.16+). Accepts a single JSON object:
+//
+//	{"surface":"claude_code","payload":"...","ts":unix-ns,"meta":"..."}
+//
+// surface and payload are required. ts defaults to time.Now().UnixNano() when
+// omitted or zero — callers that set their own ts must supply unix nanoseconds.
+// meta is optional. Returns 201 + {"id":N} on success.
+func (s *Server) handleEngramsPOST(w http.ResponseWriter, r *http.Request) {
+	// Guard against oversized bodies (same cap as store.MaxPayloadBytes + JSON envelope).
+	r.Body = http.MaxBytesReader(w, r.Body, store.MaxPayloadBytes+4096)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "request body too large or unreadable", http.StatusBadRequest)
+		return
+	}
+
+	var e engram.Engram
+	if err := json.Unmarshal(body, &e); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if e.TS == 0 {
+		e.TS = time.Now().UnixNano()
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
+	defer cancel()
+
+	id, err := s.store.Insert(ctx, e)
+	if err != nil {
+		if errors.Is(err, store.ErrInvalidEngram) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]int64{"id": id})
 }
 
 // handleSearch serves GET /search?q=<fts5-query>[&surface=X][&limit=N].

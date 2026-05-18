@@ -6,6 +6,34 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.16] — 2026-05-18
+
+API-side engram insertion — `POST /engrams` turns the daemon from a read-only query layer into a writable store reachable from any caller (mobile, webhooks, relay pipelines, manual annotations). **Zero breaking change** to any prior caller; all existing GET/DELETE semantics unchanged.
+
+### Added
+
+- **`POST /engrams`** (`internal/api/routes.go`, `internal/store/store.go`):
+  - Accepts `{"surface":"...","payload":"...","ts":unix-ns,"meta":"..."}` JSON body.
+  - `surface` and `payload` required; `ts` defaults to `time.Now().UnixNano()` server-side when 0 or omitted; `meta` optional.
+  - Returns `201 Created` + `{"id": N}` on success; 400 on missing fields / invalid JSON / payload > MaxPayloadBytes.
+  - Body capped at `MaxPayloadBytes + 4096` bytes via `http.MaxBytesReader` before JSON decode.
+  - Dispatched via the existing `handleEngrams` switch (GET/POST/DELETE).
+  - **`store.ErrInvalidEngram`** sentinel: `Insert`/`InsertBatch` now wrap `validateEngram` failures with `ErrInvalidEngram` so HTTP handlers map them to 400, not 500. `errors.Is(err, store.ErrInvalidEngram)` is the correct check.
+  - **5 store tests** (`internal/store/insert_test.go`): returns ID, surface required → ErrInvalidEngram, zero TS → ErrInvalidEngram, empty payload → ErrInvalidEngram, is retrievable after insert.
+  - **6 API tests** (`internal/api/server_test.go`): 201 + ID, auto-timestamp when ts omitted, 400 on missing surface, 400 on missing payload, 400 on invalid JSON, inserted row retrievable via GET.
+
+- **MCP bridge — `insert_engram` tool** (`bridge/python/eidetic_mcp/server.py`, `client.py`):
+  - `DaemonClient._post_json(path, payload)` — POST transport with `Content-Type: application/json`, handles 201.
+  - `DaemonClient.insert_engram(surface, payload, ts=0, meta="")` → `int` (assigned ID).
+  - `insert_engram` MCP tool with `surface` (required), `payload` (required), `ts`, `meta` in inputSchema.
+  - **4 bridge tests** (`bridge/python/tests/test_client.py`): returns id, ts+meta accepted, surface required → ValueError, payload required → ValueError.
+
+### Reference
+
+PR #49 · tag v0.0.16
+
+---
+
 ## [v0.0.15] — 2026-05-18
 
 Cross-surface recent engrams — answers "what happened lately?" without a keyword or surface filter. Complements `/search` (relevance-ranked by keyword) and `/engrams` (surface-scoped). **Zero breaking change** to any prior caller.

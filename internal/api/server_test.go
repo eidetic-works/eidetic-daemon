@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -167,8 +168,8 @@ func TestGET_WrongMethodReturns405(t *testing.T) {
 	defer stop()
 
 	addr := srv.Addr().String()
-	// DELETE is now valid (v0.0.13 purge endpoint); only POST/PUT/PATCH are not.
-	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch} {
+	// DELETE is now valid (v0.0.13 purge); POST is valid (v0.0.16 insert); only PUT/PATCH are not.
+	for _, method := range []string{http.MethodPut, http.MethodPatch} {
 		req, _ := http.NewRequest(method, fmt.Sprintf("http://%s/engrams?surface=x", addr), nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -740,5 +741,128 @@ func TestRecentEmptyReturnsEmptyArray(t *testing.T) {
 	}
 	if rows == nil || len(rows) != 0 {
 		t.Errorf("want empty array, got %v", rows)
+	}
+}
+
+// ---- POST /engrams tests (v0.0.16) ----
+
+func postEngram(t *testing.T, addr, body string) *http.Response {
+	t.Helper()
+	resp, err := http.Post(
+		fmt.Sprintf("http://%s/engrams", addr),
+		"application/json",
+		strings.NewReader(body),
+	)
+	if err != nil {
+		t.Fatalf("POST /engrams: %v", err)
+	}
+	return resp
+}
+
+func TestPostEngramsReturns201WithID(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp := postEngram(t, srv.Addr().String(),
+		`{"surface":"claude_code","payload":"inserted via API","ts":1234567890}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("want 201, got %d", resp.StatusCode)
+	}
+	var result map[string]int64
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	if result["id"] <= 0 {
+		t.Errorf("want positive id, got %d", result["id"])
+	}
+}
+
+func TestPostEngramsAutoTimestamp(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	// Omit ts — server should auto-assign time.Now().UnixNano()
+	resp := postEngram(t, srv.Addr().String(),
+		`{"surface":"cursor","payload":"no ts provided"}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("want 201, got %d", resp.StatusCode)
+	}
+
+	// Verify the row is retrievable and has a non-zero TS
+	rows, err := st.Retrieve(context.Background(), "cursor", 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("want 1 row, got %d", len(rows))
+	}
+	if rows[0].TS == 0 {
+		t.Errorf("want auto-assigned TS, got 0")
+	}
+}
+
+func TestPostEngramsMissingSurfaceReturns400(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp := postEngram(t, srv.Addr().String(), `{"payload":"no surface"}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestPostEngramsMissingPayloadReturns400(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp := postEngram(t, srv.Addr().String(), `{"surface":"vim","ts":1}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestPostEngramsInvalidJSONReturns400(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp := postEngram(t, srv.Addr().String(), `not json at all`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestPostEngramsIsRetrievable(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp := postEngram(t, srv.Addr().String(),
+		`{"surface":"cowork","payload":"retrievable after insert","ts":9999}`)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("want 201, got %d", resp.StatusCode)
+	}
+
+	getResp, err := http.Get(fmt.Sprintf("http://%s/engrams?surface=cowork", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer getResp.Body.Close()
+	var rows []engram.Engram
+	if err := json.NewDecoder(getResp.Body).Decode(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Payload != "retrievable after insert" {
+		t.Errorf("inserted engram not retrievable: %+v", rows)
 	}
 }
