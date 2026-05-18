@@ -93,6 +93,11 @@ class _UDSHandler(http.server.BaseHTTPRequestHandler):
         if self.path == "/surfaces":
             self._send_json({"claude_code": 100, "cursor": 42})
             return
+        if self.path.startswith("/search"):
+            self._send_json([
+                {"id": 7, "surface": "claude_code", "ts": 200, "payload": "benchmark result", "meta": ""},
+            ])
+            return
         self.send_response(404)
         self.end_headers()
 
@@ -279,3 +284,26 @@ def test_client_purge_engrams_requires_surface(uds_socket_path: str):
     client = DaemonClient(uds_path=uds_socket_path)
     with pytest.raises(ValueError):
         client.purge_engrams(surface="")
+
+
+def test_client_search_engrams_against_fake_server(uds_socket_path: str):
+    """GET /search returns Engram tuple ordered by rank (v0.0.14+)."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    rows = client.search_engrams(q="benchmark")
+    assert len(rows) == 1
+    assert rows[0].surface == "claude_code"
+    assert rows[0].payload == "benchmark result"
+
+
+def test_client_search_engrams_with_surface_and_limit(uds_socket_path: str):
+    """surface= and limit= params accepted; fake server ignores them but round-trip completes."""
+    client = DaemonClient(uds_path=uds_socket_path)
+    rows = client.search_engrams(q="benchmark", surface="claude_code", limit=10)
+    assert isinstance(rows, tuple)
+    assert len(rows) == 1
+
+
+def test_client_search_engrams_requires_q(uds_socket_path: str):
+    client = DaemonClient(uds_path=uds_socket_path)
+    with pytest.raises(ValueError):
+        client.search_engrams(q="")

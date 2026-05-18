@@ -192,6 +192,34 @@ class DaemonClient:
             raise DaemonError(f"unexpected purge response: {body!r}")
         return int(body["deleted"])
 
+    def search_engrams(
+        self,
+        q: str,
+        surface: str = "",
+        limit: int = 50,
+    ) -> tuple[Engram, ...]:
+        """GET /search — full-text search over engram payloads (v0.0.14+).
+
+        `q` is an FTS5 match expression: bare keywords, phrase queries in
+        double quotes ("benchmark result"), OR/AND/NOT boolean operators.
+        Results are ordered by relevance rank (best match first). Returns the
+        same Engram tuple shape as query_engrams for client compatibility.
+
+        Raises ValueError if q is empty. Raises DaemonError on transport
+        failure or if the daemon predates v0.0.14.
+        """
+        if not q:
+            raise ValueError("q required")
+        params: dict[str, str] = {"q": q}
+        if surface:
+            params["surface"] = surface
+        if limit != 50:
+            params["limit"] = str(limit)
+        body = self._get_json(f"/search?{urlencode(params)}")
+        if not isinstance(body, list):
+            raise DaemonError(f"expected array, got {type(body).__name__}")
+        return tuple(_parse_engram(row) for row in body)
+
 
 def _parse_engram(row: object) -> Engram:
     if not isinstance(row, dict):

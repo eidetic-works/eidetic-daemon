@@ -3,9 +3,12 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/eidetic-works/eidetic-daemon/internal/store"
 )
 
 // handleHealthz serves GET /healthz. Returns 200 + {"status":"ok"}. Used by
@@ -115,4 +118,44 @@ func (s *Server) handleEngramsDELETE(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]int64{"deleted": n})
+}
+
+// handleSearch serves GET /search?q=<fts5-query>[&surface=X][&limit=N].
+// Runs an FTS5 full-text search over engram payloads and returns results
+// ordered by relevance rank (best match first). Returns the same JSON-array
+// shape as GET /engrams for client compatibility.
+//
+// q is an FTS5 match expression: bare keywords, phrase queries in double
+// quotes ("what did the benchmark say"), OR/AND/NOT boolean operators.
+// 400 when q is missing or empty. 500 on store error. (v0.0.14+)
+func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+	query := q.Get("q")
+	if query == "" {
+		http.Error(w, "q required", http.StatusBadRequest)
+		return
+	}
+
+	surface := q.Get("surface")
+	limit, _ := strconv.Atoi(q.Get("limit"))
+
+	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
+	defer cancel()
+
+	rows, err := s.store.Search(ctx, query, surface, limit)
+	if err != nil {
+		if errors.Is(err, store.ErrEmptyQuery) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(rows)
 }
