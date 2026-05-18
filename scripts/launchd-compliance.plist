@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- eideticd-compliance launchd timer — runs once daily at 03:00 local time.
+     Install:
+       cp scripts/launchd-compliance.plist ~/Library/LaunchAgents/works.eidetic.eideticd-compliance.plist
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/works.eidetic.eideticd-compliance.plist
+     Uninstall:
+       launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/works.eidetic.eideticd-compliance.plist
+       rm ~/Library/LaunchAgents/works.eidetic.eideticd-compliance.plist
+     Requires: eideticd-compliance binary at /usr/local/bin/eideticd-compliance
+               retention-policy.json at ~/.eidetic/retention-policy.json -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>works.eidetic.eideticd-compliance</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/eideticd-compliance</string>
+    </array>
+    <!-- Run once at 03:00 local time daily. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <!-- Also run immediately on load (catches machines that were off at 03:00). -->
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/tmp/eideticd-compliance.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/eideticd-compliance.err.log</string>
+    <key>ProcessType</key>
+    <string>Background</string>
+    <!-- Low priority — this is non-urgent housekeeping. -->
+    <key>LowPriorityIO</key>
+    <true/>
+</dict>
+</plist>

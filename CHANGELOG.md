@@ -11,6 +11,7 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 - **`make build-compliance`** — new Makefile target builds `bin/eideticd-compliance`.
 - **7 tests** (`cmd/eideticd-compliance/main_test.go`): policy load (valid/not-exist/invalid-JSON), data-path resolution (env override/db override), retention integration test (3 old rows deleted, 2 fresh rows kept), policy roundtrip.
 - **`eidetic-mcp` published to PyPI** — `pip install eidetic-mcp` now works. `docs/mcp-integration.md` updated to use PyPI install path. `bridge/python` is still the source of truth; PyPI follows each release.
+- **Compliance scheduler files** — `scripts/launchd-compliance.plist` (macOS, fires at 03:00 daily) and `scripts/systemd-compliance.{service,timer}` (Linux, 03:00 daily with `Persistent=true` catch-up). Install instructions in each file's header.
 
 ---
 
