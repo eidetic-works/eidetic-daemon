@@ -129,7 +129,7 @@ These are spike-quality numbers; production W1 may regress slightly with capture
 
 | Risk # | What | Mitigation in this spec |
 |---|---|---|
-| **#11** | Lokesh-as-reviewer of unfamiliar Go | Every W1 PR ≤200 LOC. cc-peer reviews before merge (§ Build & Ship below). No auto-merge during W1. |
+| **#11** | Single maintainer reviewing unfamiliar Go | Every W1 PR ≤200 LOC. Reviewer checks before merge (§ Build & Ship below). No auto-merge during W1. |
 | **#12** | Latency SLO becomes optional and slips | Benchmark gates the ship. README publishes the number. Distribution Officer post is gated on the benchmark passing. |
 | **#13** | Architectural rewrite becomes 6-week rabbit hole | Section 1 § Scope is binding. Anything outside the 3-thing list is W2+. Cloud sync, Tauri UI, MCP bridge **are not in W1**. |
 | **#4** | 6-8 week build slips to 12-16 weeks | Day 4 latency benchmark is the hard checkpoint. If P95 not green by Day 4 EOD, defer Day 6 (MCP bridge) and Day 7 (marketplace submission); preserve only daemon binary + benchmark per ADR-008 § triage rule. |
