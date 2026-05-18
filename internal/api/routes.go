@@ -169,6 +169,64 @@ func (s *Server) handleEngramsPOST(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]int64{"id": id})
 }
 
+// handleEngramsBatch serves POST /engrams/batch — bulk API-side insertion
+// (v0.0.17+). Accepts a JSON array of engram objects:
+//
+//	[{"surface":"...","payload":"...","ts":unix-ns,"meta":"..."}, ...]
+//
+// All items are inserted in a single transaction via InsertBatch. Any
+// validation failure rolls back the entire batch and returns 400.
+// ts defaults to time.Now().UnixNano() per-item when omitted or zero.
+// Body is capped at 32 MiB. Returns 201 + {"inserted": N} on success.
+func (s *Server) handleEngramsBatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	const batchBodyCap = 32 << 20 // 32 MiB
+	r.Body = http.MaxBytesReader(w, r.Body, batchBodyCap)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "request body too large or unreadable", http.StatusBadRequest)
+		return
+	}
+
+	var items []engram.Engram
+	if err := json.Unmarshal(body, &items); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(items) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]int{"inserted": 0})
+		return
+	}
+
+	now := time.Now().UnixNano()
+	for i := range items {
+		if items[i].TS == 0 {
+			items[i].TS = now
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
+	defer cancel()
+
+	if err := s.store.InsertBatch(ctx, items); err != nil {
+		if errors.Is(err, store.ErrInvalidEngram) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]int{"inserted": len(items)})
+}
+
 // handleSearch serves GET /search?q=<fts5-query>[&surface=X][&limit=N].
 // Runs an FTS5 full-text search over engram payloads and returns results
 // ordered by relevance rank (best match first). Returns the same JSON-array

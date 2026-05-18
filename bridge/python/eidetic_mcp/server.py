@@ -46,6 +46,10 @@ Tools exposed:
     the fsnotify capture path. surface + payload required; ts defaults to
     server-side now; meta is optional. Returns {"id": N}.
 
+  insert_engrams_batch(items)
+    Bulk insert a list of engram dicts in one atomic transaction (v0.0.17+).
+    Each item needs surface + payload; ts + meta optional. Returns {"inserted": N}.
+
 Run:
 
     eideticd &                          # daemon listens on UDS
@@ -295,6 +299,36 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "required": ["surface", "payload"],
                 },
             ),
+            Tool(
+                name="insert_engrams_batch",
+                description=(
+                    "Bulk insert a list of engrams in one atomic transaction (v0.0.17+). "
+                    "All items succeed or none do. Use when you have multiple engrams to "
+                    "inject at once — relay sync, bulk import, session replay.\n\n"
+                    "Each item requires `surface` and `payload`; `ts` and `meta` are "
+                    "optional. Returns the count of inserted engrams."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "items": {
+                            "type": "array",
+                            "description": "Array of engram objects.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "surface": {"type": "string"},
+                                    "payload": {"type": "string"},
+                                    "ts": {"type": "integer"},
+                                    "meta": {"type": "string"},
+                                },
+                                "required": ["surface", "payload"],
+                            },
+                        },
+                    },
+                    "required": ["items"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -382,6 +416,16 @@ def build_server(client: DaemonClient | None = None) -> Any:
             except (DaemonError, ValueError) as exc:
                 return [TextContent(type="text", text=f"error: {exc}")]
             return [TextContent(type="text", text=json.dumps({"id": engram_id}))]
+
+        if name == "insert_engrams_batch":
+            items = arguments.get("items", [])
+            if not isinstance(items, list) or not items:
+                return [TextContent(type="text", text="error: items must be non-empty array")]
+            try:
+                n = daemon.insert_engrams_batch(items)
+            except (DaemonError, ValueError) as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            return [TextContent(type="text", text=json.dumps({"inserted": n}))]
 
         return [TextContent(type="text", text=f"error: unknown tool {name!r}")]
 

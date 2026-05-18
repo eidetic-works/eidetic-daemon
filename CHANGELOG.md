@@ -6,6 +6,31 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.17] — 2026-05-18
+
+Bulk insert via `POST /engrams/batch` — one round-trip for N engrams in a single transaction. Complements the single-insert `POST /engrams` from v0.0.16. **Zero breaking change.**
+
+### Added
+
+- **`POST /engrams/batch`** (`internal/api/routes.go`, `internal/api/server.go`):
+  - Accepts a JSON array of engram objects: `[{"surface":"...","payload":"...","ts":...,"meta":"..."}, ...]`.
+  - All items inserted via `store.InsertBatch` in a single transaction — any validation failure rolls back the entire batch.
+  - `ts` defaults to `time.Now().UnixNano()` per-item (same `now` value for all items in the batch).
+  - Body capped at 32 MiB via `http.MaxBytesReader`. Empty array → `201 + {"inserted": 0}` (no-op, not error).
+  - Returns `201 Created + {"inserted": N}` on success; 400 on validation failure or invalid JSON; 405 on non-POST.
+  - **6 API tests** (`internal/api/server_test.go`): 201+count, empty-array no-op, all-retrievable, auto-ts, missing-surface 400, 405 on GET.
+
+- **MCP bridge — `insert_engrams_batch` tool** (`bridge/python/eidetic_mcp/server.py`, `client.py`):
+  - `DaemonClient.insert_engrams_batch(items)` → `int` (count). Client-side validates surface+payload before sending.
+  - `insert_engrams_batch` MCP tool with `items` array in inputSchema.
+  - **4 bridge tests** (`bridge/python/tests/test_client.py`): returns count, optional fields, empty raises ValueError, missing surface raises ValueError.
+
+### Reference
+
+PR #50 · tag v0.0.17
+
+---
+
 ## [v0.0.16] — 2026-05-18
 
 API-side engram insertion — `POST /engrams` turns the daemon from a read-only query layer into a writable store reachable from any caller (mobile, webhooks, relay pipelines, manual annotations). **Zero breaking change** to any prior caller; all existing GET/DELETE semantics unchanged.
