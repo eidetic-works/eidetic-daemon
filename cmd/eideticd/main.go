@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -47,6 +48,7 @@ func main() {
 	restoreFlag := flag.Bool("restore", false, "download latest engrams.db backup from Cloudflare R2 (requires sync.json in dataDir) and exit")
 	showStats := flag.Bool("stats", false, "print engram database statistics and exit")
 	checkSync := flag.Bool("check", false, "validate sync.json config and test Worker connectivity, then exit")
+	showBackups := flag.Bool("backups", false, "list recent cloud backups from local sync history, then exit")
 	installSvc := flag.Bool("install", false, "register eideticd as a login-time service (launchd on macOS, systemd-user on Linux) and exit")
 	flag.Parse()
 
@@ -78,6 +80,32 @@ func main() {
 	// (auth-token, state.json, engrams.db all live under it).
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		log.Fatalf("mkdir dataDir %s: %v", dataDir, err)
+	}
+
+	// --backups: list last N cloud uploads from local history file. No DB needed.
+	if *showBackups {
+		state, err := eidetic_sync.LoadSyncState(dataDir)
+		if err != nil {
+			log.Fatalf("backups: %v", err)
+		}
+		fmt.Printf("eideticd %s — cloud backup history\n\n", Version)
+		if len(state.History) == 0 {
+			if state.LastSync.IsZero() {
+				fmt.Println("  no backups yet")
+			} else {
+				// Pre-v0.0.36 daemon: only the last sync was recorded.
+				fmt.Printf("  %s  %s  (%.1f MB)\n",
+					state.LastSync.Local().Format("2006-01-02 15:04"),
+					state.LastKey, float64(state.LastBytes)/1e6)
+			}
+			return
+		}
+		for _, e := range state.History {
+			fmt.Printf("  %s  %s  (%.1f MB)\n",
+				e.SyncedAt.Local().Format("2006-01-02 15:04"),
+				e.Key, float64(e.Bytes)/1e6)
+		}
+		return
 	}
 
 	// --check: validate sync.json + test Worker. Runs before store.Open (no DB needed).
@@ -115,11 +143,21 @@ func main() {
 	defer s.Close()
 
 	// v0.0.24+: optional Cloudflare R2 sync (ADR-019). Opt-in via sync.json.
+	// v0.0.35+: sync.json is hot-reloaded — dropping a new file is detected via
+	// fsnotify and the Syncer is recreated without daemon restart.
 	syncCfg, err := eidetic_sync.LoadConfig(dataDir)
 	if err != nil {
 		log.Printf("sync: config error (sync disabled): %v", err)
 	}
-	syncer := eidetic_sync.New(syncCfg, dbPath, dataDir, s)
+	var (
+		syncerMu sync.RWMutex
+		syncer   = eidetic_sync.New(syncCfg, dbPath, dataDir, s)
+	)
+	getSyncer := func() *eidetic_sync.Syncer {
+		syncerMu.RLock()
+		defer syncerMu.RUnlock()
+		return syncer
+	}
 
 	// --stats: print database statistics and exit.
 	if *showStats {
@@ -153,7 +191,7 @@ func main() {
 
 	// --sync-now: upload immediately and exit (no daemon loop needed)
 	if *syncNow {
-		if err := syncer.SyncNow(); err != nil {
+		if err := getSyncer().SyncNow(); err != nil {
 			log.Fatalf("sync-now: %v", err)
 		}
 		log.Printf("sync-now: upload complete")
@@ -305,10 +343,39 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if err := syncer.TriggerIfDue(); err != nil {
+				if err := getSyncer().TriggerIfDue(); err != nil {
 					log.Printf("sync: %v", err)
 				}
 			}
+		}
+	}()
+
+	// v0.0.35+: hot-reload sync.json. When a Pro customer drops their sync.json
+	// into dataDir, the daemon detects it and starts syncing within ~1 second
+	// without requiring a restart.
+	go func() {
+		err := eidetic_sync.WatchConfig(ctx, dataDir, func(newCfg *eidetic_sync.Config) {
+			newSyncer := eidetic_sync.New(newCfg, dbPath, dataDir, s)
+			syncerMu.Lock()
+			syncer = newSyncer
+			syncerMu.Unlock()
+			if newSyncer != nil {
+				log.Printf("sync: hot-reload — config applied (worker=%s device=%s)",
+					newCfg.WorkerURL, newCfg.DeviceID)
+				// Kick an immediate sync so the customer sees confirmation quickly.
+				go func() {
+					if err := newSyncer.SyncNow(); err != nil {
+						log.Printf("sync: hot-reload initial upload: %v", err)
+					} else {
+						log.Printf("sync: hot-reload initial upload complete")
+					}
+				}()
+			} else {
+				log.Printf("sync: hot-reload — config removed or invalid; sync disabled")
+			}
+		})
+		if err != nil {
+			log.Printf("sync watch: %v", err)
 		}
 	}()
 

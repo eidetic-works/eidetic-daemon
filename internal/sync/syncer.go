@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
+	"github.com/fsnotify/fsnotify"
 )
 
 const (
@@ -35,12 +36,22 @@ const (
 )
 
 // SyncState is persisted to <dataDir>/sync-state.json after each successful upload.
-// It survives daemon restarts so --stats can show the last cloud backup time.
+// It survives daemon restarts so --stats / --backups can show cloud backup history.
 type SyncState struct {
-	LastSync  time.Time `json:"last_sync"`
-	LastKey   string    `json:"last_key"`
-	LastBytes int64     `json:"last_bytes"`
+	LastSync  time.Time     `json:"last_sync"`
+	LastKey   string        `json:"last_key"`
+	LastBytes int64         `json:"last_bytes"`
+	History   []BackupEntry `json:"history,omitempty"` // ring buffer, newest first, capped at maxBackupHistory
 }
+
+// BackupEntry is one row in the SyncState.History ring buffer.
+type BackupEntry struct {
+	SyncedAt time.Time `json:"synced_at"`
+	Key      string    `json:"key"`
+	Bytes    int64     `json:"bytes"`
+}
+
+const maxBackupHistory = 10
 
 // LoadSyncState reads the persisted sync state from dataDir. Returns zero-value
 // SyncState (not an error) if the file does not exist yet.
@@ -166,6 +177,69 @@ func (s *Syncer) SyncNow() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.upload()
+}
+
+// WatchConfig watches dataDir for sync.json create/modify/remove events and
+// invokes onChange with the freshly-loaded config (nil if file removed or
+// invalid). Debounces rapid events (300ms). Blocks until ctx is canceled.
+//
+// Use case: hot-reload — Pro customer drops sync.json into ~/.eidetic/ and
+// sync starts within seconds without restarting the daemon.
+func WatchConfig(ctx context.Context, dataDir string, onChange func(*Config)) error {
+	w, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("sync watch: create watcher: %w", err)
+	}
+	defer w.Close()
+
+	// Watch the parent dir — fsnotify can't watch a file that doesn't exist yet.
+	if err := w.Add(dataDir); err != nil {
+		return fmt.Errorf("sync watch: add %s: %w", dataDir, err)
+	}
+
+	target := filepath.Join(dataDir, "sync.json")
+	var (
+		debounceMu sync.Mutex
+		pending    *time.Timer
+	)
+
+	fire := func() {
+		debounceMu.Lock()
+		if pending != nil {
+			pending.Stop()
+		}
+		pending = time.AfterFunc(300*time.Millisecond, func() {
+			cfg, err := LoadConfig(dataDir)
+			if err != nil {
+				onChange(nil)
+				return
+			}
+			onChange(cfg)
+		})
+		debounceMu.Unlock()
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case ev, ok := <-w.Events:
+			if !ok {
+				return nil
+			}
+			if filepath.Clean(ev.Name) != target {
+				continue
+			}
+			if ev.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Rename|fsnotify.Remove) != 0 {
+				fire()
+			}
+		case err, ok := <-w.Errors:
+			if !ok {
+				return nil
+			}
+			return fmt.Errorf("sync watch: %w", err)
+		}
+	}
 }
 
 // CheckConfig validates sync.json configuration and tests Worker connectivity.
@@ -339,10 +413,18 @@ func (s *Syncer) upload() error {
 	}
 
 	backupKey := resp.Header.Get("X-Backup-Key")
+	now := time.Now()
+	prev, _ := LoadSyncState(s.dataDir)
+	entry := BackupEntry{SyncedAt: now, Key: backupKey, Bytes: int64(len(body))}
+	history := append([]BackupEntry{entry}, prev.History...)
+	if len(history) > maxBackupHistory {
+		history = history[:maxBackupHistory]
+	}
 	state := SyncState{
-		LastSync:  time.Now(),
+		LastSync:  now,
 		LastKey:   backupKey,
 		LastBytes: int64(len(body)),
+		History:   history,
 	}
 	_ = saveSyncState(s.dataDir, state) // best-effort; don't fail the upload
 	return nil

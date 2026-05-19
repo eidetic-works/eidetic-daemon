@@ -1,13 +1,16 @@
 package sync_test
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	eidetic_sync "github.com/eidetic-works/eidetic-daemon/internal/sync"
 )
@@ -354,6 +357,127 @@ func TestCheckConfig_WorkerOK(t *testing.T) {
 	err := eidetic_sync.CheckConfig(cfg, t.TempDir())
 	if err != nil {
 		t.Fatalf("CheckConfig returned error for healthy Worker: %v", err)
+	}
+}
+
+// TestUploadAppendsHistory verifies that successive uploads push onto the ring
+// buffer and the buffer is capped (no unbounded growth).
+func TestUploadAppendsHistory(t *testing.T) {
+	var uploadCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		uploadCount++
+		w.Header().Set("X-Backup-Key", fmt.Sprintf("engrams/dev/upload-%d.db", uploadCount))
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "engrams.db")
+	os.WriteFile(dbPath, []byte("SQLITE3"), 0600)
+
+	cfg := &eidetic_sync.Config{WorkerURL: srv.URL, APIKey: "k", DeviceID: "dev"}
+	s := eidetic_sync.New(cfg, dbPath, dir, nil)
+
+	// Push 12 uploads — ring buffer cap is 10.
+	for i := 0; i < 12; i++ {
+		if err := s.SyncNow(); err != nil {
+			t.Fatalf("SyncNow #%d: %v", i, err)
+		}
+	}
+
+	state, _ := eidetic_sync.LoadSyncState(dir)
+	if len(state.History) != 10 {
+		t.Errorf("History length: got %d, want 10 (cap)", len(state.History))
+	}
+	// Newest first: the 12th upload should be at index 0.
+	if state.History[0].Key != "engrams/dev/upload-12.db" {
+		t.Errorf("newest entry: got %q, want engrams/dev/upload-12.db", state.History[0].Key)
+	}
+	// Oldest in the buffer should be upload-3 (12 - 10 + 1 = 3).
+	if state.History[9].Key != "engrams/dev/upload-3.db" {
+		t.Errorf("oldest entry: got %q, want engrams/dev/upload-3.db", state.History[9].Key)
+	}
+}
+
+// TestWatchConfig_CreateAndRemove verifies the hot-reload watcher fires onChange
+// with a non-nil config when sync.json is created, and nil when removed.
+func TestWatchConfig_CreateAndRemove(t *testing.T) {
+	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events := make(chan *eidetic_sync.Config, 4)
+	go func() {
+		eidetic_sync.WatchConfig(ctx, dir, func(c *eidetic_sync.Config) {
+			events <- c
+		})
+	}()
+
+	// Give the watcher time to attach.
+	time.Sleep(100 * time.Millisecond)
+
+	// Create a valid sync.json.
+	cfg := `{"worker_url":"https://example.com","api_key":"key","device_id":"dev01","sync_interval":60}`
+	cfgPath := filepath.Join(dir, "sync.json")
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case got := <-events:
+		if got == nil {
+			t.Fatal("expected non-nil config after create")
+		}
+		if got.DeviceID != "dev01" {
+			t.Errorf("DeviceID: got %q, want dev01", got.DeviceID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for create event")
+	}
+
+	// Remove sync.json.
+	if err := os.Remove(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case got := <-events:
+		if got != nil {
+			t.Errorf("expected nil config after remove, got %+v", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for remove event")
+	}
+}
+
+// TestWatchConfig_InvalidJSON verifies that a malformed sync.json triggers
+// onChange(nil) rather than crashing the watcher.
+func TestWatchConfig_InvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events := make(chan *eidetic_sync.Config, 2)
+	go func() {
+		eidetic_sync.WatchConfig(ctx, dir, func(c *eidetic_sync.Config) {
+			events <- c
+		})
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+
+	if err := os.WriteFile(filepath.Join(dir, "sync.json"), []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case got := <-events:
+		if got != nil {
+			t.Errorf("expected nil for invalid JSON, got %+v", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for invalid-json event")
 	}
 }
 
