@@ -168,6 +168,65 @@ func (s *Syncer) SyncNow() error {
 	return s.upload()
 }
 
+// CheckConfig validates sync.json configuration and tests Worker connectivity.
+// Prints a human-readable report to stdout. Returns non-nil if config is missing
+// or the Worker is unreachable. Designed to run before store.Open.
+func CheckConfig(cfg *Config, dataDir string) error {
+	if cfg == nil {
+		fmt.Printf("  sync.json:  not found at %s\n", filepath.Join(dataDir, "sync.json"))
+		fmt.Printf("  sync:       disabled (drop sync.json to enable cloud backup)\n")
+		return fmt.Errorf("sync not configured")
+	}
+
+	fmt.Printf("  worker_url: %s\n", cfg.WorkerURL)
+	fmt.Printf("  device_id:  %s\n", cfg.DeviceID)
+	if cfg.SyncInterval > 0 {
+		fmt.Printf("  interval:   %d min\n", cfg.SyncInterval)
+	} else {
+		fmt.Printf("  interval:   60 min (default)\n")
+	}
+
+	// Ping the Worker /healthz endpoint.
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest(http.MethodGet, cfg.WorkerURL+"/healthz", nil)
+	if err != nil {
+		fmt.Printf("  worker:     ✗ build request: %v\n", err)
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	req.Header.Set("X-Device-ID", cfg.DeviceID)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("  worker:     ✗ unreachable: %v\n", err)
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		fmt.Printf("  worker:     ✓ reachable (200 OK)\n")
+	} else if resp.StatusCode == http.StatusUnauthorized {
+		fmt.Printf("  worker:     ✗ auth failed (401) — check api_key in sync.json\n")
+		return fmt.Errorf("worker auth failed")
+	} else {
+		fmt.Printf("  worker:     ✗ unexpected status %d\n", resp.StatusCode)
+		return fmt.Errorf("worker returned %d", resp.StatusCode)
+	}
+
+	// Check persisted sync state.
+	state, err := LoadSyncState(dataDir)
+	if err != nil {
+		fmt.Printf("  last sync:  (error reading state: %v)\n", err)
+	} else if state.LastSync.IsZero() {
+		fmt.Printf("  last sync:  never (run eideticd --sync-now to upload immediately)\n")
+	} else {
+		ago := time.Since(state.LastSync).Round(time.Minute)
+		fmt.Printf("  last sync:  %s (%s ago)\n", state.LastSync.Local().Format("2006-01-02 15:04"), ago)
+		fmt.Printf("  last key:   %s\n", state.LastKey)
+		fmt.Printf("  last size:  %.1f MB\n", float64(state.LastBytes)/1e6)
+	}
+	return nil
+}
+
 // RestoreFromConfig downloads the most recent backup for the configured device
 // from Cloudflare R2 via the /download endpoint and atomically replaces dbPath.
 // The existing file (if any) is renamed to dbPath+".bak" before replacement.

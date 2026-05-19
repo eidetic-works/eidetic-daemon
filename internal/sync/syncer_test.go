@@ -324,3 +324,53 @@ func TestUploadWritesSyncState(t *testing.T) {
 		t.Errorf("LastBytes: got %d, want %d", state.LastBytes, len("SQLITE3fake"))
 	}
 }
+
+// TestCheckConfig_NilConfig verifies CheckConfig handles missing sync.json gracefully.
+func TestCheckConfig_NilConfig(t *testing.T) {
+	err := eidetic_sync.CheckConfig(nil, t.TempDir())
+	if err == nil {
+		t.Fatal("expected error for nil config")
+	}
+}
+
+// TestCheckConfig_WorkerOK verifies CheckConfig reports healthy when Worker returns 200.
+func TestCheckConfig_WorkerOK(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"status":"ok"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	cfg := &eidetic_sync.Config{
+		WorkerURL: srv.URL,
+		APIKey:    "key",
+		DeviceID:  "dev01",
+	}
+	err := eidetic_sync.CheckConfig(cfg, t.TempDir())
+	if err != nil {
+		t.Fatalf("CheckConfig returned error for healthy Worker: %v", err)
+	}
+}
+
+// TestCheckConfig_WorkerUnauth verifies CheckConfig surfaces auth failure.
+func TestCheckConfig_WorkerUnauth(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	cfg := &eidetic_sync.Config{
+		WorkerURL: srv.URL,
+		APIKey:    "wrong-key",
+		DeviceID:  "dev01",
+	}
+	err := eidetic_sync.CheckConfig(cfg, t.TempDir())
+	if err == nil {
+		t.Fatal("expected error for 401 response")
+	}
+}

@@ -46,6 +46,7 @@ func main() {
 	syncNow := flag.Bool("sync-now", false, "upload engrams.db to Cloudflare R2 immediately (requires sync.json in dataDir) and exit")
 	restoreFlag := flag.Bool("restore", false, "download latest engrams.db backup from Cloudflare R2 (requires sync.json in dataDir) and exit")
 	showStats := flag.Bool("stats", false, "print engram database statistics and exit")
+	checkSync := flag.Bool("check", false, "validate sync.json config and test Worker connectivity, then exit")
 	installSvc := flag.Bool("install", false, "register eideticd as a login-time service (launchd on macOS, systemd-user on Linux) and exit")
 	flag.Parse()
 
@@ -77,6 +78,21 @@ func main() {
 	// (auth-token, state.json, engrams.db all live under it).
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		log.Fatalf("mkdir dataDir %s: %v", dataDir, err)
+	}
+
+	// --check: validate sync.json + test Worker. Runs before store.Open (no DB needed).
+	if *checkSync {
+		cfg, err := eidetic_sync.LoadConfig(dataDir)
+		if err != nil {
+			log.Fatalf("check: load sync config: %v", err)
+		}
+		fmt.Printf("eideticd %s — sync check\n\n", Version)
+		if checkErr := eidetic_sync.CheckConfig(cfg, dataDir); checkErr != nil {
+			fmt.Printf("\n  status: ✗ sync not healthy\n")
+			os.Exit(1)
+		}
+		fmt.Printf("\n  status: ✓ sync healthy\n")
+		return
 	}
 
 	// --restore: download latest backup and replace local DB.
