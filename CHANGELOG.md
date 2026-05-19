@@ -6,6 +6,16 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.29] — 2026-05-19
+
+`-install` flag for one-command service registration.
+
+### Added
+
+- **`eideticd -install`** — registers eideticd as a login-time service: launchd `works.eidetic.eideticd` on macOS, systemd-user `eideticd.service` on Linux. Binary path resolved via `os.Executable()` + `EvalSymlinks` so Homebrew shims resolve correctly. Live-tested: daemon starts and passes `/healthz` in under 1 second. Fixes broken Homebrew caveats that referenced this flag before it existed.
+
+---
+
 ## [v0.0.28] — 2026-05-19
 
 linux-arm64 platform + FTS5 search snippets + eidetic-mcp 0.0.4.
