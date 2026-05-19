@@ -185,3 +185,90 @@ func TestUploadMissingDB(t *testing.T) {
 		t.Fatal("expected error for missing db file")
 	}
 }
+
+// TestRestoreFromConfig verifies the download → atomic replace flow.
+func TestRestoreFromConfig(t *testing.T) {
+	const fakeKey = "restore-bearer"
+	const fakeDevice = "restore-device"
+	const fakeDB = "SQLite format 3\x00fake-restored-db-content"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/download" || r.Method != http.MethodGet {
+			http.Error(w, "unexpected", 404)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer "+fakeKey {
+			http.Error(w, "unauthorized", 401)
+			return
+		}
+		if r.Header.Get("X-Device-ID") != fakeDevice {
+			http.Error(w, "bad device", 400)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-sqlite3")
+		w.Header().Set("X-Backup-Key", "engrams/"+fakeDevice+"/engrams-9999.db")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(fakeDB))
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "engrams.db")
+	// Write an existing DB so we can verify it gets backed up.
+	os.WriteFile(dbPath, []byte("old-db-content"), 0600)
+
+	cfg := &eidetic_sync.Config{
+		WorkerURL: srv.URL,
+		APIKey:    fakeKey,
+		DeviceID:  fakeDevice,
+	}
+	if err := eidetic_sync.RestoreFromConfig(cfg, dbPath); err != nil {
+		t.Fatalf("RestoreFromConfig() error: %v", err)
+	}
+
+	// Restored DB should contain the server's payload.
+	got, err := os.ReadFile(dbPath)
+	if err != nil {
+		t.Fatalf("read restored db: %v", err)
+	}
+	if string(got) != fakeDB {
+		t.Errorf("restored content mismatch: got %q, want %q", got, fakeDB)
+	}
+
+	// Backup of old DB should exist.
+	bak, err := os.ReadFile(dbPath + ".bak")
+	if err != nil {
+		t.Fatalf("read backup db: %v", err)
+	}
+	if string(bak) != "old-db-content" {
+		t.Errorf("backup content mismatch: got %q", bak)
+	}
+}
+
+// TestRestoreFromConfig_NilConfig verifies that nil config returns an error.
+func TestRestoreFromConfig_NilConfig(t *testing.T) {
+	err := eidetic_sync.RestoreFromConfig(nil, "/tmp/db.db")
+	if err == nil {
+		t.Fatal("expected error for nil config")
+	}
+}
+
+// TestRestoreFromConfig_NoBackup verifies that a 404 from the Worker surfaces as error.
+func TestRestoreFromConfig_NoBackup(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"no backup found"}`))
+	}))
+	defer srv.Close()
+
+	cfg := &eidetic_sync.Config{
+		WorkerURL: srv.URL,
+		APIKey:    "key",
+		DeviceID:  "dev",
+	}
+	err := eidetic_sync.RestoreFromConfig(cfg, filepath.Join(t.TempDir(), "engrams.db"))
+	if err == nil {
+		t.Fatal("expected error for 404 response")
+	}
+}

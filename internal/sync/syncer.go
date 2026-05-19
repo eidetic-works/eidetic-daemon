@@ -140,6 +140,76 @@ func (s *Syncer) SyncNow() error {
 	return s.upload()
 }
 
+// RestoreFromConfig downloads the most recent backup for the configured device
+// from Cloudflare R2 via the /download endpoint and atomically replaces dbPath.
+// The existing file (if any) is renamed to dbPath+".bak" before replacement.
+// Designed to run before store.Open — does not require a live Syncer instance.
+func RestoreFromConfig(cfg *Config, dbPath string) error {
+	if cfg == nil {
+		return fmt.Errorf("restore: not configured (missing sync.json)")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, cfg.WorkerURL+"/download", nil)
+	if err != nil {
+		return fmt.Errorf("restore: build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	req.Header.Set("X-Device-ID", cfg.DeviceID)
+
+	client := &http.Client{Timeout: 300 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("restore: download: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("restore: no backup found for device %q", cfg.DeviceID)
+	}
+	if resp.StatusCode != http.StatusOK {
+		rb, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("restore: worker returned %d: %s", resp.StatusCode, rb)
+	}
+
+	// Stream to a temp file alongside the target DB so rename is atomic.
+	tmpPath := dbPath + ".restore-tmp"
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("restore: create temp file: %w", err)
+	}
+	n, copyErr := io.Copy(f, resp.Body)
+	f.Close()
+	if copyErr != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("restore: write temp file: %w", copyErr)
+	}
+
+	// Back up existing DB before replacing.
+	bakPath := dbPath + ".bak"
+	if _, statErr := os.Stat(dbPath); statErr == nil {
+		if err := os.Rename(dbPath, bakPath); err != nil {
+			_ = os.Remove(tmpPath)
+			return fmt.Errorf("restore: backup existing db: %w", err)
+		}
+	}
+
+	if err := os.Rename(tmpPath, dbPath); err != nil {
+		_ = os.Rename(bakPath, dbPath) // attempt to restore backup on failure
+		return fmt.Errorf("restore: replace db: %w", err)
+	}
+
+	backupKey := resp.Header.Get("X-Backup-Key")
+	fmt.Printf("✓ Downloaded %.1f MB engrams.db from cloud backup\n", float64(n)/1e6)
+	if backupKey != "" {
+		fmt.Printf("  key: %s\n", backupKey)
+	}
+	if _, statErr := os.Stat(bakPath); statErr == nil {
+		fmt.Printf("  previous db saved to %s\n", bakPath)
+	}
+	fmt.Printf("  restart eideticd to use the restored database\n")
+	return nil
+}
+
 func (s *Syncer) upload() error {
 	f, err := os.Open(s.dbPath)
 	if err != nil {

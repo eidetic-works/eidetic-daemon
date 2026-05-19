@@ -39,6 +39,10 @@ export default {
       return handleLatest(request, env);
     }
 
+    if (url.pathname === "/download" && request.method === "GET") {
+      return handleDownload(request, env);
+    }
+
     return new Response("not found", { status: 404 });
   },
 };
@@ -152,6 +156,45 @@ async function handleLatest(request, env) {
     }),
     { headers: { "Content-Type": "application/json" } }
   );
+}
+
+async function handleDownload(request, env) {
+  if (!(await isAuthorized(request, env))) {
+    return new Response("unauthorized", { status: 401 });
+  }
+
+  const deviceId = request.headers.get("X-Device-ID");
+  if (!deviceId) {
+    return new Response("X-Device-ID header required", { status: 400 });
+  }
+
+  const listed = await env.EIDETIC_SYNC_BUCKET.list({
+    prefix: `engrams/${deviceId}/`,
+  });
+
+  if (!listed.objects || listed.objects.length === 0) {
+    return new Response(JSON.stringify({ error: "no backup found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const sorted = listed.objects.slice().sort((a, b) => a.key.localeCompare(b.key));
+  const latest = sorted[sorted.length - 1];
+
+  const obj = await env.EIDETIC_SYNC_BUCKET.get(latest.key);
+  if (!obj) {
+    return new Response("backup object not found", { status: 404 });
+  }
+
+  return new Response(obj.body, {
+    headers: {
+      "Content-Type": "application/x-sqlite3",
+      "Content-Disposition": 'attachment; filename="engrams.db"',
+      "X-Backup-Key": latest.key,
+      "X-Uploaded-At": latest.customMetadata?.uploadedAt ?? "",
+    },
+  });
 }
 
 async function pruneOldBackups(env, deviceId, keepN) {
