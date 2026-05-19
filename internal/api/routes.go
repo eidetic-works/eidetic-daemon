@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/eidetic-works/eidetic-daemon/internal/engram"
@@ -334,6 +335,132 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(rows)
+}
+
+// handleAsk serves GET /ask?question=<text>[&surface=X][&limit=N].
+// Wraps the question→FTS keyword extraction + RAG-format flow that the
+// eidetic-mcp nucleus_ask tool provides — but accessible to non-MCP clients
+// (web dashboard, mobile, plain curl).
+//
+// Response shape:
+//
+//	{
+//	  "question":     "What was that Postgres trick I learned?",
+//	  "fts_query":    "postgres OR trick OR learned",
+//	  "instructions": "Use these engrams to answer...",
+//	  "engrams":      [...]
+//	}
+//
+// 400 if question missing. 500 on store error. (v0.0.38+)
+func (s *Server) handleAsk(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+	question := strings.TrimSpace(q.Get("question"))
+	if question == "" {
+		http.Error(w, "question required", http.StatusBadRequest)
+		return
+	}
+
+	surface := q.Get("surface")
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 30 {
+		limit = 30
+	}
+
+	fts := questionToFTS(question)
+
+	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
+	defer cancel()
+
+	rows, err := s.store.Search(ctx, fts, surface, limit)
+	if err != nil {
+		// Fall back to the raw question if the FTS expression was rejected.
+		rows, err = s.store.Search(ctx, question, surface, limit)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	var instructions string
+	if len(rows) == 0 {
+		instructions = "No engrams matched. Tell the user no relevant engrams " +
+			"were found; do NOT fabricate an answer."
+	} else {
+		instructions = "You are answering the question above using ONLY the " +
+			"engram excerpts below. Each engram is a snapshot from the user's " +
+			"past work. Cite the surface + timestamp when you reference one. " +
+			"If the engrams don't answer the question, say so honestly — do " +
+			"NOT fabricate. Prefer recent engrams when relevance ties."
+	}
+
+	resp := map[string]any{
+		"question":     question,
+		"fts_query":    fts,
+		"instructions": instructions,
+		"engrams":      rows,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// askStopwords mirrors eidetic-mcp's _STOPWORDS set. Kept in sync via the
+// internal/sync/syncer.go pattern: small, finite, audited together.
+var askStopwords = map[string]struct{}{
+	"a": {}, "an": {}, "the": {}, "is": {}, "was": {}, "were": {}, "are": {},
+	"be": {}, "been": {}, "being": {}, "i": {}, "me": {}, "my": {}, "we": {},
+	"our": {}, "you": {}, "your": {}, "they": {}, "them": {}, "their": {},
+	"it": {}, "its": {}, "this": {}, "that": {}, "these": {}, "those": {},
+	"what": {}, "when": {}, "where": {}, "why": {}, "how": {}, "who": {},
+	"which": {}, "do": {}, "did": {}, "does": {}, "have": {}, "had": {},
+	"has": {}, "having": {}, "and": {}, "or": {}, "but": {}, "if": {},
+	"then": {}, "else": {}, "of": {}, "to": {}, "in": {}, "on": {}, "for": {},
+	"with": {}, "from": {}, "by": {}, "at": {}, "as": {}, "about": {},
+	"into": {}, "over": {}, "out": {}, "up": {}, "down": {}, "again": {},
+	"anything": {}, "something": {}, "find": {}, "tell": {}, "show": {},
+	"give": {}, "ask": {}, "any": {}, "some": {}, "all": {}, "each": {},
+	"every": {},
+}
+
+// questionToFTS turns a natural-language question into a permissive FTS5
+// OR-query (best-recall semantics). Mirrors the Python helper in
+// bridge/python/eidetic_mcp/server.py::_question_to_fts so MCP + HTTP /ask
+// give identical retrieval behavior.
+func questionToFTS(question string) string {
+	var kws []string
+	var cur []rune
+	flush := func() {
+		if len(cur) == 0 {
+			return
+		}
+		t := strings.ToLower(string(cur))
+		cur = cur[:0]
+		if len(t) < 3 {
+			return
+		}
+		if _, stop := askStopwords[t]; stop {
+			return
+		}
+		kws = append(kws, t)
+	}
+	for _, r := range question {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
+			cur = append(cur, r)
+		} else {
+			flush()
+		}
+	}
+	flush()
+	if len(kws) == 0 {
+		return question
+	}
+	return strings.Join(kws, " OR ")
 }
 
 // handleRecent serves GET /recent?since=unix-ns&limit=N.

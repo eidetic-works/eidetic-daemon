@@ -117,6 +117,7 @@ func New(s *store.Store, opts Options) (*Server, error) {
 	mux.HandleFunc("/surfaces", srv.handleSurfaces)
 	mux.HandleFunc("/search", srv.handleSearch)
 	mux.HandleFunc("/recent", srv.handleRecent)
+	mux.HandleFunc("/ask", srv.handleAsk)
 	mux.HandleFunc("/healthz", srv.handleHealthz)
 	mux.HandleFunc("/metrics", srv.handleMetrics)
 

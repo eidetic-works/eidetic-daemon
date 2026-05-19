@@ -6,6 +6,18 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.38] — 2026-05-20
+
+`/ask` HTTP endpoint: nucleus_ask semantics for non-MCP clients (web dashboard, mobile, curl).
+
+### Added
+
+- **`GET /ask?question=<text>[&surface=X][&limit=N]`** — extracts keywords from a natural-language question, FTS5-retrieves top-K engrams, returns `{question, fts_query, instructions, engrams}` for the caller's LLM. Mirrors the eidetic-mcp `nucleus_ask` tool exactly so MCP + HTTP /ask have identical retrieval behavior.
+- **`questionToFTS()`** Go helper in `internal/api/routes.go` — stop-word stripping + OR-joined keyword list. Kept in sync with the Python `_question_to_fts` in eidetic-mcp.
+- 4 new tests: missing question → 400, POST → 405, RAG response shape, no-match instructions warn against fabrication.
+
+---
+
 ## [v0.0.36] — 2026-05-20
 
 `--backups` flag: at-a-glance cloud backup history.

@@ -1564,3 +1564,105 @@ func TestGetEngramsNoSurfaceAscOrder(t *testing.T) {
 		t.Errorf("cross-surface asc: want oldest first, got first=%d last=%d", rows[0].TS, rows[len(rows)-1].TS)
 	}
 }
+
+// ── GET /ask tests (v0.0.38+) ───────────────────────────────────────────────
+
+func TestAskMissingQuestionReturns400(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/ask", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("missing question: want 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestAskMethodNotAllowed(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/ask?question=x", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST /ask: want 405, got %d", resp.StatusCode)
+	}
+}
+
+func TestAskReturnsRAGShape(t *testing.T) {
+	st := tempStore(t)
+	seedSearch(t, st, "claude_code", `Postgres tuning: set shared_buffers to 25% of RAM`)
+	seedSearch(t, st, "claude_code", `nothing relevant here`)
+
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/ask?question=What+was+that+Postgres+trick", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("want 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var got struct {
+		Question     string           `json:"question"`
+		FTSQuery     string           `json:"fts_query"`
+		Instructions string           `json:"instructions"`
+		Engrams      []engram.Engram  `json:"engrams"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Question != "What was that Postgres trick" {
+		t.Errorf("question echo: got %q", got.Question)
+	}
+	if !strings.Contains(got.FTSQuery, "postgres") {
+		t.Errorf("fts_query should contain 'postgres', got %q", got.FTSQuery)
+	}
+	if !strings.Contains(got.FTSQuery, " OR ") {
+		t.Errorf("fts_query should use OR semantics, got %q", got.FTSQuery)
+	}
+	if got.Instructions == "" {
+		t.Error("instructions field must be non-empty")
+	}
+	if len(got.Engrams) != 1 {
+		t.Errorf("expected 1 matching engram, got %d", len(got.Engrams))
+	}
+}
+
+func TestAskNoMatchInstructsNoFabricate(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/ask?question=anything+at+all", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got struct {
+		Instructions string          `json:"instructions"`
+		Engrams      []engram.Engram `json:"engrams"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Engrams) != 0 {
+		t.Errorf("expected 0 matches, got %d", len(got.Engrams))
+	}
+	if !strings.Contains(got.Instructions, "do NOT fabricate") {
+		t.Errorf("no-match instructions should warn against fabrication, got %q", got.Instructions)
+	}
+}
