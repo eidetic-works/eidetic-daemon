@@ -31,7 +31,33 @@ const (
 	defaultSyncInterval = 60 * time.Minute
 	defaultIdleSeconds  = 30
 	maxDBSize           = 500 * 1024 * 1024 // 500 MB guard matches Worker limit
+	stateFile           = "sync-state.json"
 )
+
+// SyncState is persisted to <dataDir>/sync-state.json after each successful upload.
+// It survives daemon restarts so --stats can show the last cloud backup time.
+type SyncState struct {
+	LastSync  time.Time `json:"last_sync"`
+	LastKey   string    `json:"last_key"`
+	LastBytes int64     `json:"last_bytes"`
+}
+
+// LoadSyncState reads the persisted sync state from dataDir. Returns zero-value
+// SyncState (not an error) if the file does not exist yet.
+func LoadSyncState(dataDir string) (SyncState, error) {
+	var s SyncState
+	b, err := os.ReadFile(filepath.Join(dataDir, stateFile))
+	if os.IsNotExist(err) {
+		return s, nil
+	}
+	if err != nil {
+		return s, fmt.Errorf("sync: read state: %w", err)
+	}
+	if err := json.Unmarshal(b, &s); err != nil {
+		return s, fmt.Errorf("sync: parse state: %w", err)
+	}
+	return s, nil
+}
 
 // Config is deserialized from sync.json.
 type Config struct {
@@ -45,6 +71,7 @@ type Config struct {
 type Syncer struct {
 	cfg      Config
 	dbPath   string
+	dataDir  string
 	store    *store.Store
 	mu       sync.Mutex
 	lastSync time.Time
@@ -73,7 +100,7 @@ func LoadConfig(dataDir string) (*Config, error) {
 }
 
 // New constructs a Syncer. Returns nil if cfg is nil (sync disabled).
-func New(cfg *Config, dbPath string, s *store.Store) *Syncer {
+func New(cfg *Config, dbPath, dataDir string, s *store.Store) *Syncer {
 	if cfg == nil {
 		return nil
 	}
@@ -82,9 +109,10 @@ func New(cfg *Config, dbPath string, s *store.Store) *Syncer {
 		interval = time.Duration(cfg.SyncInterval) * time.Minute
 	}
 	syn := &Syncer{
-		cfg:    *cfg,
-		dbPath: dbPath,
-		store:  s,
+		cfg:     *cfg,
+		dbPath:  dbPath,
+		dataDir: dataDir,
+		store:   s,
 	}
 	_ = interval
 	return syn
@@ -250,5 +278,25 @@ func (s *Syncer) upload() error {
 		rb, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return fmt.Errorf("sync: worker returned %d: %s", resp.StatusCode, rb)
 	}
+
+	backupKey := resp.Header.Get("X-Backup-Key")
+	state := SyncState{
+		LastSync:  time.Now(),
+		LastKey:   backupKey,
+		LastBytes: int64(len(body)),
+	}
+	_ = saveSyncState(s.dataDir, state) // best-effort; don't fail the upload
 	return nil
+}
+
+func saveSyncState(dataDir string, state SyncState) error {
+	b, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("sync: marshal state: %w", err)
+	}
+	tmp := filepath.Join(dataDir, stateFile+".tmp")
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return fmt.Errorf("sync: write state: %w", err)
+	}
+	return os.Rename(tmp, filepath.Join(dataDir, stateFile))
 }

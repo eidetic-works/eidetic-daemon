@@ -103,7 +103,7 @@ func main() {
 	if err != nil {
 		log.Printf("sync: config error (sync disabled): %v", err)
 	}
-	syncer := eidetic_sync.New(syncCfg, dbPath, s)
+	syncer := eidetic_sync.New(syncCfg, dbPath, dataDir, s)
 
 	// --stats: print database statistics and exit.
 	if *showStats {
@@ -125,6 +125,12 @@ func main() {
 		fmt.Printf("  db size:    %.1f MB\n", float64(snap.DBBytes)/1e6)
 		if snap.P95LatNs > 0 {
 			fmt.Printf("  P95 fetch:  %.2f ms\n", float64(snap.P95LatNs)/1e6)
+		}
+		if syncState, err := eidetic_sync.LoadSyncState(dataDir); err == nil && !syncState.LastSync.IsZero() {
+			fmt.Printf("\n  cloud sync:\n")
+			fmt.Printf("    last sync:  %s\n", syncState.LastSync.Local().Format("2006-01-02 15:04:05"))
+			fmt.Printf("    last key:   %s\n", syncState.LastKey)
+			fmt.Printf("    last size:  %.1f MB\n", float64(syncState.LastBytes)/1e6)
 		}
 		return
 	}

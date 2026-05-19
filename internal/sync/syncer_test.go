@@ -68,7 +68,7 @@ func TestLoadConfig_MalformedJSON(t *testing.T) {
 }
 
 func TestNewReturnsNilForNilConfig(t *testing.T) {
-	s := eidetic_sync.New(nil, "", nil)
+	s := eidetic_sync.New(nil, "", "", nil)
 	if s != nil {
 		t.Fatal("expected nil Syncer for nil config")
 	}
@@ -125,7 +125,7 @@ func TestUploadToWorker(t *testing.T) {
 		APIKey:    fakeKey,
 		DeviceID:  fakeDevice,
 	}
-	s := eidetic_sync.New(cfg, dbPath, nil)
+	s := eidetic_sync.New(cfg, dbPath, dir, nil)
 	if err := s.SyncNow(); err != nil {
 		t.Fatalf("SyncNow() error: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestUploadRejectsNon201(t *testing.T) {
 		APIKey:    "key",
 		DeviceID:  "dev",
 	}
-	s := eidetic_sync.New(cfg, dbPath, nil)
+	s := eidetic_sync.New(cfg, dbPath, dir, nil)
 	err := s.SyncNow()
 	if err == nil {
 		t.Fatal("expected error for non-201 response")
@@ -179,7 +179,7 @@ func TestUploadMissingDB(t *testing.T) {
 		APIKey:    "key",
 		DeviceID:  "dev",
 	}
-	s := eidetic_sync.New(cfg, "/nonexistent/path/engrams.db", nil)
+	s := eidetic_sync.New(cfg, "/nonexistent/path/engrams.db", t.TempDir(), nil)
 	err := s.SyncNow()
 	if err == nil {
 		t.Fatal("expected error for missing db file")
@@ -270,5 +270,57 @@ func TestRestoreFromConfig_NoBackup(t *testing.T) {
 	err := eidetic_sync.RestoreFromConfig(cfg, filepath.Join(t.TempDir(), "engrams.db"))
 	if err == nil {
 		t.Fatal("expected error for 404 response")
+	}
+}
+
+// TestLoadSyncState_Missing verifies that a missing state file returns zero-value (not error).
+func TestLoadSyncState_Missing(t *testing.T) {
+	state, err := eidetic_sync.LoadSyncState(t.TempDir())
+	if err != nil {
+		t.Fatalf("expected nil error for missing state file, got %v", err)
+	}
+	if !state.LastSync.IsZero() {
+		t.Error("expected zero-value LastSync for missing state file")
+	}
+}
+
+// TestUploadWritesSyncState verifies that a successful upload persists sync-state.json.
+func TestUploadWritesSyncState(t *testing.T) {
+	const backupKey = "engrams/dev01/2026-05-19T000000Z.db"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Backup-Key", backupKey)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"key":"` + backupKey + `"}`))
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "engrams.db")
+	os.WriteFile(dbPath, []byte("SQLITE3fake"), 0600)
+
+	cfg := &eidetic_sync.Config{
+		WorkerURL: srv.URL,
+		APIKey:    "key",
+		DeviceID:  "dev01",
+	}
+	s := eidetic_sync.New(cfg, dbPath, dir, nil)
+	if err := s.SyncNow(); err != nil {
+		t.Fatalf("SyncNow() error: %v", err)
+	}
+
+	state, err := eidetic_sync.LoadSyncState(dir)
+	if err != nil {
+		t.Fatalf("LoadSyncState error: %v", err)
+	}
+	if state.LastSync.IsZero() {
+		t.Error("expected LastSync to be set after upload")
+	}
+	if state.LastKey != backupKey {
+		t.Errorf("LastKey: got %q, want %q", state.LastKey, backupKey)
+	}
+	if state.LastBytes != int64(len("SQLITE3fake")) {
+		t.Errorf("LastBytes: got %d, want %d", state.LastBytes, len("SQLITE3fake"))
 	}
 }
