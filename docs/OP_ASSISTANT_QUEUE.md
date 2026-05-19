@@ -7,6 +7,18 @@ Run these in order. Each is independent once its prerequisite completes.
 
 ## Task 1 — Deploy CF Worker (prerequisite for all Pro subscribers)
 
+**Status:** BLOCKED — current CLOUDFLARE_API_TOKEN is Pages-only (auth error on R2+KV+Workers APIs)
+
+**Lokesh keyboard required first:**
+1. Go to https://dash.cloudflare.com/profile/api-tokens
+2. Create a new token (or edit the existing one) with these permissions:
+   - `Workers Scripts:Edit`
+   - `Workers KV Storage:Edit`
+   - `Cloudflare R2:Edit`
+   - `Account Settings:Read` (optional, removes the email warning)
+3. Set in terminal: `export CLOUDFLARE_API_TOKEN=<new-token>`
+4. Then the commands below will run
+
 **Requires:** Cloudflare API token with Workers:Edit + R2:Write + KV:Write
 
 ```sh
