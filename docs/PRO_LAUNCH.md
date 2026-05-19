@@ -30,7 +30,9 @@ Your `engrams.db` syncs to Eidetic Works' Cloudflare R2 bucket automatically —
 # Restore to a new machine:
 eideticd --restore
 # ✓ Downloaded 3.3 GB engrams.db from cloud backup
-# ✓ 278,561 engrams available
+#   key: engrams/macbook-m2/engrams-1748300000000.db
+#   previous db saved to ~/.eidetic/engrams.db.bak
+#   restart eideticd to use the restored database
 ```
 
 We manage the infrastructure. You get a personal API key by email within 24 hours of payment.
