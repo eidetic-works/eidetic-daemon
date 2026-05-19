@@ -10,7 +10,7 @@ All 5 built in the "Claude Code context problem" space — warm audience.
 **Why:** Built the closest competitor — AI-compressed session memory. Different approach (cloud+AI compression vs local SQLite) but identical pain point. Could be user, collaborator, or informed critic.
 
 **DM:**
-> Hey Alex — saw claude-mem, impressive traction. I built something adjacent: eideticd, a Go daemon that captures every Claude Code session to local SQLite (141K engrams, P95 retrieval 0.27ms). No cloud, no AI compression — raw engrams in 50ms. Different tradeoff: yours trades compute for richer context, mine trades richness for zero latency + zero trust.
+> Hey Alex — saw claude-mem, impressive traction. I built something adjacent: eideticd, a Go daemon that captures every Claude Code session to local SQLite (278K engrams, P95 retrieval 0.27ms). No cloud, no AI compression — raw engrams in 50ms. Different tradeoff: yours trades compute for richer context, mine trades richness for zero latency + zero trust.
 >
 > Would love 20 min to compare notes on what users actually hit first — the context-loss problem or the privacy concern? DM or grab time: eidetic.works
 
@@ -21,7 +21,7 @@ All 5 built in the "Claude Code context problem" space — warm audience.
 **Why:** Slash-command based session tracking — complementary to eidetic (his is manual + structured, ours is automatic + raw). Power user of Claude Code who clearly feels the pain.
 
 **DM:**
-> Hey Ian — claude-sessions is slick. I've been solving the same problem at the OS level: eideticd is a background daemon that automatically captures every message to local SQLite (no slash commands needed, just runs). 141K real engrams captured in 2 weeks.
+> Hey Ian — claude-sessions is slick. I've been solving the same problem at the OS level: eideticd is a background daemon that automatically captures every message to local SQLite (no slash commands needed, just runs). 278K real engrams captured across 803 sessions.
 >
 > Curious what claude-sessions users complain about most — the setup friction or the retrieval quality? Happy to share early access to eideticd if you want to poke at it. 20-min call?
 
