@@ -44,10 +44,18 @@ func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
 	syncNow := flag.Bool("sync-now", false, "upload engrams.db to Cloudflare R2 immediately (requires sync.json in dataDir) and exit")
 	showStats := flag.Bool("stats", false, "print engram database statistics and exit")
+	installSvc := flag.Bool("install", false, "register eideticd as a login-time service (launchd on macOS, systemd-user on Linux) and exit")
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Println("eideticd", Version)
+		return
+	}
+
+	if *installSvc {
+		if err := installService(); err != nil {
+			log.Fatalf("install: %v", err)
+		}
 		return
 	}
 
