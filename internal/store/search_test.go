@@ -46,6 +46,9 @@ func TestSearchFindsKeyword(t *testing.T) {
 	if rows[0].Surface != "claude_code" {
 		t.Errorf("wrong surface: %s", rows[0].Surface)
 	}
+	if rows[0].Snippet == "" {
+		t.Error("expected non-empty Snippet from FTS5 snippet()")
+	}
 }
 
 func TestSearchPhraseQuery(t *testing.T) {

@@ -6,6 +6,18 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.28] — 2026-05-19
+
+linux-arm64 platform + FTS5 search snippets + eidetic-mcp 0.0.4.
+
+### Added
+
+- **linux-arm64 binary** — added to release matrix (`make build-linux-arm64`, `verify-cross-compile.sh`, `release.yml`). Covers AWS Graviton, Oracle Cloud free tier, Raspberry Pi 4/5.
+- **FTS5 search snippets** — `search_engrams` results now include a `snippet` field: ~200-char context window around the match keyword (via `snippet(engrams_fts, 0, '', '', '...', 20)`). Previously returned 10KB raw JSON blobs; now MCP clients can read relevant context without parsing the full payload.
+- **`eidetic-mcp 0.0.4`** — Python `Engram` dataclass gains `snippet: str = ""` field; `_parse_engram` picks it up from search results; `search_engrams` tool description updated to document the snippet field.
+
+---
+
 ## [v0.0.27] — 2026-05-19
 
 Windows support: TCP mode, PowerShell installer, eidetic-mcp 0.0.2.

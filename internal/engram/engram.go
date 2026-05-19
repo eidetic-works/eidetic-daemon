@@ -10,4 +10,7 @@ type Engram struct {
 	TS      int64  `json:"ts"`
 	Payload string `json:"payload"`
 	Meta    string `json:"meta,omitempty"`
+	// Snippet is populated only by Search — ~200-char FTS5 context window
+	// around the match. Empty for all other retrieval paths.
+	Snippet string `json:"snippet,omitempty"`
 }

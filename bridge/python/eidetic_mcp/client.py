@@ -70,6 +70,9 @@ class Engram:
     ts: int  # unix epoch nanoseconds
     payload: str
     meta: str = ""
+    # Populated by search_engrams only — ~20-token FTS5 context window around
+    # the match. Empty string for all other retrieval paths (v0.0.28+).
+    snippet: str = ""
 
 
 class DaemonError(Exception):
@@ -439,6 +442,7 @@ def _parse_engram(row: object) -> Engram:
             ts=int(row["ts"]),
             payload=str(row["payload"]),
             meta=str(row.get("meta", "")),
+            snippet=str(row.get("snippet", "")),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise DaemonError(f"engram row missing/invalid field: {row!r} ({exc})") from exc

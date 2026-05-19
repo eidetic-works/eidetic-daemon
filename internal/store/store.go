@@ -450,8 +450,13 @@ func (s *Store) Search(ctx context.Context, q, surface string, limit int) ([]eng
 		limit = 500
 	}
 
+	// snippet(engrams_fts, 0, ...) extracts a ~20-token context window from
+	// column 0 (payload) around the FTS5 match. No highlight markers — plain
+	// text with '...' ellipsis. This keeps MCP responses readable instead of
+	// dumping 10KB raw JSON blobs at the AI.
 	const base = `
-		SELECT e.id, e.surface, e.ts, e.payload, COALESCE(e.meta, '')
+		SELECT e.id, e.surface, e.ts, e.payload, COALESCE(e.meta, ''),
+		       snippet(engrams_fts, 0, '', '', '...', 20)
 		FROM engrams_fts
 		JOIN engrams e ON e.id = engrams_fts.rowid
 		WHERE engrams_fts MATCH ?`
@@ -479,7 +484,7 @@ func (s *Store) Search(ctx context.Context, q, surface string, limit int) ([]eng
 	out := make([]engram.Engram, 0, limit)
 	for rows.Next() {
 		var e engram.Engram
-		if err := rows.Scan(&e.ID, &e.Surface, &e.TS, &e.Payload, &e.Meta); err != nil {
+		if err := rows.Scan(&e.ID, &e.Surface, &e.TS, &e.Payload, &e.Meta, &e.Snippet); err != nil {
 			return nil, fmt.Errorf("search scan: %w", err)
 		}
 		out = append(out, e)

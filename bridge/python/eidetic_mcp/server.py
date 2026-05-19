@@ -233,8 +233,9 @@ def build_server(client: DaemonClient | None = None) -> Any:
                 name="search_engrams",
                 description=(
                     "Full-text search over engram payloads (v0.0.14+). Results are "
-                    "ordered by relevance rank (best match first) and use the same "
-                    "JSON shape as query_engrams.\n\n"
+                    "ordered by relevance rank (best match first). Each result includes "
+                    "a `snippet` field — a ~200-char FTS5 context window around the "
+                    "match (v0.0.28+) — so you can read the hit without parsing the full payload.\n\n"
                     "`q` is an FTS5 match expression:\n"
                     "  - bare keywords: benchmark latency\n"
                     '  - phrase query: "benchmark result"\n'
