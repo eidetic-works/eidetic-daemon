@@ -18,6 +18,7 @@
  * Endpoints:
  *   POST /sync           — upload engrams.db blob for a device
  *   GET  /latest         — return metadata for the most recent backup
+ *   GET  /download       — stream the most recent backup blob (used by eideticd --restore)
  *   GET  /healthz        — liveness probe
  */
 
