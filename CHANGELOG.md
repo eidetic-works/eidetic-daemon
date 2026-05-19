@@ -6,6 +6,34 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.36] — 2026-05-20
+
+`--backups` flag: at-a-glance cloud backup history.
+
+### Added
+
+- **`SyncState.History`** — ring buffer of last 10 backups `{synced_at, key, bytes}`. Pushed after every successful upload.
+- **`--backups`** — prints the history table (timestamp, R2 key, MB). Falls back to single LastSync row for pre-v0.0.36 state files.
+- 1 new test: `TestUploadAppendsHistory` (ring buffer cap, newest-first ordering).
+
+---
+
+## [v0.0.35] — 2026-05-20
+
+Sync.json hot-reload: Pro customers no longer need to restart the daemon after dropping their config.
+
+### Added
+
+- **`WatchConfig(ctx, dataDir, onChange)`** — fsnotify on dataDir for sync.json create/modify/remove. 300ms debounce.
+- **Hot-reload goroutine** in main.go — swaps the Syncer pointer (RWMutex-protected) on every config change, fires an immediate upload to confirm.
+- 2 new tests: create+remove flow, invalid-JSON → nil.
+
+### Why
+
+Before v0.0.35, Pro onboarding required: (1) drop sync.json, (2) restart daemon via `launchctl kickstart`. Now step 2 is automatic — first upload fires within ~1s of file appearance.
+
+---
+
 ## [v0.0.34] — 2026-05-19
 
 Sync health check: `eideticd --check` validates sync.json and tests Worker connectivity.
