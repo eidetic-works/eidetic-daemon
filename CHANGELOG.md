@@ -6,6 +6,23 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.31] — 2026-05-19
+
+Bridge dual-listener mode for Cloudflare tunnel integration.
+
+### Added
+
+- **`-bridge <addr>` flag** — starts a second TCP listener alongside the primary UDS server. Both servers share the same `*store.Store` (one SQLite write path, no lock contention). Intended for Cloudflare tunnel (`cloudflared`) exposure so remote clients (iPhone app, Claude.ai web, ChatGPT web browser context) can reach the local engram store without requiring UDS access.
+- **Bridge auth always-on** — the bridge listener generates its own Bearer token at daemon startup (independent of the primary `EIDETIC_AUTH` flag). Token written to `~/.eidetic/bridge-token` (0600). Rotates every restart.
+- **CORS middleware** (`api.Options.CORS bool`) — when `CORS: true`, every response from that server instance includes `Access-Control-Allow-Origin: *` + `Allow-Methods: GET, POST, OPTIONS` + `Allow-Headers: Authorization, Content-Type`. OPTIONS preflight returns 204. Only set on bridge listener; never on UDS listener.
+- **`api.Options.CORS`** — new field in `api.Options`. If false (default, all existing callers), no CORS headers are added. Zero-config backward compat.
+
+### Architecture note
+
+The bridge feature is built and the `-bridge` flag exists, but the launchd plist (`~/Library/LaunchAgents/works.eidetic.eideticd.plist`) does NOT activate it by default. Port assignment must be coordinated with other services — in particular, port 8420 is owned by the XTTS voice daemon (Sovereign tunnel). Use `:8421` or higher for eidetic bridge if activating.
+
+---
+
 ## [v0.0.30] — 2026-05-19
 
 Windows capture path fix.
