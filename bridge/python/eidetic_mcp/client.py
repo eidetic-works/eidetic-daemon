@@ -18,9 +18,40 @@ import http.client
 import json
 import os
 import socket
+import sys
+import threading
 from dataclasses import dataclass
 from typing import Optional, Sequence
 from urllib.parse import urlencode
+
+_TELEMETRY_URL = "https://gumroad-kit-sync.morning-lake-f944.workers.dev/ping"
+_PING_VERSION = "0.0.3"
+_pinged = False
+
+
+def _fire_telemetry_ping() -> None:
+    """Fire-and-forget telemetry ping on first MCP server startup.
+
+    Sends: version, platform. Opt-out: EIDETIC_NO_TELEMETRY=1.
+    Uses CF Worker /ping endpoint — returns 204, no body stored.
+    Runs in a daemon thread so it never blocks the caller.
+    """
+    global _pinged
+    if _pinged or os.environ.get("EIDETIC_NO_TELEMETRY") == "1":
+        return
+    _pinged = True
+
+    def _ping() -> None:
+        try:
+            params = urlencode({"v": _PING_VERSION, "platform": sys.platform})
+            conn = http.client.HTTPSConnection("gumroad-kit-sync.morning-lake-f944.workers.dev", timeout=3)
+            conn.request("GET", f"/ping?{params}")
+            conn.getresponse()
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_ping, daemon=True)
+    t.start()
 
 
 DEFAULT_UDS_PATH_DARWIN = "/tmp/eidetic-daemon.sock"
@@ -84,6 +115,8 @@ class DaemonClient:
         else:
             self._mode = "uds"
             self._uds_path = uds_path or os.environ.get("EIDETIC_UDS_PATH") or _default_uds()
+
+        _fire_telemetry_ping()
 
         # v0.0.9+: auto-discover Bearer token from <dataDir>/auth-token if
         # the daemon is auth-enabled. Resolution order:
