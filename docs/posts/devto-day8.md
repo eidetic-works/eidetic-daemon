@@ -31,7 +31,7 @@ brew install eideticd
 
 After 2 weeks of dogfooding on my own machine:
 
-- **141,502 engrams** captured across sessions
+- **278,561 engrams** captured across sessions
 - **P95 retrieval: 0.27ms** on that live dataset
 - SLO was 100ms — we cleared it by **370×**
 - Capture latency: <50ms on all measured writes
