@@ -67,11 +67,13 @@ And it pulls from your engrams in <1ms. No cloud, no API key, no subscription.
 
 ---
 
-## What shipped in v0.0.25 (this week)
+## What shipped this week (v0.0.25 → v0.0.32)
 
 - **Compliance daemon** (`eideticd-compliance`): reads a `retention-policy.json`, purges engrams older than the configured TTL per surface, writes an audit log, exits. Designed for cron/launchd/systemd timer.
 - **PyPI package**: `pip install eidetic-mcp` — the MCP bridge is now a proper PyPI package, not a `pip install -e` from source.
 - **Homebrew formula**: `brew tap eidetic-works/nucleus && brew install eideticd`
+- **Windows support** (v0.0.30): captures `%APPDATA%\Claude\projects` + `%APPDATA%\Cursor` on Windows.
+- **Cloud sync** (v0.0.32): `eideticd --sync-now` uploads to Cloudflare R2. `eideticd --restore` downloads latest backup on a new machine. Bring your own R2 (free tier) or subscribe to Pro.
 
 ---
 
