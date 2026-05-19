@@ -43,7 +43,7 @@ curl -fsSL https://eidetic.works/uninstall.sh | sh          # stops service, rem
 curl -fsSL https://eidetic.works/uninstall.sh | sh -s -- --purge-data  # also wipes engram data (irreversible)
 ```
 
-Latest release: [v0.0.25](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.25) (darwin-arm64, linux-amd64, windows-amd64; pure-Go, no CGO). See `scripts/install.sh` and `scripts/uninstall.sh` for what the one-line installers run.
+Latest release: [v0.0.26](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.26) (darwin-arm64, linux-amd64, windows-amd64; pure-Go, no CGO). See `scripts/install.sh` and `scripts/uninstall.sh` for what the one-line installers run.
 
 Full demo flow with expected outputs at every step: [`docs/demo.md`](./docs/demo.md). Architecture decisions: [`docs/DECISIONS.md`](./docs/DECISIONS.md). Release notes per version: [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -65,6 +65,16 @@ If the daemon is running with caller auth on (v0.0.9+, opt-in), the bridge auto-
 After install, the daemon spawns at login via launchd / systemd-user. To verify:
 
 ```sh
+# See your engram stats (works whether daemon is running or not)
+eideticd --stats
+# → eideticd v0.0.26 — engram statistics
+# →   engrams:    141502
+# →     claude_code          141502
+# →   oldest:     2026-03-01
+# →   newest:     2026-05-19
+# →   db size:    71.2 MB
+# →   P95 fetch:  0.27 ms
+
 # Confirm the daemon is alive.
 curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/healthz
 # → {"status":"ok"}
