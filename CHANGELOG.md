@@ -6,6 +6,19 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.34] — 2026-05-19
+
+Sync health check: `eideticd --check` validates sync.json and tests Worker connectivity.
+
+### Added
+
+- **`--check` flag** — prints sync config (worker_url, device_id, interval), pings the Worker `/healthz` endpoint with the configured api_key, and reports last sync state from sync-state.json. Exits 0 if healthy, 1 if config is missing or Worker is unreachable.
+- **`CheckConfig(cfg, dataDir)`** — standalone function (no Syncer, no store required); used by `--check` before `store.Open`.
+- 3 new tests: `TestCheckConfig_NilConfig`, `TestCheckConfig_WorkerOK`, `TestCheckConfig_WorkerUnauth` — 18/18 pass.
+
+
+---
+
 ## [v0.0.33] — 2026-05-19
 
 Sync-state persistence: `--stats` now shows last cloud backup time across daemon restarts.
