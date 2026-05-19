@@ -95,6 +95,42 @@ from .client import DaemonClient, DaemonError
 from .reassemble import reassemble_chunks
 
 
+# Stop-words filtered out of nucleus_ask questions before they hit FTS5.
+# Aggressive but not exhaustive — FTS5 is forgiving on residual noise tokens.
+_STOPWORDS = frozenset({
+    "a", "an", "the", "is", "was", "were", "are", "be", "been", "being",
+    "i", "me", "my", "we", "our", "you", "your", "they", "them", "their",
+    "it", "its", "this", "that", "these", "those",
+    "what", "when", "where", "why", "how", "who", "which",
+    "do", "did", "does", "have", "had", "has", "having",
+    "and", "or", "but", "if", "then", "else", "of", "to", "in", "on",
+    "for", "with", "from", "by", "at", "as", "about", "into", "over",
+    "out", "up", "down", "again", "anything", "something", "find", "tell",
+    "show", "give", "ask", "any", "some", "all", "each", "every",
+})
+
+
+def _question_to_fts(question: str) -> str:
+    """Turn a natural-language question into a permissive FTS5 query.
+
+    Strategy: tokenize on non-word chars, drop stop-words and very short tokens,
+    keep the survivors as a bare OR-joined keyword list. FTS5 ranks by relevance,
+    so over-matching is OK — under-matching is the failure mode we avoid.
+    """
+    import re
+
+    tokens = re.findall(r"\w+", question.lower())
+    keywords = [t for t in tokens if len(t) >= 3 and t not in _STOPWORDS]
+    if not keywords:
+        # Stripping was too aggressive; fall back to the original question.
+        return question
+    # Bare keywords joined by space = implicit AND in FTS5 default config,
+    # but most stores prefer OR semantics for recall over precision. We use
+    # OR explicitly so a 5-word question doesn't require all 5 to land in
+    # the same engram.
+    return " OR ".join(keywords)
+
+
 # Lazy import of mcp SDK so client.py + tests can be exercised without it.
 def _mcp_imports() -> tuple[Any, Any, Any, Any]:
     """Import mcp SDK lazily — raises ImportError with a clear install hint."""
@@ -420,6 +456,43 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "required": ["id"],
                 },
             ),
+            Tool(
+                name="nucleus_ask",
+                description=(
+                    "Ask a natural-language question about your engrams (v0.0.5+). "
+                    "This is RAG over your local engram store: the tool extracts "
+                    "keywords from your question, retrieves the top-K most-relevant "
+                    "engrams via FTS5, and returns them wrapped in answer-scaffolding "
+                    "for the host LLM to read.\n\n"
+                    "Example questions:\n"
+                    "  - 'What was that Postgres tuning trick I learned last week?'\n"
+                    "  - 'Find anything I wrote about React Suspense boundaries'\n"
+                    "  - 'What did I decide about the auth middleware?'\n\n"
+                    "The host LLM (Claude Code / Cursor / etc.) reads the returned "
+                    "engrams and synthesizes the answer. The tool does NOT call any "
+                    "external LLM — your engrams never leave the local daemon."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "question": {
+                            "type": "string",
+                            "description": "Natural-language question to recall from your engrams.",
+                        },
+                        "surface": {
+                            "type": "string",
+                            "description": "Restrict to one surface (claude_code | cursor | cowork). Empty = all.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max engrams to retrieve (default 10, max 30).",
+                            "minimum": 1,
+                            "maximum": 30,
+                        },
+                    },
+                    "required": ["question"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -551,6 +624,54 @@ def build_server(client: DaemonClient | None = None) -> Any:
             except (DaemonError, ValueError) as exc:
                 return [TextContent(type="text", text=f"error: {exc}")]
             return [TextContent(type="text", text=json.dumps({"deleted": 1 if ok else 0}))]
+
+        if name == "nucleus_ask":
+            question = str(arguments.get("question", "")).strip()
+            if not question:
+                return [TextContent(type="text", text="error: question required")]
+            surface = str(arguments.get("surface", "")).strip()
+            limit = int(arguments.get("limit", 10))
+            limit = max(1, min(limit, 30))
+
+            # FTS5 is permissive on natural-language input — it tokenizes and ranks.
+            # For tighter retrieval we strip stop-words and quote multi-word phrases.
+            fts_query = _question_to_fts(question)
+
+            try:
+                rows = daemon.search_engrams(q=fts_query, surface=surface, limit=limit)
+            except (DaemonError, ValueError) as exc:
+                # Fall back to bare keyword search if the FTS expr is malformed.
+                try:
+                    rows = daemon.search_engrams(q=question, surface=surface, limit=limit)
+                except (DaemonError, ValueError) as inner:
+                    return [TextContent(type="text", text=f"error: {inner}")]
+
+            if not rows:
+                payload = {
+                    "question": question,
+                    "fts_query": fts_query,
+                    "instructions": (
+                        "No engrams matched. Tell the user no relevant engrams were found; "
+                        "do NOT fabricate an answer. Suggest broader keywords or check "
+                        "if the surface filter is too restrictive."
+                    ),
+                    "engrams": [],
+                }
+                return [TextContent(type="text", text=json.dumps(payload, indent=2))]
+
+            payload = {
+                "question": question,
+                "fts_query": fts_query,
+                "instructions": (
+                    f"You are answering the question above using ONLY the {len(rows)} engram "
+                    f"excerpts below. Each engram is a snapshot from the user's past work "
+                    f"(coding sessions, notes, conversations). Cite the surface + timestamp "
+                    f"when you reference one. If the engrams don't answer the question, say "
+                    f"so honestly — do NOT fabricate. Prefer recent engrams when relevance ties."
+                ),
+                "engrams": [asdict(r) for r in rows],
+            }
+            return [TextContent(type="text", text=json.dumps(payload, indent=2))]
 
         return [TextContent(type="text", text=f"error: unknown tool {name!r}")]
 
