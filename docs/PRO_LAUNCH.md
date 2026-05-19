@@ -105,14 +105,15 @@ See § 4 below.
 
 ---
 
-## 3. Kit announcement email (operator action)
+## 3. Kit announcement email — READY TO SEND (Lokesh keyboard)
 
 **Subject:** eidetic Pro is live — cloud backup for your engrams
 
 **From:** hello@nucleusos.dev  
-**List:** Track A waitlist + any existing free subscribers
+**List:** Track A waitlist + any existing free subscribers  
+**CTA URL:** https://eideticworks.gumroad.com/l/eidetic-pro ✅
 
-**Body:**
+**Body (copy-paste ready):**
 
 ---
 
@@ -124,11 +125,10 @@ eidetic Pro is live.
 
 **$29/month.** First 50 subscribers keep this price forever.
 
-→ **[Get Pro](https://app.gumroad.com/l/XXXXX)**  
-_(replace XXXXX with Gumroad product URL once published)_
+→ **[Get Pro](https://eideticworks.gumroad.com/l/eidetic-pro)**
 
 What's included:
-- Managed R2 backup (your own encrypted namespace on our Cloudflare R2)
+- Managed R2 backup (your own encrypted namespace on Cloudflare R2)
 - Personal sync.json delivered within 24h
 - Retention policy setup
 - Email support (24h response weekdays)
@@ -248,11 +248,13 @@ Reply to this email if anything doesn't work — I reply same day.
 | wrangler.toml patched with KV namespace ID | ✅ Done | op-assistant |
 | EIDETIC_API_KEY secret set on eidetic-sync worker | ✅ Done | op-assistant |
 | gumroad-kit-sync deployed (Telegram + Kit wired) | ✅ Done | op-assistant |
-| gen_pro_key.sh — KV namespace ID pre-filled | ✅ Done | cc-main |
-| R2 bucket `eidetic-engrams` creation | ❌ BLOCKED | Lokesh — enable R2 at dash.cloudflare.com → R2 → Plans (free tier) |
-| eidetic-sync Worker final deploy | ⏳ After R2 | op-assistant |
-| Gumroad Pro product creation | ⏳ Lokesh keyboard | Lokesh |
-| Landing CTA → Gumroad URL (replace mailto:) | ⏳ After Gumroad | cc-main |
-| Kit announcement email | ⏳ After Gumroad | Lokesh |
+| R2 bucket `eidetic-engrams` + eidetic-sync Worker live | ✅ Done 2026-05-20 | Lokesh + op-assistant |
+| Gumroad Pro product | ✅ Live — eideticworks.gumroad.com/l/eidetic-pro | Lokesh |
+| Landing CTA → Gumroad URL | ✅ Live — eidetic.works | op-assistant |
+| gen_pro_key.sh — worker URL + KV namespace ID pre-filled | ✅ Done | cc-main |
+| Kit announcement email | ⏳ **LOKESH KEYBOARD** — template ready in § 3 above | Lokesh |
+| X thread + HN + Reddit + dev.to posts | ⏳ Lokesh keyboard — files in docs/posts/ | Lokesh |
 
-**W4 target (2026-06-08):** 5 paid Pro subscriptions = $145 MRR.
+**W4 target (2026-06-08):** 5 paid Pro subscriptions = $145 MRR.  
+**Worker URL:** https://eidetic-sync.morning-lake-f944.workers.dev  
+**Gumroad:** https://eideticworks.gumroad.com/l/eidetic-pro

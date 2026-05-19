@@ -9,7 +9,7 @@ set -euo pipefail
 
 EMAIL="${1:?Usage: $0 <email> <device_id>}"
 DEVICE="${2:?Usage: $0 <email> <device_id>}"
-WORKER_URL="${EIDETIC_WORKER_URL:?set EIDETIC_WORKER_URL env var}"
+WORKER_URL="${EIDETIC_WORKER_URL:-https://eidetic-sync.morning-lake-f944.workers.dev}"
 KV_NS_ID="${EIDETIC_KV_NS_ID:-34d23af4669a40bd907f5c58c56802e8}"  # production KV namespace
 
 # Validate device_id: 4-64 chars, lowercase alphanum + dash + underscore
