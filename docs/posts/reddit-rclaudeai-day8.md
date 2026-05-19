@@ -38,4 +38,6 @@ Two weeks ago I started building a fix. Today it's v0.0.25 and I'm using it dail
 - P95 retrieval: 0.27ms on that live dataset
 - The SLO I set was 100ms — we cleared it by 370×
 
+Free and MIT forever. **Pro tier** ($29/mo) just launched for people who want their engrams across machines — managed R2 sync, `eideticd --restore` on a new box, personal API key within 24h. First 50 subscribers keep the price. https://eidetic.works
+
 GitHub: https://github.com/eidetic-works/eidetic-daemon

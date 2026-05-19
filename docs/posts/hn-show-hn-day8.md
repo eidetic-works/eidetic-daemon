@@ -31,3 +31,5 @@ curl -fsSL https://eidetic.works/install.sh | sh
 Source: https://github.com/eidetic-works/eidetic-daemon (MIT)
 
 Questions welcome on the SQLite design, the fsnotify watcher, or the MCP bridge architecture.
+
+**Pro tier** (just launched, $29/mo): if you want your engrams to follow you across machines — managed Cloudflare R2 sync, personal API key within 24h, `eideticd --restore` on a new machine. First 50 subscribers keep that price. https://eidetic.works

@@ -85,6 +85,8 @@ Source: [github.com/eidetic-works/eidetic-daemon](https://github.com/eidetic-wor
 
 Happy to answer questions about the SQLite design, the fsnotify watcher, or the retention system.
 
+**Pro tier** just launched ($29/mo) for anyone who wants their engrams to follow them across machines — managed Cloudflare R2 sync, `eideticd --restore` on a new machine, personal API key within 24h. First 50 subscribers keep that price. https://eidetic.works
+
 ---
 
 *Tags: `go` `sqlite` `ai` `claudecode` `opensource`*

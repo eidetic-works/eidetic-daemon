@@ -47,11 +47,12 @@ Architecture notes for the curious:
 - FTS5 full-text index → boolean + phrase queries on everything you've typed
 
 **Tweet 6:**
-Day 8 of a 90-day sprint.
+Day 9 of a 90-day sprint. Free and open-source forever.
 
-Next: Cloudflare R2 sync so your engrams follow you across machines.
+Pro tier just launched: managed cloud sync so your engrams follow you across machines. $29/mo, first 50 keep that price.
+
+→ https://eidetic.works
 
 GitHub: https://github.com/eidetic-works/eidetic-daemon
-Landing: https://eidetic.works
 
 #ClaudeCode #GoLang #OpenSource #BuildingInPublic
