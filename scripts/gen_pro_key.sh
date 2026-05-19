@@ -10,7 +10,7 @@ set -euo pipefail
 EMAIL="${1:?Usage: $0 <email> <device_id>}"
 DEVICE="${2:?Usage: $0 <email> <device_id>}"
 WORKER_URL="${EIDETIC_WORKER_URL:?set EIDETIC_WORKER_URL env var}"
-KV_NS_ID="${EIDETIC_KV_NS_ID:-}"  # optional — if set, prints wrangler KV command
+KV_NS_ID="${EIDETIC_KV_NS_ID:-34d23af4669a40bd907f5c58c56802e8}"  # production KV namespace
 
 # Validate device_id: 4-64 chars, lowercase alphanum + dash + underscore
 if ! echo "$DEVICE" | grep -qE '^[a-z0-9][a-z0-9_-]{2,62}[a-z0-9]$'; then
