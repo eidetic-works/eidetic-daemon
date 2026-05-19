@@ -6,5 +6,12 @@ compatibility_date = "2024-11-01"
 binding = "EIDETIC_SYNC_BUCKET"
 bucket_name = "eidetic-engrams"
 
-# EIDETIC_API_KEY must be set as a secret (not in wrangler.toml):
-#   wrangler secret put EIDETIC_API_KEY
+# KV namespace for per-user Pro keys (sha256(key) → JSON metadata).
+# Create: wrangler kv:namespace create EIDETIC_KEYS
+# Then replace the id below with the returned namespace ID.
+[[kv_namespaces]]
+binding = "EIDETIC_KEYS_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Secrets (set via `wrangler secret put`, never in wrangler.toml):
+#   EIDETIC_API_KEY — legacy single shared key (dev/self-hosted), optional if KV in use

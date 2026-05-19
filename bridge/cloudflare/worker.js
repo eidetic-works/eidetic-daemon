@@ -4,7 +4,16 @@
  *
  * Environment bindings (set in wrangler.toml / CF dashboard):
  *   EIDETIC_SYNC_BUCKET  — R2 bucket binding
- *   EIDETIC_API_KEY      — Bearer token for upload auth
+ *   EIDETIC_KEYS_KV      — KV namespace binding (per-user keys)
+ *   EIDETIC_API_KEY      — fallback single Bearer token (legacy / dev; KV takes priority)
+ *
+ * Auth model:
+ *   KV mode (Pro, multi-user): KV namespace stores sha256(key) → JSON metadata.
+ *     If KV binding is present, KV is always checked first.
+ *   Fallback mode (dev/self-hosted): EIDETIC_API_KEY env var, exact match.
+ *
+ * Add a Pro key:   wrangler kv:key put --namespace-id=<id> <sha256(key)> '{"email":"...","device_id":"...","added":"..."}'
+ * Revoke a key:    wrangler kv:key delete --namespace-id=<id> <sha256(key)>
  *
  * Endpoints:
  *   POST /sync           — upload engrams.db blob for a device
@@ -34,10 +43,40 @@ export default {
   },
 };
 
-async function handleSync(request, env) {
-  // Auth
+/**
+ * Validates the Bearer token. Checks KV first (per-user keys), then falls
+ * back to the single EIDETIC_API_KEY secret (legacy / self-hosted mode).
+ * Returns true if valid, false otherwise.
+ */
+async function isAuthorized(request, env) {
   const auth = request.headers.get("Authorization") || "";
-  if (!auth.startsWith("Bearer ") || auth.slice(7) !== env.EIDETIC_API_KEY) {
+  if (!auth.startsWith("Bearer ")) return false;
+  const token = auth.slice(7);
+  if (!token) return false;
+
+  // KV mode: sha256(token) → metadata lookup. Constant-time via hash comparison.
+  if (env.EIDETIC_KEYS_KV) {
+    const hash = await sha256hex(token);
+    const meta = await env.EIDETIC_KEYS_KV.get(hash);
+    if (meta !== null) return true;
+    // Fall through to legacy check if KV miss (allows shared key alongside per-user keys)
+  }
+
+  // Fallback: single shared secret (dev / self-hosted)
+  if (env.EIDETIC_API_KEY && token === env.EIDETIC_API_KEY) return true;
+
+  return false;
+}
+
+async function sha256hex(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function handleSync(request, env) {
+  if (!(await isAuthorized(request, env))) {
     return new Response("unauthorized", { status: 401 });
   }
 
@@ -50,7 +89,6 @@ async function handleSync(request, env) {
 
   const contentLength = parseInt(request.headers.get("Content-Length") || "0", 10);
   if (contentLength > 500 * 1024 * 1024) {
-    // 500 MB guard — SQLite file should never be this large in W2 scope
     return new Response("payload too large (max 500 MB)", { status: 413 });
   }
 
@@ -71,7 +109,6 @@ async function handleSync(request, env) {
     },
   });
 
-  // Prune old backups for this device — keep 5 most recent
   await pruneOldBackups(env, deviceId, 5);
 
   return new Response(
@@ -84,8 +121,7 @@ async function handleSync(request, env) {
 }
 
 async function handleLatest(request, env) {
-  const auth = request.headers.get("Authorization") || "";
-  if (!auth.startsWith("Bearer ") || auth.slice(7) !== env.EIDETIC_API_KEY) {
+  if (!(await isAuthorized(request, env))) {
     return new Response("unauthorized", { status: 401 });
   }
 
@@ -104,8 +140,6 @@ async function handleLatest(request, env) {
     });
   }
 
-  // Objects are listed in key-lexicographic order; timestamps are zero-padded
-  // so the last entry is the most recent
   const latest = listed.objects[listed.objects.length - 1];
 
   return new Response(
@@ -129,7 +163,6 @@ async function pruneOldBackups(env, deviceId, keepN) {
     return;
   }
 
-  // Sort by key (timestamps embedded in key, zero-padded → lex order = time order)
   const sorted = listed.objects.slice().sort((a, b) => a.key.localeCompare(b.key));
   const toDelete = sorted.slice(0, sorted.length - keepN);
 
