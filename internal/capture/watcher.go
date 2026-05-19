@@ -366,7 +366,7 @@ func DefaultSurfaces() []SurfaceConfig {
 	return []SurfaceConfig{
 		{
 			Surface: "claude_code",
-			Root:    filepath.Join(home, ".claude", "projects"),
+			Root:    claudeRoot(home),
 			Glob:    "*.jsonl",
 			Parser:  NewJSONLParser("claude_code"),
 		},
