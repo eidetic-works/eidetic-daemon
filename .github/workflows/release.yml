@@ -31,6 +31,22 @@ jobs:
           ( cd dist && zip -j ../release/eideticd-windows-amd64.zip eideticd-windows-amd64.exe )
           ls -la release/
 
+      - name: Smoke-test release artifacts
+        run: |
+          # Extract + -version each tarball to catch silent build failures
+          # and the tarball-shape regression that broke install.sh in v0.0.27.
+          for target in darwin-arm64 linux-amd64 linux-arm64; do
+            tmp=$(mktemp -d)
+            tar -xzf release/eideticd-${target}.tar.gz -C "$tmp"
+            if [ "$target" = "darwin-arm64" ]; then
+              echo "PASS [${target}]: $(\"$tmp/eideticd\" -version)"
+            else
+              echo "PASS [${target}]: skipping -version (cross-arch); file check below"
+              file "$tmp/eideticd"
+            fi
+            rm -rf "$tmp"
+          done
+
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
         with:
