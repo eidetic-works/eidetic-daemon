@@ -6,6 +6,18 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.30] — 2026-05-19
+
+Windows capture path fix.
+
+### Fixed
+
+- **Windows Claude Code path** — `DefaultSurfaces()` was using `~\.claude\projects` on Windows, which is wrong. Claude Code (Electron) stores session JSONLs at `%APPDATA%\Claude\projects`. New `paths_windows.go` (build tag `windows`) reads `APPDATA` env var with home-dir fallback.
+- **Windows Cursor path** — `paths_other.go` (previously `!darwin`, so it covered Windows) returned `~\.config\Cursor\...` which is the Linux path. Windows Cursor uses `%APPDATA%\Cursor\User\workspaceStorage`. Fixed in `paths_windows.go`.
+- **Build tag narrowed** — `paths_other.go` tag changed from `!darwin` to `linux`. `claudeRoot(home)` extracted to all three platform files so `DefaultSurfaces()` is path-agnostic.
+
+---
+
 ## [v0.0.29] — 2026-05-19
 
 `-install` flag for one-command service registration.

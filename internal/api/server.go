@@ -37,6 +37,13 @@ type Options struct {
 	// decoupled from token-file path resolution.
 	AuthToken *auth.Token
 
+	// CORS enables permissive CORS headers on all responses (v0.0.31+).
+	// Intended for the Bridge TCP server exposed via Cloudflare tunnel so
+	// web-based AI clients (Claude.ai, ChatGPT web) can call the daemon
+	// from a browser context. Never set on the UDS server (trust boundary
+	// is the socket file, not Origin headers).
+	CORS bool
+
 	// QueryLatency is an optional LatencyTracker for /engrams query timing
 	// (v0.0.12+). When non-nil, every handleEngramsGET records the
 	// store.Retrieve round-trip duration; percentiles surface via /metrics.
@@ -120,6 +127,23 @@ func New(s *store.Store, opts Options) (*Server, error) {
 	var handler http.Handler = mux
 	if opts.AuthToken != nil {
 		handler = opts.AuthToken.Middleware(mux, "/healthz")
+	}
+
+	// v0.0.31+: CORS middleware for Bridge TCP server. Wraps after auth so
+	// preflight OPTIONS requests still pass through auth (token required).
+	// Permissive origin (*) is intentional: the token is the auth boundary.
+	if opts.CORS {
+		inner := handler
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			inner.ServeHTTP(w, r)
+		})
 	}
 
 	srv.httpSrv = &http.Server{

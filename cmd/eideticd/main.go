@@ -40,6 +40,7 @@ var Version = "dev"
 func main() {
 	udsPath := flag.String("uds", "", "Unix domain socket path (overrides default)")
 	tcpAddr := flag.String("tcp", "", "TCP listen address (overrides default; opt-in via EIDETIC_TCP=1)")
+	bridgeAddr := flag.String("bridge", "", "TCP listen address for Cloudflare tunnel / Bridge (e.g. :8420); auth always-on + CORS enabled; runs alongside UDS server")
 	authFlag := flag.Bool("auth", false, "enable Bearer-token caller authentication (also EIDETIC_AUTH=1); writes <dataDir>/auth-token (0600)")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	syncNow := flag.Bool("sync-now", false, "upload engrams.db to Cloudflare R2 immediately (requires sync.json in dataDir) and exit")
@@ -201,6 +202,44 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// v0.0.31+: optional Bridge server — TCP listener for Cloudflare tunnel.
+	// Runs alongside the primary UDS server (shared store, separate listener).
+	// Auth is always-on; CORS enabled for web-based AI clients.
+	// Token written to <dataDir>/bridge-token (0600).
+	if *bridgeAddr != "" {
+		bridgeToken := &auth.Token{}
+		tok, err := auth.Generate()
+		if err != nil {
+			log.Fatalf("bridge auth generate: %v", err)
+		}
+		btPath := filepath.Join(dataDir, "bridge-token")
+		if err := os.WriteFile(btPath, []byte(tok), 0o600); err != nil {
+			log.Fatalf("bridge auth write: %v", err)
+		}
+		bridgeToken.Set(tok)
+		log.Printf("bridge: auth token → %s (0600)", btPath)
+
+		bridgeOpts := api.Options{
+			TCPAddr:      *bridgeAddr,
+			Timeout:      10 * time.Second,
+			AuthToken:    bridgeToken,
+			Metrics:      opts.Metrics,
+			QueryLatency: queryTracker,
+			CORS:         true,
+		}
+		bridgeSrv, err := api.New(s, bridgeOpts)
+		if err != nil {
+			log.Fatalf("bridge server: %v", err)
+		}
+		defer bridgeSrv.Close()
+		go func() {
+			if err := bridgeSrv.Serve(ctx); err != nil {
+				log.Printf("bridge serve: %v", err)
+			}
+		}()
+		log.Printf("bridge listening on %s (auth=on, cors=on)", bridgeSrv.Addr())
+	}
 
 	// Capture-side: fsnotify watchers across the 3 default surface roots.
 	// Loads/persists per-file offsets at <dataDir>/state.json. Missing
