@@ -21,7 +21,7 @@ Part of [Nucleus](https://nucleusos.dev). 90-day public probe (started 2026-05-1
 - **Recent activity** — `GET /recent?[since=unix-ns][&before=unix-ns]&limit=N` — newest engrams across all surfaces, newest-first. `since`+`before` enable sliding-window polling. Answers "what happened lately?" without a keyword or surface filter.
 - **Multi-surface mirror** — Cursor / Cowork / Claude Code all feed one canonical store, indexed `(surface, ts DESC)`.
 
-Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + windows-amd64.
+Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + linux-arm64 + windows-amd64.
 
 ---
 
@@ -43,7 +43,7 @@ curl -fsSL https://eidetic.works/uninstall.sh | sh          # stops service, rem
 curl -fsSL https://eidetic.works/uninstall.sh | sh -s -- --purge-data  # also wipes engram data (irreversible)
 ```
 
-Latest release: [v0.0.26](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.26) (darwin-arm64, linux-amd64, windows-amd64; pure-Go, no CGO). See `scripts/install.sh` and `scripts/uninstall.sh` for what the one-line installers run.
+Latest release: [v0.0.29](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.29) (darwin-arm64, linux-amd64, linux-arm64, windows-amd64; pure-Go, no CGO). See `scripts/install.sh` for what the one-line installer runs.
 
 Full demo flow with expected outputs at every step: [`docs/demo.md`](./docs/demo.md). Architecture decisions: [`docs/DECISIONS.md`](./docs/DECISIONS.md). Release notes per version: [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -62,12 +62,18 @@ Tools: `query_engrams(surface, limit, since)` + `daemon_status()` + `daemon_metr
 
 If the daemon is running with caller auth on (v0.0.9+, opt-in), the bridge auto-discovers the token from `<dataDir>/auth-token` (or `EIDETIC_AUTH_TOKEN` env var). No bridge config change required.
 
-After install, the daemon spawns at login via launchd / systemd-user. To verify:
+After `curl | sh`, the daemon registers and spawns automatically. For Homebrew or manual installs, register the service with one command:
+
+```sh
+eideticd -install   # launchd on macOS, systemd-user on Linux
+```
+
+To verify:
 
 ```sh
 # See your engram stats (works whether daemon is running or not)
 eideticd --stats
-# → eideticd v0.0.26 — engram statistics
+# → eideticd v0.0.29 — engram statistics
 # →   engrams:    141502
 # →     claude_code          141502
 # →   oldest:     2026-03-01
