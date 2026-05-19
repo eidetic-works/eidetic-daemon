@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -86,7 +87,7 @@ func TestPurgeRetention(t *testing.T) {
 	}
 	defer st.Close()
 
-	ctx := t.Context()
+	ctx := context.Background()
 	now := time.Now()
 
 	// Insert 3 old engrams (45 days old) and 2 fresh ones.
