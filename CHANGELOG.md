@@ -6,6 +6,24 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.27] — 2026-05-19
+
+Windows support: TCP mode, PowerShell installer, eidetic-mcp 0.0.2.
+
+### Added
+
+- **`scripts/install.ps1`** — Windows one-line installer (`irm https://eidetic.works/install.ps1 | iex`). No admin required. Downloads `eideticd-windows-amd64.exe` from GitHub release, installs to `%LOCALAPPDATA%\EideticWorks\bin\`, registers HKCU Run key for login-startup, starts daemon in TCP mode.
+- **`eideticd-windows-amd64.exe`** — Windows binary added to release matrix (was already cross-compiling cleanly via `make build-all`; now explicitly in release artifacts).
+- **`eidetic-mcp 0.0.2`** — MCP bridge auto-selects TCP transport on `sys.platform == "win32"`. Previous version fell through to the Darwin UDS path (`/tmp/eidetic-daemon.sock`) and silently failed on Windows.
+- **`docs/spikes/tauri-cross-compile-spike.md`** — Tauri spike verdict: Go cross-compile already covers darwin/linux/windows cleanly. Tauri adds 5× binary size + webkit2gtk system dep with no GUI gain for a daemon. Deferred to >100 user threshold.
+- **`docs/strategy/`** — distribution package strategy and nucleus-mcp vs eidetic-mcp brainstorm documented.
+
+### Fixed
+
+- Windows MCP bridge: `DaemonClient` now auto-enables TCP mode on Windows without requiring `EIDETIC_TCP=1` env var.
+
+---
+
 ## [v0.0.26] — 2026-05-18
 
 `--stats` flag for at-a-glance database summary.
