@@ -192,12 +192,67 @@ Copy the output into your reply email to the customer.
 
 ---
 
-## 5. Sequencing
+## 5. Delivery email (send to customer after gen_pro_key.sh)
 
-1. [ ] Deploy CF Worker (operator — needs R2 token)
-2. [ ] Note Worker URL → add to `scripts/gen_pro_key.sh`
-3. [ ] Create Gumroad subscription product → get Gumroad URL
-4. [ ] Send Kit announcement email (paste Gumroad URL into template above)
-5. [ ] For each Gumroad payment notification: run `gen_pro_key.sh`, reply with sync.json
+After running `gen_pro_key.sh`, send this to the subscriber:
 
-**W4 target (2026-06-08):** 5 paid Pro subscriptions. At $29/mo that's $145 MRR.
+**Subject:** Your eidetic Pro sync.json is ready
+
+---
+
+Hi,
+
+Here's your eidetic Pro sync.json. Drop it at `~/.eidetic/sync.json` and restart the daemon:
+
+```json
+{
+  "worker_url": "https://eidetic-sync.morning-lake-f944.workers.dev",
+  "api_key":    "<KEY_FROM_gen_pro_key.sh>",
+  "device_id":  "<DEVICE_ID>",
+  "sync_interval": 60
+}
+```
+
+After dropping the file:
+
+```sh
+# Test upload immediately:
+eideticd --sync-now
+
+# On macOS — restart the daemon:
+launchctl kickstart -k gui/$(id -u)/works.eidetic.eideticd
+
+# Check it worked:
+eideticd --stats
+# Should show a "cloud sync" block with last sync time
+```
+
+**To restore on a new machine** — install the daemon, drop the same `sync.json`, then:
+
+```sh
+eideticd --restore
+# Downloads your engrams.db from the cloud backup
+```
+
+Reply to this email if anything doesn't work — I reply same day.
+
+— Lokesh / Eidetic Works
+
+---
+
+## 6. Sequencing (current state as of 2026-05-19)
+
+| Step | Status | Who |
+|---|---|---|
+| KV namespace created (id: 34d23af4669a40bd907f5c58c56802e8) | ✅ Done | op-assistant |
+| wrangler.toml patched with KV namespace ID | ✅ Done | op-assistant |
+| EIDETIC_API_KEY secret set on eidetic-sync worker | ✅ Done | op-assistant |
+| gumroad-kit-sync deployed (Telegram + Kit wired) | ✅ Done | op-assistant |
+| gen_pro_key.sh — KV namespace ID pre-filled | ✅ Done | cc-main |
+| R2 bucket `eidetic-engrams` creation | ❌ BLOCKED | Lokesh — enable R2 at dash.cloudflare.com → R2 → Plans (free tier) |
+| eidetic-sync Worker final deploy | ⏳ After R2 | op-assistant |
+| Gumroad Pro product creation | ⏳ Lokesh keyboard | Lokesh |
+| Landing CTA → Gumroad URL (replace mailto:) | ⏳ After Gumroad | cc-main |
+| Kit announcement email | ⏳ After Gumroad | Lokesh |
+
+**W4 target (2026-06-08):** 5 paid Pro subscriptions = $145 MRR.
