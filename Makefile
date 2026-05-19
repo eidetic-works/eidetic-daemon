@@ -1,4 +1,4 @@
-.PHONY: build build-all build-darwin-arm64 build-linux-amd64 build-windows-amd64 \
+.PHONY: build build-all build-darwin-arm64 build-linux-amd64 build-linux-arm64 build-windows-amd64 \
         build-compliance test bench smoke demo-smoke tidy clean verify-cross-compile
 
 GO ?= go
@@ -24,10 +24,13 @@ build-darwin-arm64:
 build-linux-amd64:
 	GOOS=linux GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/eideticd-linux-amd64 $(PKG)
 
+build-linux-arm64:
+	GOOS=linux GOARCH=arm64 $(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/eideticd-linux-arm64 $(PKG)
+
 build-windows-amd64:
 	GOOS=windows GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/eideticd-windows-amd64.exe $(PKG)
 
-build-all: build-darwin-arm64 build-linux-amd64 build-windows-amd64
+build-all: build-darwin-arm64 build-linux-amd64 build-linux-arm64 build-windows-amd64
 	@./scripts/verify-cross-compile.sh
 
 verify-cross-compile:

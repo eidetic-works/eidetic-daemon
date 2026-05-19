@@ -23,7 +23,7 @@ jobs:
       - name: Tarball each target
         run: |
           mkdir -p release
-          for target in darwin-arm64 linux-amd64; do
+          for target in darwin-arm64 linux-amd64 linux-arm64; do
             cp dist/eideticd-${target} release/eideticd
             ( cd release && tar -czf eideticd-${target}.tar.gz eideticd && rm eideticd )
           done
@@ -37,5 +37,6 @@ jobs:
           files: |
             release/eideticd-darwin-arm64.tar.gz
             release/eideticd-linux-amd64.tar.gz
+            release/eideticd-linux-arm64.tar.gz
             release/eideticd-windows-amd64.zip
           generate_release_notes: true

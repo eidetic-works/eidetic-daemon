@@ -46,6 +46,7 @@ check() {
 
 check darwin-arm64
 check linux-amd64
+check linux-arm64
 check windows-amd64
 
 if [ "$fail" -eq 1 ]; then
