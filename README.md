@@ -1,8 +1,10 @@
 # eidetic-daemon
 
-**Local-first Go daemon** that captures work across IDE / AI surfaces (Cursor, Cowork, Claude Code) into a single SQLite-WAL engram store, and serves it back over a local Unix socket in <100ms P95.
+**Local-first Go daemon** that captures every Claude Code / Cursor / Cowork session into a single SQLite-WAL engram store, and serves it back in <100ms P95.
 
-Part of [Nucleus](https://nucleusos.dev). 90-day public probe (started 2026-05-10).
+278,561 engrams. 803 sessions. 3.3 GB. Two weeks of real dogfood. Free and MIT.
+
+**→ [eidetic.works](https://eidetic.works)** · [v0.0.32 release](https://github.com/eidetic-works/eidetic-daemon/releases/latest) · [CHANGELOG](./CHANGELOG.md)
 
 ---
 
@@ -43,9 +45,27 @@ curl -fsSL https://eidetic.works/uninstall.sh | sh          # stops service, rem
 curl -fsSL https://eidetic.works/uninstall.sh | sh -s -- --purge-data  # also wipes engram data (irreversible)
 ```
 
-Latest release: [v0.0.29](https://github.com/eidetic-works/eidetic-daemon/releases/tag/v0.0.29) (darwin-arm64, linux-amd64, linux-arm64, windows-amd64; pure-Go, no CGO). See `scripts/install.sh` for what the one-line installer runs.
+Latest release: [v0.0.32](https://github.com/eidetic-works/eidetic-daemon/releases/latest) (darwin-arm64, linux-amd64, linux-arm64, windows-amd64; pure-Go, no CGO). See `scripts/install.sh` for what the one-line installer runs.
 
 Full demo flow with expected outputs at every step: [`docs/demo.md`](./docs/demo.md). Architecture decisions: [`docs/DECISIONS.md`](./docs/DECISIONS.md). Release notes per version: [`CHANGELOG.md`](./CHANGELOG.md).
+
+### Cloud sync (opt-in)
+
+Drop a `~/.eidetic/sync.json` and the daemon syncs `engrams.db` to Cloudflare R2 every hour. Restore on a new machine in 60 seconds:
+
+```sh
+# Sync now (requires sync.json)
+eideticd --sync-now
+
+# Restore latest backup on a new machine
+eideticd --restore
+# ✓ Downloaded 3.3 GB engrams.db from cloud backup
+#   restart eideticd to use the restored database
+```
+
+**Bring your own R2 (free tier):** create an R2 bucket, deploy the sync Worker from `bridge/cloudflare/`, set `EIDETIC_API_KEY`, drop `sync.json`. No ongoing cost for personal use.
+
+**[Pro — $29/mo](https://eidetic.works):** Eidetic Works hosts the bucket. Personal API key + `sync.json` delivered within 24h. First 50 subscribers keep this price.
 
 ### MCP bridge (Cursor / Claude Code / Cline / any MCP client)
 
