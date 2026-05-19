@@ -40,9 +40,9 @@ detect_target() {
 download_url() {
   local target="$1"
   if [ "$VERSION" = "latest" ]; then
-    echo "https://github.com/${REPO}/releases/latest/download/eideticd-${target}"
+    echo "https://github.com/${REPO}/releases/latest/download/eideticd-${target}.tar.gz"
   else
-    echo "https://github.com/${REPO}/releases/download/${VERSION}/eideticd-${target}"
+    echo "https://github.com/${REPO}/releases/download/${VERSION}/eideticd-${target}.tar.gz"
   fi
 }
 
@@ -51,10 +51,11 @@ install_binary() {
   url="$(download_url "$target")"
   tmp="$(mktemp -d)"
   log "fetching $url"
-  if ! curl -fsSL "$url" -o "$tmp/eideticd"; then
+  if ! curl -fsSL "$url" -o "$tmp/eideticd.tar.gz"; then
     rm -rf "$tmp"
-    err "download failed (404 or network error). If 404: the daemon repo may still be private during early-access — see https://github.com/${REPO}/releases for status, or contact hello@nucleusos.dev"
+    err "download failed (404 or network error). See https://github.com/${REPO}/releases for status."
   fi
+  tar -xzf "$tmp/eideticd.tar.gz" -C "$tmp"
   install -d "${PREFIX}/bin"
   install -m 0755 "$tmp/eideticd" "${PREFIX}/bin/eideticd"
   rm -rf "$tmp"
