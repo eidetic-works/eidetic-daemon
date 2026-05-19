@@ -6,6 +6,20 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.33] — 2026-05-19
+
+Sync-state persistence: `--stats` now shows last cloud backup time across daemon restarts.
+
+### Added
+
+- **`SyncState` struct** — `{last_sync, last_key, last_bytes}` persisted to `<dataDir>/sync-state.json` after every successful upload. Survives daemon restarts.
+- **`LoadSyncState(dataDir)`** — reads sync-state.json; returns zero-value (not error) if file does not exist yet.
+- **`--stats` cloud sync block** — when sync-state.json exists, `eideticd --stats` prints last sync time (local), last R2 key, and last upload size.
+- **`saveSyncState`** — atomic write (tmp → rename, 0600); called by `upload()` on 201 OK; never fails the upload.
+- 2 new tests: `TestLoadSyncState_Missing` (missing file → zero-value), `TestUploadWritesSyncState` (upload → state file written with correct fields). 14/14 pass.
+
+---
+
 ## [v0.0.32] — 2026-05-19
 
 Cloud restore: download the latest R2 backup in one command.
