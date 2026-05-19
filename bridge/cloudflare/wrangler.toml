@@ -11,7 +11,7 @@ bucket_name = "eidetic-engrams"
 # Then replace the id below with the returned namespace ID.
 [[kv_namespaces]]
 binding = "EIDETIC_KEYS_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "34d23af4669a40bd907f5c58c56802e8"
 
 # Secrets (set via `wrangler secret put`, never in wrangler.toml):
 #   EIDETIC_API_KEY — legacy single shared key (dev/self-hosted), optional if KV in use
