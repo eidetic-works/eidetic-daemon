@@ -55,17 +55,24 @@ Write-Log "registered startup key: HKCU\...\Run\EideticDaemon"
 $ver = & $ExePath -version 2>&1
 Write-Log "smoke: $ver"
 
-# Start daemon now (detached)
-$proc = Start-Process -FilePath $ExePath -WindowStyle Hidden -PassThru
-Write-Log "started daemon, pid=$($proc.Id)"
+# On Windows, daemon listens via TCP (UDS support is limited on Windows)
+# Update startup key to include --tcp flag
+Set-ItemProperty -Path $RunKey -Name 'EideticDaemon' -Value "`"$ExePath`" --tcp"
+
+# Start daemon now (detached, TCP mode)
+$proc = Start-Process -FilePath $ExePath -ArgumentList '--tcp' -WindowStyle Hidden -PassThru
+Write-Log "started daemon (TCP mode), pid=$($proc.Id)"
+Start-Sleep -Seconds 1
 
 Write-Host ""
 Write-Host "Eidetic Works $Version installed." -ForegroundColor Green
 Write-Host "  Binary:  $ExePath"
+Write-Host "  Mode:    TCP loopback (127.0.0.1:9876)"
 Write-Host "  Startup: HKCU Run key (auto-start at login)"
 Write-Host ""
-Write-Host "MCP bridge:"
+Write-Host "MCP bridge (Claude Code / Cursor):"
 Write-Host "  pip install eidetic-mcp"
 Write-Host "  claude mcp add eidetic -- python -m eidetic_mcp.server"
+Write-Host "  (Windows auto-uses TCP — no extra config needed)"
 Write-Host ""
-Write-Host "Verify: curl --unix-socket \\.\pipe\eidetic-daemon http://localhost/metrics"
+Write-Host "Verify: curl http://127.0.0.1:9876/metrics"

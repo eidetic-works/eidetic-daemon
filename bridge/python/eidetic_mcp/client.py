@@ -74,8 +74,10 @@ class DaemonClient:
         timeout: float = DEFAULT_TIMEOUT_SEC,
         auth_token: Optional[str] = None,
     ) -> None:
+        import sys
+
         self._timeout = timeout
-        if os.environ.get("EIDETIC_TCP") == "1":
+        if os.environ.get("EIDETIC_TCP") == "1" or sys.platform == "win32":
             self._mode = "tcp"
             self._tcp_host = tcp_host
             self._tcp_port = tcp_port
