@@ -6,6 +6,18 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.32] — 2026-05-19
+
+Cloud restore: download the latest R2 backup in one command.
+
+### Added
+
+- **`--restore` flag** — downloads the most recent R2 backup for the configured device and atomically replaces the local `engrams.db`. The previous file is saved to `engrams.db.bak`. Runs before `store.Open` so there is no write-lock conflict. Usage: `eideticd --restore`.
+- **Worker `GET /download` endpoint** — auth-gated (KV + fallback), streams the latest R2 object for the device with `X-Backup-Key` and `X-Uploaded-At` headers. Requires `EIDETIC_SYNC_BUCKET` R2 binding.
+- 3 new tests in `internal/sync/syncer_test.go`: happy path (download → atomic replace → backup preserved), nil-config error, 404 from Worker.
+
+---
+
 ## [v0.0.31] — 2026-05-19
 
 Bridge dual-listener mode for Cloudflare tunnel integration.
