@@ -6,6 +6,23 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.42] — 2026-05-20
+
+`/export` HTTP endpoint: stream every engram as newline-delimited JSON.
+
+### Added
+
+- **`GET /export[?surface=X][&since=ns][&before=ns]`** — paginated server-side iteration (1000-row pages), streams NDJSON one engram per line, asc timestamp order. Memory-bounded — safe against 10M-row stores.
+- **Content-Type: `application/x-ndjson`** + `Content-Disposition: attachment; filename="engrams-export.ndjson"` — `curl -O` saves the file with a sensible name; `jq` consumes one line at a time.
+- **Final summary line** — `{"_export_complete": true, "_count": N}` so clients can verify completion.
+- 3 new tests: method allow-list, NDJSON shape + summary line, surface filter.
+
+### Why
+
+Right-to-export. "I own my data" was a Pro promise; this is the proof. Also enables: backup before uninstall, migrate to another store, audit trail for compliance, bulk re-ingest into a future vector store.
+
+---
+
 ## [v0.0.39] — 2026-05-20
 
 Shared-team surface foundation: daemon sends `X-Team-ID` header for Team subscribers.

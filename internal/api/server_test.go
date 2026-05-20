@@ -1666,3 +1666,96 @@ func TestAskNoMatchInstructsNoFabricate(t *testing.T) {
 		t.Errorf("no-match instructions should warn against fabrication, got %q", got.Instructions)
 	}
 }
+
+// ── GET /export tests (v0.0.42+) ─────────────────────────────────────────────
+
+func TestExportMethodNotAllowed(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/export", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST /export: want 405, got %d", resp.StatusCode)
+	}
+}
+
+func TestExportStreamsNDJSON(t *testing.T) {
+	st := tempStore(t)
+	seedSearch(t, st, "claude_code", "first engram")
+	seedSearch(t, st, "claude_code", "second engram")
+	seedSearch(t, st, "cursor", "third engram")
+
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/export", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if got := resp.Header.Get("Content-Type"); got != "application/x-ndjson" {
+		t.Errorf("Content-Type: got %q, want application/x-ndjson", got)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	lines := strings.Split(strings.TrimRight(string(body), "\n"), "\n")
+	if len(lines) < 4 {
+		// 3 engrams + 1 completion marker
+		t.Fatalf("expected ≥4 NDJSON lines, got %d:\n%s", len(lines), body)
+	}
+
+	// Each non-final line should be a valid Engram JSON
+	for i := 0; i < len(lines)-1; i++ {
+		var e engram.Engram
+		if err := json.Unmarshal([]byte(lines[i]), &e); err != nil {
+			t.Errorf("line %d not valid engram JSON: %v", i, err)
+		}
+	}
+
+	// Final line should be the completion marker
+	var done map[string]any
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &done); err != nil {
+		t.Fatalf("final line not JSON: %v", err)
+	}
+	if done["_export_complete"] != true {
+		t.Errorf("final line missing _export_complete:true, got %v", done)
+	}
+}
+
+func TestExportFiltersBySurface(t *testing.T) {
+	st := tempStore(t)
+	seedSearch(t, st, "claude_code", "needle 1")
+	seedSearch(t, st, "claude_code", "needle 2")
+	seedSearch(t, st, "cursor", "haystack")
+
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/export?surface=cursor", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	lines := strings.Split(strings.TrimRight(string(body), "\n"), "\n")
+
+	// 1 cursor engram + 1 completion marker
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines (1 engram + marker), got %d:\n%s", len(lines), body)
+	}
+	var e engram.Engram
+	if err := json.Unmarshal([]byte(lines[0]), &e); err != nil {
+		t.Fatal(err)
+	}
+	if e.Surface != "cursor" {
+		t.Errorf("filter leaked: got surface %q, want cursor", e.Surface)
+	}
+}

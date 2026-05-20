@@ -489,3 +489,68 @@ func (s *Server) handleRecent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(rows)
 }
+
+// handleExport serves GET /export[?surface=X][&since=ns][&before=ns].
+// Streams every engram in the local store as newline-delimited JSON (NDJSON),
+// one engram per line, chronological order (oldest first). Designed for
+// right-to-export use cases: backup before uninstall, migrate to another
+// store, audit / compliance dump.
+//
+// Memory-bounded via paginated Retrieve (1000 rows per page). Safe to call
+// against a 10M-row store; the response streams as it generates.
+//
+// Content-Type: application/x-ndjson (so curl users can pipe through `jq`).
+// (v0.0.42+)
+func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+	surface := q.Get("surface")
+	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
+	before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// Hint to curl: filename suggestion when saving with -O.
+	w.Header().Set("Content-Disposition", `attachment; filename="engrams-export.ndjson"`)
+
+	flusher, _ := w.(http.Flusher)
+	enc := json.NewEncoder(w)
+
+	const pageSize = 1000
+	cursor := since
+	total := 0
+
+	for {
+		ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
+		rows, err := s.store.Retrieve(ctx, surface, cursor, before, pageSize, true)
+		cancel()
+		if err != nil {
+			// Mid-stream errors can't change HTTP status — already sent 200.
+			// Log via response body as a final NDJSON line so callers can detect.
+			_ = enc.Encode(map[string]any{"_export_error": err.Error()})
+			return
+		}
+		if len(rows) == 0 {
+			break
+		}
+		for _, row := range rows {
+			if err := enc.Encode(row); err != nil {
+				return // client likely disconnected; nothing useful to do
+			}
+		}
+		total += len(rows)
+		// Advance cursor past the last row (asc order → max ts is last)
+		cursor = rows[len(rows)-1].TS
+		if len(rows) < pageSize {
+			break
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	// Final summary line so clients can verify completion + count.
+	_ = enc.Encode(map[string]any{"_export_complete": true, "_count": total})
+}

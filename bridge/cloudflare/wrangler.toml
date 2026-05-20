@@ -15,3 +15,8 @@ id = "34d23af4669a40bd907f5c58c56802e8"
 
 # Secrets (set via `wrangler secret put`, never in wrangler.toml):
 #   EIDETIC_API_KEY — legacy single shared key (dev/self-hosted), optional if KV in use
+#
+# Team-tier routing (v0.0.39+):
+#   When daemon sets team_id in sync.json, it sends X-Team-ID on every /sync and /download.
+#   /sync dual-writes to engrams/<device_id>/... AND engrams/team/<team_id>/<device_id>/...
+#   /team-engrams lists all members' latest backups for a given team_id.
