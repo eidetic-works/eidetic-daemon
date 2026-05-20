@@ -6,6 +6,23 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.49] — 2026-05-20
+
+`/metrics` exposes `/ask` cache hit/miss counters.
+
+### Added
+
+- **`askCache` observability** — atomic counters for hits + misses; `Stats()` returns `(hits, misses, size)` without locking.
+- **`api.AskCacheStats()`** — package-level helper for main.go to read counters into `Metrics` provider.
+- **`Metrics.AskCacheHits` / `AskCacheMisses` / `AskCacheSize`** — new additive fields on `/metrics` JSON (omitempty).
+- 1 new test: `TestAskCache_StatsCounters` — verifies 3-miss / 1-hit / 1-size scenario.
+
+### Why
+
+Dashboard polling cadence + cost-tuning need real numbers. Hit rate < 20% means polling too often; hit rate > 95% means the dashboard could poll faster without hurting daemon load. Now we can tune from real data.
+
+---
+
 ## [v0.0.48] — 2026-05-20
 
 Shell completions (bash + zsh) shipped in release tarballs + auto-installed by Homebrew.

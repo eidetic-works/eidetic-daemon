@@ -342,6 +342,12 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 // 64-entry cap bounds memory even under dashboard polling.
 var askCacheInstance = newAskCache(64, 5*time.Minute)
 
+// AskCacheStats exposes the /ask cache's hit/miss counters for /metrics
+// emission. Safe to call concurrently. (v0.0.49+)
+func AskCacheStats() (hits, misses uint64, size int) {
+	return askCacheInstance.Stats()
+}
+
 // handleAsk serves GET /ask?question=<text>[&surface=X][&limit=N].
 // Wraps the question→FTS keyword extraction + RAG-format flow that the
 // eidetic-mcp nucleus_ask tool provides — but accessible to non-MCP clients

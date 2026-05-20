@@ -285,12 +285,16 @@ func main() {
 	var watcherPtr *capture.Watcher
 	startTime := time.Now()
 	opts.Metrics = func(ctx context.Context) (api.Metrics, error) {
+		askHits, askMisses, askSize := api.AskCacheStats()
 		m := api.Metrics{
 			Version:         Version,
 			UptimeSeconds:   int64(time.Since(startTime).Seconds()),
 			DBPath:          dbPath,
 			LatestVersion:   verCheck.Latest(),
 			UpdateAvailable: verCheck.UpdateAvailable(Version),
+			AskCacheHits:    askHits,
+			AskCacheMisses:  askMisses,
+			AskCacheSize:    askSize,
 		}
 		if total, err := s.Count(ctx); err == nil {
 			m.EngramTotal = total

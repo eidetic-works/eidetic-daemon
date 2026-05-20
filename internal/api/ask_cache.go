@@ -3,6 +3,7 @@ package api
 import (
 	"container/list"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,6 +20,11 @@ type askCache struct {
 	ttl      time.Duration
 	order    *list.List               // front = most recently used
 	entries  map[string]*list.Element // key → element holding *askEntry
+
+	// Observability counters (v0.0.49+). Atomic so /metrics can read without
+	// taking the cache mutex.
+	hits   atomic.Uint64
+	misses atomic.Uint64
 }
 
 type askEntry struct {
@@ -42,16 +48,25 @@ func (c *askCache) Get(key string) ([]byte, bool) {
 	defer c.mu.Unlock()
 	el, ok := c.entries[key]
 	if !ok {
+		c.misses.Add(1)
 		return nil, false
 	}
 	e := el.Value.(*askEntry)
 	if time.Now().After(e.expiresAt) {
 		c.order.Remove(el)
 		delete(c.entries, key)
+		c.misses.Add(1)
 		return nil, false
 	}
 	c.order.MoveToFront(el)
+	c.hits.Add(1)
 	return e.value, true
+}
+
+// Stats returns a snapshot of hit/miss counters + current size. Safe to call
+// concurrently with Get/Put.
+func (c *askCache) Stats() (hits, misses uint64, size int) {
+	return c.hits.Load(), c.misses.Load(), c.Len()
 }
 
 // Put stores key→value with the cache TTL. Evicts LRU if over capacity.

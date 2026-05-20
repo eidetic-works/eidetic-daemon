@@ -45,6 +45,12 @@ type Metrics struct {
 	// never succeeded (offline daemon, blocked egress, etc.).
 	LatestVersion    string `json:"latest_version,omitempty"`
 	UpdateAvailable  bool   `json:"update_available,omitempty"`
+
+	// /ask cache counters (v0.0.49+). hits and misses are lifetime totals;
+	// size is current entry count. Useful for dashboard polling rate tuning.
+	AskCacheHits   uint64 `json:"ask_cache_hits,omitempty"`
+	AskCacheMisses uint64 `json:"ask_cache_misses,omitempty"`
+	AskCacheSize   int    `json:"ask_cache_size,omitempty"`
 }
 
 // MetricsProvider is supplied by main() so the api package stays decoupled

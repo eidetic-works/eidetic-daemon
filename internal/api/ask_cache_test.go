@@ -73,3 +73,32 @@ func TestAskCache_PutRefreshesExisting(t *testing.T) {
 		t.Errorf("re-Put should not grow Len; got %d", c.Len())
 	}
 }
+
+func TestAskCache_StatsCounters(t *testing.T) {
+	c := newAskCache(8, 1*time.Minute)
+	h0, m0, s0 := c.Stats()
+	if h0 != 0 || m0 != 0 || s0 != 0 {
+		t.Errorf("fresh cache stats: got h=%d m=%d s=%d, want 0,0,0", h0, m0, s0)
+	}
+
+	// 3 misses
+	c.Get("a")
+	c.Get("b")
+	c.Get("c")
+	// 1 put + 1 hit
+	c.Put("d", []byte("v"))
+	c.Get("d")
+	// 1 more miss
+	c.Get("e")
+
+	h, m, s := c.Stats()
+	if h != 1 {
+		t.Errorf("hits: got %d, want 1", h)
+	}
+	if m != 4 {
+		t.Errorf("misses: got %d, want 4", m)
+	}
+	if s != 1 {
+		t.Errorf("size: got %d, want 1", s)
+	}
+}
