@@ -20,6 +20,7 @@ Per spec § 7 Open Q #5: this is the "separate Python wrapper" path — the daem
 | `get_engram_by_id` | `id` (required — positive integer) | Fetch a single engram by primary key. Returns full Engram JSON. Error on non-existent ID or non-positive integer (v0.0.18+). |
 | `count_engrams` | `surface` (optional), `since` (unix ns, optional) | Return `{"count": N}` for engrams matching optional surface and time filters. Never fetches rows (v0.0.20+). |
 | `delete_engram_by_id` | `id` (required — positive integer) | Remove a single engram by primary key. Returns `{"deleted": 1}`. Error on non-existent ID or non-positive integer. Irreversible (v0.0.19+). |
+| `nucleus_digest` | `window` (one of `"24h"`, `"7d"` (default), `"30d"`) | Windowed activity recap (v0.0.6+; requires daemon v0.0.47+). Calls `GET /digest?window=...` and returns the JSON verbatim: `window`, `since`, `total_engrams`, `by_surface`, `top_hours`, `top_terms`, `sample_engrams`, plus an `instructions` field (promoted to the top of the payload) telling the host LLM how to render the recap. |
 
 ### Chunked-record reassembly (ADR-018)
 
@@ -145,6 +146,18 @@ count_engrams(since=1747500000000000000)      # → 5   (since timestamp)
 
 delete_engram_by_id(id=1234)
 → True   # boolean — True on success; DaemonError on 404
+
+nucleus_digest(window="7d")
+→ {
+    "instructions": "Render the recap as a short markdown digest ...",
+    "window": "7d",
+    "since": 1746896400000000000,
+    "total_engrams": 1280,
+    "by_surface": {"claude_code": 1101, "cursor": 179},
+    "top_hours": [...],
+    "top_terms": [...],
+    "sample_engrams": [...]
+  }
 ```
 
 Surfaces depend on what the daemon is watching (default: `claude_code`, `cowork`, `cursor`). Use `list_surfaces()` to discover what's currently in the store.

@@ -65,6 +65,12 @@ Tools exposed:
     {"deleted": 1} on success. Error when ID does not exist or is not a
     positive integer. Irreversible — use with care.
 
+  nucleus_digest(window="7d")
+    Windowed activity recap (v0.0.6+). Calls daemon's /digest endpoint
+    (v0.0.47+). window ∈ {"24h", "7d", "30d"}. Returns the daemon JSON
+    verbatim with `instructions` field promoted to the top of the
+    payload so the host LLM renders the recap correctly.
+
 Run:
 
     eideticd &                          # daemon listens on UDS
@@ -493,6 +499,32 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "required": ["question"],
                 },
             ),
+            Tool(
+                name="nucleus_digest",
+                description=(
+                    "Render a windowed activity recap from your engram store (v0.0.6+). "
+                    "Calls the daemon's /digest endpoint (v0.0.47+) and returns the JSON "
+                    "verbatim: window, since, total_engrams, by_surface, top_hours, "
+                    "top_terms, sample_engrams, and `instructions` for the host LLM to "
+                    "compose the recap.\n\n"
+                    "Use this for weekly/monthly/daily reviews. The `instructions` field "
+                    "tells the host LLM exactly how to present the digest — read it "
+                    "before generating the user-facing summary.\n\n"
+                    "`window` must be one of '24h', '7d' (default), or '30d'. The tool "
+                    "does NOT call any external LLM — your engrams never leave the local daemon."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "window": {
+                            "type": "string",
+                            "description": "Time window for the digest. One of '24h', '7d', '30d'. Default '7d'.",
+                            "enum": ["24h", "7d", "30d"],
+                        },
+                    },
+                    "required": [],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -672,6 +704,24 @@ def build_server(client: DaemonClient | None = None) -> Any:
                 "engrams": [asdict(r) for r in rows],
             }
             return [TextContent(type="text", text=json.dumps(payload, indent=2))]
+
+        if name == "nucleus_digest":
+            window = str(arguments.get("window", "7d")).strip() or "7d"
+            try:
+                body = daemon.digest(window=window)
+            except (DaemonError, ValueError) as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            # Return the daemon's JSON verbatim — the `instructions` field is
+            # already authored daemon-side and tells the host LLM how to render
+            # the recap. We preserve key ordering so `instructions` (when present)
+            # stays prominent at the top of the dict by reinjecting it first.
+            if isinstance(body, dict) and "instructions" in body:
+                ordered = {"instructions": body["instructions"]}
+                for k, v in body.items():
+                    if k != "instructions":
+                        ordered[k] = v
+                body = ordered
+            return [TextContent(type="text", text=json.dumps(body, indent=2))]
 
         return [TextContent(type="text", text=f"error: unknown tool {name!r}")]
 

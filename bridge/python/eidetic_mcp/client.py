@@ -431,6 +431,27 @@ class DaemonClient:
         body = self._get_json(f"/engrams/{id}")
         return _parse_engram(body)
 
+    def digest(self, window: str = "7d") -> dict:
+        """GET /digest — windowed activity recap (v0.0.47+).
+
+        Returns the daemon's /digest JSON verbatim as a dict, with fields
+        like window, since, total_engrams, by_surface, top_hours, top_terms,
+        sample_engrams, and instructions (for the host LLM to render).
+
+        window must be one of {"24h", "7d", "30d"}; validated client-side
+        to avoid a round-trip on bad input. Raises ValueError on a bad
+        window. Raises DaemonError on transport failure or daemons
+        predating v0.0.47.
+        """
+        if window not in {"24h", "7d", "30d"}:
+            raise ValueError(
+                f"window must be one of '24h', '7d', '30d', got {window!r}"
+            )
+        body = self._get_json(f"/digest?{urlencode({'window': window})}")
+        if not isinstance(body, dict):
+            raise DaemonError(f"expected object, got {type(body).__name__}")
+        return body
+
 
 def _parse_engram(row: object) -> Engram:
     if not isinstance(row, dict):
