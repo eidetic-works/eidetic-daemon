@@ -337,6 +337,11 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(rows)
 }
 
+// askCacheInstance is the per-Server LRU cache for /ask responses (v0.0.45+).
+// 5-minute TTL is short enough that newly-arrived engrams surface quickly;
+// 64-entry cap bounds memory even under dashboard polling.
+var askCacheInstance = newAskCache(64, 5*time.Minute)
+
 // handleAsk serves GET /ask?question=<text>[&surface=X][&limit=N].
 // Wraps the question→FTS keyword extraction + RAG-format flow that the
 // eidetic-mcp nucleus_ask tool provides — but accessible to non-MCP clients
@@ -373,6 +378,17 @@ func (s *Server) handleAsk(w http.ResponseWriter, r *http.Request) {
 		limit = 30
 	}
 
+	// v0.0.45+: cache by canonical signature so dashboard polling + repeat
+	// questions don't re-hit FTS5. TTL is short (5 min) so newly-written
+	// engrams surface quickly.
+	cacheKey := question + "\x00" + surface + "\x00" + strconv.Itoa(limit)
+	if cached, ok := askCacheInstance.Get(cacheKey); ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Ask-Cache", "hit")
+		_, _ = w.Write(cached)
+		return
+	}
+
 	fts := questionToFTS(question)
 
 	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
@@ -406,8 +422,16 @@ func (s *Server) handleAsk(w http.ResponseWriter, r *http.Request) {
 		"instructions": instructions,
 		"engrams":      rows,
 	}
+	// Marshal once; serve + cache the same bytes.
+	body, mErr := json.Marshal(resp)
+	if mErr != nil {
+		http.Error(w, mErr.Error(), http.StatusInternalServerError)
+		return
+	}
+	askCacheInstance.Put(cacheKey, body)
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	w.Header().Set("X-Ask-Cache", "miss")
+	_, _ = w.Write(body)
 }
 
 // askStopwords mirrors eidetic-mcp's _STOPWORDS set. Kept in sync via the

@@ -6,6 +6,22 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.45] — 2026-05-20
+
+`/ask` result cache: LRU + TTL keeps the web dashboard responsive under polling.
+
+### Added
+
+- **`askCache`** in `internal/api/ask_cache.go` — 64-entry LRU + 5-min TTL. Thread-safe via sync.Mutex; lazy expiry on Get.
+- **Cache hit/miss header** — `X-Ask-Cache: hit` or `miss` on every `/ask` response. Useful for debugging dashboard caching behavior.
+- 5 unit tests: GetMiss, PutThenGet, TTLExpiry, LRUEviction, PutRefreshesExisting.
+
+### Why
+
+Web dashboard at `/dashboard` and any future polling client (mobile, Slack bot) will fire the same `/ask` query repeatedly. Without caching, every poll re-runs FTS5. 5-min TTL is short enough that fresh engrams surface quickly; 64-entry cap bounds memory.
+
+---
+
 ## [v0.0.44] — 2026-05-20
 
 `eideticd -uninstall` — symmetric to `-install`. Lowers conversion friction.
