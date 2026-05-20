@@ -1,0 +1,94 @@
+<!--
+  plugin.xml — IntelliJ Platform plugin descriptor for eidetic-jetbrains.
+  Version, since-build, and until-build are patched in by the
+  intellij-platform Gradle plugin v2 (see build.gradle.kts pluginConfiguration).
+-->
+<idea-plugin>
+    <id>works.eidetic.jetbrains</id>
+    <name>Eidetic Engrams</name>
+    <vendor email="hello@eidetic.works" url="https://eidetic.works">Eidetic Works</vendor>
+
+    <description><![CDATA[
+      <p>Browse, search, and recall engrams captured by
+      <a href="https://github.com/eidetic-works/eidetic-daemon">eidetic-daemon</a>
+      from your Claude Code, Cursor, and JetBrains AI sessions, without leaving
+      the IDE.</p>
+
+      <h3>Features</h3>
+      <ul>
+        <li><b>Eidetic tool window</b> — sidebar tabs for Recent engrams,
+            Surfaces (with counts), and inline Search.</li>
+        <li><b>Recall</b> (<code>Tools → Eidetic: Recall…</code>) — ask a
+            natural-language question against <code>/ask</code> and view
+            citations + grounding instructions in a popup.</li>
+        <li><b>Search</b> (<code>Tools → Eidetic: Search Engrams…</code>) —
+            FTS5-backed search across all captured engrams.</li>
+        <li><b>Settings</b> — UDS socket path, TCP host:port (Windows fallback),
+            request timeout, optional surface filter, refresh interval.</li>
+      </ul>
+
+      <h3>Requirements</h3>
+      <p>eidetic-daemon v0.0.45 or newer running locally on
+      <code>/tmp/eidetic-daemon.sock</code> (macOS/Linux) or
+      <code>127.0.0.1:9876</code> (Windows or <code>EIDETIC_TCP=1</code>).</p>
+    ]]></description>
+
+    <change-notes><![CDATA[
+      <h3>0.0.1</h3>
+      <ul>
+        <li>Initial scaffold: tool window, Recall / Search actions, settings panel.</li>
+      </ul>
+    ]]></change-notes>
+
+    <!-- Compatible with any product built on the IntelliJ Platform
+         (IDEA, PyCharm, GoLand, WebStorm, Rider, PhpStorm, RubyMine, …). -->
+    <depends>com.intellij.modules.platform</depends>
+
+    <!-- since-build / until-build are patched by intellijPlatform.pluginConfiguration. -->
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Sidebar tool window on the right; users can dock it anywhere. -->
+        <toolWindow
+            id="Eidetic"
+            anchor="right"
+            secondary="true"
+            icon="AllIcons.Toolwindows.ToolWindowFind"
+            factoryClass="works.eidetic.jetbrains.EideticToolWindowFactory"/>
+
+        <!-- Application-level settings panel under Settings → Tools → Eidetic. -->
+        <applicationConfigurable
+            parentId="tools"
+            instance="works.eidetic.jetbrains.EideticSettingsConfigurable"
+            id="works.eidetic.jetbrains.Settings"
+            displayName="Eidetic Engrams"/>
+
+        <!-- Persistent application-level settings store. -->
+        <applicationService serviceImplementation="works.eidetic.jetbrains.EideticSettings"/>
+
+        <!-- Shared daemon client service (one HttpClient per app, not per project). -->
+        <applicationService serviceImplementation="works.eidetic.jetbrains.DaemonClient"/>
+
+        <notificationGroup
+            id="Eidetic"
+            displayType="BALLOON"
+            isLogByDefault="true"/>
+    </extensions>
+
+    <actions>
+        <group id="EideticActionGroup" text="Eidetic" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+
+            <action
+                id="works.eidetic.jetbrains.RecallAction"
+                class="works.eidetic.jetbrains.RecallAction"
+                text="Eidetic: Recall…"
+                description="Ask a natural-language question — Eidetic retrieves matching engrams with citations."/>
+
+            <action
+                id="works.eidetic.jetbrains.SearchAction"
+                class="works.eidetic.jetbrains.SearchAction"
+                text="Eidetic: Search Engrams…"
+                description="FTS5 search across captured engrams."/>
+        </group>
+    </actions>
+</idea-plugin>
