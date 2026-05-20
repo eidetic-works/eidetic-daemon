@@ -6,6 +6,23 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.53] — 2026-05-20
+
+Refactor: `internal/textsearch` package — single source of truth for FTS question rewriting.
+
+### Refactor
+
+- **`internal/textsearch/textsearch.go`** — new package with `Stopwords` map + `QuestionToFTS()`. Was duplicated in `internal/api/routes.go` (askStopwords + questionToFTS), `cmd/eideticd/main.go` (cliQuestionToFTS), and `bridge/python/eidetic_mcp/server.py` (_question_to_fts — Python mirror, kept synced by review).
+- **`internal/api/routes.go`** — `askStopwords` is now a re-export of `textsearch.Stopwords`; `questionToFTS` is a thin wrapper around `textsearch.QuestionToFTS`.
+- **`cmd/eideticd/main.go`** — removed `cliQuestionToFTS` (~40 LOC); `--ask` now calls `textsearch.QuestionToFTS` directly.
+- 10 new tests for the package covering all behaviors: stop-word strip, OR-recall, short-token drop, lowercase, punctuation split, underscore preservation, all-stopword fallback, content-word safety check.
+
+### Why
+
+Three sites with the same algorithm drift silently when one is touched. Consolidating into a package with explicit test coverage prevents the next refactor from corrupting one consumer. Python side stays mirrored (different runtime; structurally identical).
+
+---
+
 ## [v0.0.52] — 2026-05-20
 
 `eideticd --capture` — pipe any command's output into your engram store.

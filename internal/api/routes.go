@@ -12,6 +12,7 @@ import (
 
 	"github.com/eidetic-works/eidetic-daemon/internal/engram"
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
+	"github.com/eidetic-works/eidetic-daemon/internal/textsearch"
 )
 
 // handleHealthz serves GET /healthz. Returns 200 + {"status":"ok"}. Used by
@@ -440,57 +441,17 @@ func (s *Server) handleAsk(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(body)
 }
 
-// askStopwords mirrors eidetic-mcp's _STOPWORDS set. Kept in sync via the
-// internal/sync/syncer.go pattern: small, finite, audited together.
-var askStopwords = map[string]struct{}{
-	"a": {}, "an": {}, "the": {}, "is": {}, "was": {}, "were": {}, "are": {},
-	"be": {}, "been": {}, "being": {}, "i": {}, "me": {}, "my": {}, "we": {},
-	"our": {}, "you": {}, "your": {}, "they": {}, "them": {}, "their": {},
-	"it": {}, "its": {}, "this": {}, "that": {}, "these": {}, "those": {},
-	"what": {}, "when": {}, "where": {}, "why": {}, "how": {}, "who": {},
-	"which": {}, "do": {}, "did": {}, "does": {}, "have": {}, "had": {},
-	"has": {}, "having": {}, "and": {}, "or": {}, "but": {}, "if": {},
-	"then": {}, "else": {}, "of": {}, "to": {}, "in": {}, "on": {}, "for": {},
-	"with": {}, "from": {}, "by": {}, "at": {}, "as": {}, "about": {},
-	"into": {}, "over": {}, "out": {}, "up": {}, "down": {}, "again": {},
-	"anything": {}, "something": {}, "find": {}, "tell": {}, "show": {},
-	"give": {}, "ask": {}, "any": {}, "some": {}, "all": {}, "each": {},
-	"every": {},
-}
+// askStopwords is kept as a re-export of textsearch.Stopwords for the /digest
+// tokenizer (which also strips stop-words but uses its own per-engram token
+// loop, not a one-shot question). Single source of truth lives in
+// internal/textsearch.
+var askStopwords = textsearch.Stopwords
 
-// questionToFTS turns a natural-language question into a permissive FTS5
-// OR-query (best-recall semantics). Mirrors the Python helper in
-// bridge/python/eidetic_mcp/server.py::_question_to_fts so MCP + HTTP /ask
-// give identical retrieval behavior.
+// questionToFTS delegates to the shared internal/textsearch package so
+// HTTP /ask, cmd/eideticd --ask, and (by mirror) the Python MCP tool all
+// give identical retrieval behavior. (v0.0.53+)
 func questionToFTS(question string) string {
-	var kws []string
-	var cur []rune
-	flush := func() {
-		if len(cur) == 0 {
-			return
-		}
-		t := strings.ToLower(string(cur))
-		cur = cur[:0]
-		if len(t) < 3 {
-			return
-		}
-		if _, stop := askStopwords[t]; stop {
-			return
-		}
-		kws = append(kws, t)
-	}
-	for _, r := range question {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
-			cur = append(cur, r)
-		} else {
-			flush()
-		}
-	}
-	flush()
-	if len(kws) == 0 {
-		return question
-	}
-	return strings.Join(kws, " OR ")
+	return textsearch.QuestionToFTS(question)
 }
 
 // handleRecent serves GET /recent?since=unix-ns&limit=N.

@@ -28,6 +28,7 @@ import (
 	"github.com/eidetic-works/eidetic-daemon/internal/engram"
 	eidetic_sync "github.com/eidetic-works/eidetic-daemon/internal/sync"
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
+	"github.com/eidetic-works/eidetic-daemon/internal/textsearch"
 	"github.com/eidetic-works/eidetic-daemon/internal/versioncheck"
 )
 
@@ -133,10 +134,8 @@ func main() {
 			log.Fatalf("ask: open store: %v", err)
 		}
 		defer s.Close()
-		// Reuse the same question→FTS heuristic as the daemon's /ask endpoint
-		// (server-side questionToFTS is in internal/api; for the CLI we inline
-		// the equivalent — kept tiny so we don't pull api into cmd).
-		fts := cliQuestionToFTS(*askQuery)
+		// Shared question→FTS heuristic (same as HTTP /ask + nucleus_ask).
+		fts := textsearch.QuestionToFTS(*askQuery)
 		ctx := context.Background()
 		rows, err := s.Search(ctx, fts, "", 10)
 		if err != nil {
@@ -587,42 +586,3 @@ func main() {
 	<-captureDone
 }
 
-// cliQuestionToFTS is the CLI-side mirror of api.questionToFTS — kept tiny so
-// cmd/ doesn't pull internal/api. Strips short tokens + a small stop-word set,
-// OR-joins what remains. Falls back to the raw question if everything strips.
-func cliQuestionToFTS(question string) string {
-	stopwords := map[string]bool{
-		"a": true, "an": true, "the": true, "is": true, "was": true,
-		"i": true, "you": true, "we": true, "they": true, "it": true,
-		"what": true, "when": true, "where": true, "why": true, "how": true,
-		"do": true, "did": true, "have": true, "had": true,
-		"and": true, "or": true, "of": true, "to": true, "in": true, "on": true,
-		"for": true, "with": true, "from": true, "by": true, "at": true, "as": true,
-		"that": true, "this": true,
-	}
-	var keywords []string
-	var cur []rune
-	flush := func() {
-		if len(cur) == 0 {
-			return
-		}
-		t := strings.ToLower(string(cur))
-		cur = cur[:0]
-		if len(t) < 3 || stopwords[t] {
-			return
-		}
-		keywords = append(keywords, t)
-	}
-	for _, r := range question {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
-			cur = append(cur, r)
-		} else {
-			flush()
-		}
-	}
-	flush()
-	if len(keywords) == 0 {
-		return question
-	}
-	return strings.Join(keywords, " OR ")
-}
