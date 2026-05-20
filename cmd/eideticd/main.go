@@ -24,6 +24,7 @@ import (
 
 	"github.com/eidetic-works/eidetic-daemon/internal/api"
 	"github.com/eidetic-works/eidetic-daemon/internal/auth"
+	"github.com/eidetic-works/eidetic-daemon/internal/autotag"
 	"github.com/eidetic-works/eidetic-daemon/internal/capture"
 	"github.com/eidetic-works/eidetic-daemon/internal/engram"
 	"github.com/eidetic-works/eidetic-daemon/internal/hooks"
@@ -60,6 +61,7 @@ func main() {
 	captureFlag := flag.Bool("capture", false, "read stdin as an engram and insert into the local store; pair with -surface NAME. Reads the store directly — no daemon required.")
 	captureSurface := flag.String("surface", "", "with -capture: surface tag for the engram (e.g. kubernetes, clipboard, browser). Required.")
 	vacuumFlag := flag.Bool("vacuum", false, "run SQLite VACUUM on engrams.db to compact + reclaim space. Requires daemon to be down (write-lock). Reports before/after size.")
+	autoTagFlag := flag.String("auto-tag", "", "classify recent engrams via heuristic rules and merge tags into meta. Arg = window (24h|7d|30d). Daemon must be down (writer lock).")
 	installSvc := flag.Bool("install", false, "register eideticd as a login-time service (launchd on macOS, systemd-user on Linux) and exit")
 	uninstallSvc := flag.Bool("uninstall", false, "stop + unregister the login-time service and optionally delete local data; inverse of -install")
 	uninstallPurge := flag.Bool("purge", false, "with -uninstall: skip interactive confirm and delete <dataDir> (engrams.db, state, tokens)")
@@ -126,6 +128,66 @@ func main() {
 	// (auth-token, state.json, engrams.db all live under it).
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		log.Fatalf("mkdir dataDir %s: %v", dataDir, err)
+	}
+
+	// --auto-tag: scan recent engrams, classify via heuristics, merge tags into meta.
+	// Daemon must be down (writer lock). v0.0.60+.
+	if *autoTagFlag != "" {
+		var dur time.Duration
+		switch *autoTagFlag {
+		case "24h":
+			dur = 24 * time.Hour
+		case "7d":
+			dur = 7 * 24 * time.Hour
+		case "30d":
+			dur = 30 * 24 * time.Hour
+		default:
+			log.Fatalf("auto-tag: window must be 24h | 7d | 30d (got %q)", *autoTagFlag)
+		}
+		s, err := store.Open(dbPath)
+		if err != nil {
+			log.Fatalf("auto-tag: open store: %v (is the daemon running?)", err)
+		}
+		defer s.Close()
+		ctx := context.Background()
+		since := time.Now().Add(-dur).UnixNano()
+		rows, err := s.Retrieve(ctx, "", since, 0, 5000, true)
+		if err != nil {
+			log.Fatalf("auto-tag: %v", err)
+		}
+		fmt.Printf("auto-tag: scanning %d engrams in %s window\n", len(rows), *autoTagFlag)
+		var tagged, untouched int
+		tagCounts := make(map[string]int)
+		for _, e := range rows {
+			tags := autotag.Classify(e.Payload)
+			if len(tags) == 0 {
+				untouched++
+				continue
+			}
+			newMeta, err := autotag.MergeMeta(e.Meta, tags)
+			if err != nil {
+				log.Printf("auto-tag: row %d: %v (skipping)", e.ID, err)
+				continue
+			}
+			if newMeta == e.Meta {
+				untouched++
+				continue
+			}
+			if err := s.UpdateMeta(ctx, e.ID, newMeta); err != nil {
+				log.Printf("auto-tag: update row %d: %v", e.ID, err)
+				continue
+			}
+			tagged++
+			for _, t := range tags {
+				tagCounts[string(t)]++
+			}
+		}
+		fmt.Printf("auto-tag: tagged %d engrams (untouched: %d)\n\n", tagged, untouched)
+		fmt.Println("Tag counts:")
+		for tag, n := range tagCounts {
+			fmt.Printf("  %-10s %d\n", tag, n)
+		}
+		return
 	}
 
 	// --vacuum: SQLite compaction. Daemon must be down (acquires write-lock).

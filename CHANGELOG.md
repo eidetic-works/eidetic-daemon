@@ -6,6 +6,28 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.60] — 2026-05-21
+
+`--auto-tag` heuristic classifier + `eideticd-browse` TUI binary.
+
+### Added (daemon)
+
+- **`internal/autotag/` package** — heuristic engram classifier (no LLM dependency). Tags applied: `question`, `decision`, `error`, `code`, `link`, `command`. Multi-label per engram. 14 new tests covering each tag + multi-label + MergeMeta round-trips.
+- **`--auto-tag [24h|7d|30d]`** flag — scans engrams in window, classifies, merges tags into meta field. Daemon must be down (writer lock). Reports per-tag counts at end.
+- **`Store.UpdateMeta(id, meta)`** — new method for in-place meta updates; returns `ErrNotFound` if engram doesn't exist.
+
+### Added (separate binary)
+
+- **`cmd/eideticd-browse/`** — Bubble Tea TUI. Single Recent view, key bindings `/` (filter), `q` (quit). Reads engrams.db read-only via internal/store. Cross-compiles clean. 5251 LOC including main + tests + README.
+
+### Why
+
+`--auto-tag` makes nucleus_ask filter on semantic tags ("show me all decisions from last week"). Pure-Go, no GPU, runs offline.
+
+`eideticd-browse` is the terminal-native alternative to the web dashboard — bubbletea + lipgloss give it the same teal/black aesthetic.
+
+---
+
 ## [v0.0.59] — 2026-05-20
 
 `/hooks` endpoint test coverage + eidetic-mcp 0.0.8 nucleus_link tool.

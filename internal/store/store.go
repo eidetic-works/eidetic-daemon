@@ -664,3 +664,17 @@ func (s *Store) Vacuum(ctx context.Context) error {
 	_, err := s.writer.ExecContext(ctx, "VACUUM;")
 	return err
 }
+
+// UpdateMeta replaces the meta field of an engram by ID. Returns ErrNotFound
+// if the engram doesn't exist. (v0.0.60+)
+func (s *Store) UpdateMeta(ctx context.Context, id int64, meta string) error {
+	res, err := s.writer.ExecContext(ctx, `UPDATE engrams SET meta = ? WHERE id = ?`, meta, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
