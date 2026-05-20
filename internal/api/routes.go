@@ -578,3 +578,244 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	// Final summary line so clients can verify completion + count.
 	_ = enc.Encode(map[string]any{"_export_complete": true, "_count": total})
 }
+
+// handleTimeline serves GET /timeline?[since=ns][&before=ns][&surfaces=a,b,c].
+// Returns engrams across the named surfaces interleaved by timestamp, oldest
+// first — answers "what was I doing on a given day across every tool at once?"
+// Default surfaces: all configured surfaces.
+// (v0.0.47+)
+func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query()
+	since, _ := strconv.ParseInt(q.Get("since"), 10, 64)
+	before, _ := strconv.ParseInt(q.Get("before"), 10, 64)
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	var surfaces []string
+	if raw := q.Get("surfaces"); raw != "" {
+		for _, s := range strings.Split(raw, ",") {
+			if s = strings.TrimSpace(s); s != "" {
+				surfaces = append(surfaces, s)
+			}
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
+	defer cancel()
+
+	// If no surface filter, just call Retrieve with empty surface — store's
+	// cross-surface path handles it. If filtered, fetch per surface, merge, sort.
+	if len(surfaces) == 0 {
+		rows, err := s.store.Retrieve(ctx, "", since, before, limit, true)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeTimelineResponse(w, rows, surfaces)
+		return
+	}
+
+	type fetchResult struct {
+		engrams []engram.Engram
+		err     error
+	}
+	results := make([]engram.Engram, 0, limit)
+	for _, surface := range surfaces {
+		rows, err := s.store.Retrieve(ctx, surface, since, before, limit, true)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		results = append(results, rows...)
+	}
+	// Sort merged result by ts asc; cap to limit.
+	sortEngramsByTS(results)
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	writeTimelineResponse(w, results, surfaces)
+}
+
+func writeTimelineResponse(w http.ResponseWriter, rows []engram.Engram, surfaces []string) {
+	resp := map[string]any{
+		"engrams":  rows,
+		"count":    len(rows),
+		"surfaces": surfaces,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// sortEngramsByTS is a small in-place sort. Avoids pulling in sort.Slice
+// dependency overhead — engrams are typically <=1000 rows for /timeline.
+func sortEngramsByTS(rows []engram.Engram) {
+	for i := 1; i < len(rows); i++ {
+		for j := i; j > 0 && rows[j-1].TS > rows[j].TS; j-- {
+			rows[j-1], rows[j] = rows[j], rows[j-1]
+		}
+	}
+}
+
+// handleDigest serves GET /digest?[window=24h|7d|30d].
+// Returns a structured summary the host LLM can render into prose:
+//   - Per-surface engram counts in the window
+//   - Top 5 most-active hours
+//   - Top 10 most-FTS-rankable terms (heuristic: most-frequent 4+-char words)
+//   - 20 sampled engram payloads (head/middle/tail for context)
+//
+// Designed to back a `nucleus_digest` MCP tool or a weekly recap email.
+// (v0.0.47+)
+func (s *Server) handleDigest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	window := r.URL.Query().Get("window")
+	if window == "" {
+		window = "7d"
+	}
+	var dur time.Duration
+	switch window {
+	case "24h":
+		dur = 24 * time.Hour
+	case "7d":
+		dur = 7 * 24 * time.Hour
+	case "30d":
+		dur = 30 * 24 * time.Hour
+	default:
+		http.Error(w, "window must be 24h | 7d | 30d", http.StatusBadRequest)
+		return
+	}
+	since := time.Now().Add(-dur).UnixNano()
+
+	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
+	defer cancel()
+
+	// Pull up to 2000 engrams in the window — enough for stats, cap on memory.
+	rows, err := s.store.Retrieve(ctx, "", since, 0, 2000, true)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	bySurface := make(map[string]int, 8)
+	byHour := make(map[int]int, 24)
+	wordCount := make(map[string]int, 256)
+	for _, row := range rows {
+		bySurface[row.Surface]++
+		hr := time.Unix(0, row.TS).Hour()
+		byHour[hr]++
+		// Crude tokenizer — split on non-alnum, lowercase, keep 4+ chars.
+		var cur []rune
+		for _, ch := range row.Payload {
+			if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') {
+				cur = append(cur, ch)
+			} else {
+				if len(cur) >= 4 {
+					t := strings.ToLower(string(cur))
+					if _, stop := askStopwords[t]; !stop {
+						wordCount[t]++
+					}
+				}
+				cur = cur[:0]
+			}
+		}
+		if len(cur) >= 4 {
+			t := strings.ToLower(string(cur))
+			if _, stop := askStopwords[t]; !stop {
+				wordCount[t]++
+			}
+		}
+	}
+
+	type kv struct {
+		Key   string `json:"key"`
+		Count int    `json:"count"`
+	}
+	topWords := topN(wordCount, 10)
+	topHours := topNInt(byHour, 5)
+
+	// Sample 20 engrams: 5 head, 10 middle, 5 tail
+	var samples []engram.Engram
+	if len(rows) <= 20 {
+		samples = rows
+	} else {
+		samples = append(samples, rows[:5]...)
+		mid := len(rows) / 2
+		samples = append(samples, rows[mid-5:mid+5]...)
+		samples = append(samples, rows[len(rows)-5:]...)
+	}
+
+	resp := map[string]any{
+		"window":         window,
+		"since":          since,
+		"total_engrams":  len(rows),
+		"by_surface":     bySurface,
+		"top_hours":      topHours,
+		"top_terms":      topWords,
+		"sample_engrams": samples,
+		"instructions": "Render this digest as a 5-7 sentence recap for the user. " +
+			"Lead with the most-active surface + the dominant theme (from top_terms). " +
+			"Mention any unusual hour pattern. Reference sampled engrams briefly. " +
+			"If total_engrams is 0, say so plainly — do not fabricate.",
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func topN(m map[string]int, n int) []map[string]any {
+	type kv struct {
+		Key   string
+		Count int
+	}
+	list := make([]kv, 0, len(m))
+	for k, v := range m {
+		list = append(list, kv{k, v})
+	}
+	for i := 1; i < len(list); i++ {
+		for j := i; j > 0 && list[j-1].Count < list[j].Count; j-- {
+			list[j-1], list[j] = list[j], list[j-1]
+		}
+	}
+	if len(list) > n {
+		list = list[:n]
+	}
+	out := make([]map[string]any, len(list))
+	for i, kv := range list {
+		out[i] = map[string]any{"term": kv.Key, "count": kv.Count}
+	}
+	return out
+}
+
+func topNInt(m map[int]int, n int) []map[string]any {
+	type kv struct {
+		Key   int
+		Count int
+	}
+	list := make([]kv, 0, len(m))
+	for k, v := range m {
+		list = append(list, kv{k, v})
+	}
+	for i := 1; i < len(list); i++ {
+		for j := i; j > 0 && list[j-1].Count < list[j].Count; j-- {
+			list[j-1], list[j] = list[j], list[j-1]
+		}
+	}
+	if len(list) > n {
+		list = list[:n]
+	}
+	out := make([]map[string]any, len(list))
+	for i, kv := range list {
+		out[i] = map[string]any{"hour": kv.Key, "count": kv.Count}
+	}
+	return out
+}

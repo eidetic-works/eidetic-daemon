@@ -6,6 +6,35 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.47] — 2026-05-20
+
+`/timeline` cross-tool query + `/digest` weekly recap endpoints.
+
+### Added
+
+- **`GET /timeline?[since=ns][&before=ns][&surfaces=a,b,c][&limit=N]`** — engrams across configured surfaces interleaved by timestamp asc. Default: all surfaces. With `surfaces=` filter, fetches per surface and merges. Answers "what was I doing on a given day across every tool at once?"
+- **`GET /digest?[window=24h|7d|30d]`** — structured recap with `by_surface` counts, `top_hours`, `top_terms` (4+-char tokenizer w/ stop-words from ADR-020), 20 sampled engrams (head/middle/tail), and host-LLM rendering instructions. Designed to back a `nucleus_digest` MCP tool or weekly recap email.
+- 5 new tests: cross-surface default, surfaces filter, empty store, invalid window → 400, real data → shape verified.
+
+### Why
+
+These are the foundations for the "weekly digest email" Pro feature (Day 30 sketch in PRO_LAUNCH.md) and the cross-tool unified query the dashboard will need next.
+
+---
+
+## [v0.0.46] — 2026-05-20
+
+`eideticd -init` — first-run interactive setup wizard.
+
+### Added
+
+- **`-init` flag** — six-step walkthrough: confirm dataDir, detect surfaces (claude_code/cursor/cowork), register service, generate Bearer token (optional), paste Pro sync.json (optional), smoke-test /healthz.
+- **`-yes` flag** — non-interactive mode with sensible defaults; for install.sh scripts and CI.
+- **`udsDialer()` helper** — first in-tree consumer; lets http.Client speak to the daemon via UDS using http://localhost/ URLs.
+- 2 new tests on token generation (length, uniqueness across 32 rounds).
+
+---
+
 ## [v0.0.45] — 2026-05-20
 
 `/ask` result cache: LRU + TTL keeps the web dashboard responsive under polling.

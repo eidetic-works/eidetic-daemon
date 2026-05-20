@@ -1759,3 +1759,146 @@ func TestExportFiltersBySurface(t *testing.T) {
 		t.Errorf("filter leaked: got surface %q, want cursor", e.Surface)
 	}
 }
+
+// ── GET /timeline tests (v0.0.47+) ──────────────────────────────────────────
+
+func TestTimelineDefaultAcrossSurfaces(t *testing.T) {
+	st := tempStore(t)
+	seedSearch(t, st, "claude_code", "alpha")
+	seedSearch(t, st, "cursor", "beta")
+	seedSearch(t, st, "cowork", "gamma")
+
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/timeline", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status: %d", resp.StatusCode)
+	}
+	var got struct {
+		Engrams  []engram.Engram `json:"engrams"`
+		Count    int             `json:"count"`
+		Surfaces []string        `json:"surfaces"`
+	}
+	json.NewDecoder(resp.Body).Decode(&got)
+	if got.Count != 3 {
+		t.Errorf("want 3 cross-surface engrams, got %d", got.Count)
+	}
+	if got.Engrams[0].TS > got.Engrams[len(got.Engrams)-1].TS {
+		t.Error("expected asc order (oldest first)")
+	}
+}
+
+func TestTimelineWithSurfacesFilter(t *testing.T) {
+	st := tempStore(t)
+	seedSearch(t, st, "claude_code", "a1")
+	seedSearch(t, st, "claude_code", "a2")
+	seedSearch(t, st, "cursor", "b1")
+	seedSearch(t, st, "cowork", "c1")
+
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/timeline?surfaces=claude_code,cursor", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got struct {
+		Engrams []engram.Engram `json:"engrams"`
+		Count   int             `json:"count"`
+	}
+	json.NewDecoder(resp.Body).Decode(&got)
+	if got.Count != 3 { // 2 from claude_code + 1 from cursor; cowork excluded
+		t.Errorf("filter: got %d, want 3", got.Count)
+	}
+	for _, e := range got.Engrams {
+		if e.Surface == "cowork" {
+			t.Errorf("cowork leaked: %+v", e)
+		}
+	}
+}
+
+// ── GET /digest tests (v0.0.47+) ────────────────────────────────────────────
+
+func TestDigestEmptyStore(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/digest", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status: %d", resp.StatusCode)
+	}
+	var got map[string]any
+	json.NewDecoder(resp.Body).Decode(&got)
+	if int(got["total_engrams"].(float64)) != 0 {
+		t.Errorf("empty store: expected 0 total_engrams")
+	}
+	if got["window"].(string) != "7d" {
+		t.Errorf("default window should be 7d, got %v", got["window"])
+	}
+	if !strings.Contains(got["instructions"].(string), "do not fabricate") {
+		t.Error("digest instructions should warn against fabrication")
+	}
+}
+
+func TestDigestInvalidWindow(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/digest?window=invalid", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("bad window: want 400, got %d", resp.StatusCode)
+	}
+}
+
+func TestDigestWithRealData(t *testing.T) {
+	st := tempStore(t)
+	for i := 0; i < 25; i++ {
+		seedSearch(t, st, "claude_code", "Postgres tuning ideas for the migration")
+	}
+	for i := 0; i < 5; i++ {
+		seedSearch(t, st, "cursor", "React component refactor")
+	}
+
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/digest?window=7d", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var got map[string]any
+	json.NewDecoder(resp.Body).Decode(&got)
+	if int(got["total_engrams"].(float64)) != 30 {
+		t.Errorf("total: got %v, want 30", got["total_engrams"])
+	}
+	bySurface := got["by_surface"].(map[string]any)
+	if int(bySurface["claude_code"].(float64)) != 25 {
+		t.Errorf("by_surface claude_code: %v", bySurface["claude_code"])
+	}
+	topTerms := got["top_terms"].([]any)
+	if len(topTerms) == 0 {
+		t.Error("top_terms should be non-empty with seeded data")
+	}
+	// Should have sampled engrams
+	samples := got["sample_engrams"].([]any)
+	if len(samples) != 20 {
+		t.Errorf("sample_engrams: got %d, want 20", len(samples))
+	}
+}
