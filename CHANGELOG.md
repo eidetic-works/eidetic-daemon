@@ -6,6 +6,26 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.39] — 2026-05-20
+
+Shared-team surface foundation: daemon sends `X-Team-ID` header for Team subscribers.
+
+### Added
+
+- **`Config.TeamID`** — new optional field in sync.json. Format: 4-32 lowercase alphanum/-/_, e.g. `"acme-engineering"`. Omit for solo Pro.
+- **`X-Team-ID` header** — sent on every `/sync` upload + `/download` request when TeamID is configured. Worker can use this to bucket uploads under `engrams/team/<team_id>/<device_id>/...` for shared listing.
+- **`--check` shows `team_id`** — when configured, prints `(shared-team mode)` annotation.
+- 1 new test: `TestUploadSendsXTeamIDWhenSet` — header sent when set, omitted when not.
+
+### Worker contract (op-assistant follow-up)
+
+Daemon now sends `X-Team-ID`. Worker should:
+1. When `/sync` arrives with X-Team-ID, store the blob at TWO keys: per-device (current) AND `engrams/team/<team_id>/<device_id>/<ts>.db` (new)
+2. Add `GET /team-engrams?team_id=X` endpoint that lists across all team uploads
+3. Until then, the header is silently accepted and ignored — safe to ship before Worker is updated.
+
+---
+
 ## [v0.0.37] — 2026-05-20
 
 Self-updating `update_available` flag via 24h GitHub releases poll.

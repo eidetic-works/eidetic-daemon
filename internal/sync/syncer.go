@@ -76,6 +76,13 @@ type Config struct {
 	APIKey       string `json:"api_key"`       // Bearer token (matches EIDETIC_API_KEY secret)
 	DeviceID     string `json:"device_id"`     // 4-64 lowercase alphanum/-/_ (e.g. "macbook-m2")
 	SyncInterval int    `json:"sync_interval"` // minutes; default 60
+
+	// TeamID (v0.0.39+) — optional team identifier for shared-team engrams.
+	// When set, every upload includes X-Team-ID header. The Worker uses this
+	// to bucket uploads under engrams/team/<team_id>/<device_id>/... so any
+	// seat can query the shared team prefix. Solo Pro subscribers omit this.
+	// Format: 4-32 lowercase alphanum/-/_, e.g. "acme-engineering".
+	TeamID string `json:"team_id,omitempty"`
 }
 
 // Syncer wraps sync config + last-upload state.
@@ -254,6 +261,9 @@ func CheckConfig(cfg *Config, dataDir string) error {
 
 	fmt.Printf("  worker_url: %s\n", cfg.WorkerURL)
 	fmt.Printf("  device_id:  %s\n", cfg.DeviceID)
+	if cfg.TeamID != "" {
+		fmt.Printf("  team_id:    %s (shared-team mode)\n", cfg.TeamID)
+	}
 	if cfg.SyncInterval > 0 {
 		fmt.Printf("  interval:   %d min\n", cfg.SyncInterval)
 	} else {
@@ -316,6 +326,9 @@ func RestoreFromConfig(cfg *Config, dbPath string) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
 	req.Header.Set("X-Device-ID", cfg.DeviceID)
+	if cfg.TeamID != "" {
+		req.Header.Set("X-Team-ID", cfg.TeamID)
+	}
 
 	client := &http.Client{Timeout: 300 * time.Second}
 	resp, err := client.Do(req)
@@ -397,6 +410,9 @@ func (s *Syncer) upload() error {
 	}
 	req.Header.Set("Authorization", "Bearer "+s.cfg.APIKey)
 	req.Header.Set("X-Device-ID", s.cfg.DeviceID)
+	if s.cfg.TeamID != "" {
+		req.Header.Set("X-Team-ID", s.cfg.TeamID)
+	}
 	req.Header.Set("Content-Type", "application/x-sqlite3")
 	req.ContentLength = int64(len(body))
 

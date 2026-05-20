@@ -360,6 +360,42 @@ func TestCheckConfig_WorkerOK(t *testing.T) {
 	}
 }
 
+// TestUploadSendsXTeamIDWhenSet verifies that the X-Team-ID header is included
+// when Config.TeamID is set, and omitted when it isn't.
+func TestUploadSendsXTeamIDWhenSet(t *testing.T) {
+	var gotTeamID string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotTeamID = r.Header.Get("X-Team-ID")
+		w.Header().Set("X-Backup-Key", "k")
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "engrams.db")
+	os.WriteFile(dbPath, []byte("SQLITE3"), 0600)
+
+	// Without team_id — header should be empty
+	cfgSolo := &eidetic_sync.Config{WorkerURL: srv.URL, APIKey: "k", DeviceID: "dev"}
+	s1 := eidetic_sync.New(cfgSolo, dbPath, dir, nil)
+	if err := s1.SyncNow(); err != nil {
+		t.Fatal(err)
+	}
+	if gotTeamID != "" {
+		t.Errorf("solo upload: X-Team-ID = %q, want empty", gotTeamID)
+	}
+
+	// With team_id — header should be set
+	cfgTeam := &eidetic_sync.Config{WorkerURL: srv.URL, APIKey: "k", DeviceID: "dev", TeamID: "acme-eng"}
+	s2 := eidetic_sync.New(cfgTeam, dbPath, dir, nil)
+	if err := s2.SyncNow(); err != nil {
+		t.Fatal(err)
+	}
+	if gotTeamID != "acme-eng" {
+		t.Errorf("team upload: X-Team-ID = %q, want acme-eng", gotTeamID)
+	}
+}
+
 // TestUploadAppendsHistory verifies that successive uploads push onto the ring
 // buffer and the buffer is capped (no unbounded growth).
 func TestUploadAppendsHistory(t *testing.T) {
