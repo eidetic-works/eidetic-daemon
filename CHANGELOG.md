@@ -6,6 +6,23 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.44] — 2026-05-20
+
+`eideticd -uninstall` — symmetric to `-install`. Lowers conversion friction.
+
+### Added
+
+- **`-uninstall` flag** — stops the daemon, removes the launchd plist (macOS) or systemd-user unit (Linux), then prompts to delete `<dataDir>` interactively.
+- **`-purge` flag** — with `-uninstall`, skips the interactive prompt and deletes data directly (for unattended uninstall scripts).
+- **Homebrew uninstall hint** — printed at the end so users on `brew install` see `brew uninstall eideticd` as the final cleanup step.
+- 1 new test: `TestUninstallPurgeDeletesDataDir` — verifies the data-deletion contract under purge=true.
+
+### Why
+
+Pre-v0.0.44: `-install` was one command but uninstall required manual `launchctl bootout` + `rm -rf ~/.eidetic`. Friction for "let me try this" prospects. Now: `eideticd -install` to install, `eideticd -uninstall` to remove. Symmetric.
+
+---
+
 ## [v0.0.42] — 2026-05-20
 
 `/export` HTTP endpoint: stream every engram as newline-delimited JSON.

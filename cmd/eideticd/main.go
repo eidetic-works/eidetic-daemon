@@ -51,6 +51,8 @@ func main() {
 	checkSync := flag.Bool("check", false, "validate sync.json config and test Worker connectivity, then exit")
 	showBackups := flag.Bool("backups", false, "list recent cloud backups from local sync history, then exit")
 	installSvc := flag.Bool("install", false, "register eideticd as a login-time service (launchd on macOS, systemd-user on Linux) and exit")
+	uninstallSvc := flag.Bool("uninstall", false, "stop + unregister the login-time service and optionally delete local data; inverse of -install")
+	uninstallPurge := flag.Bool("purge", false, "with -uninstall: skip interactive confirm and delete <dataDir> (engrams.db, state, tokens)")
 	flag.Parse()
 
 	if *showVersion {
@@ -61,6 +63,22 @@ func main() {
 	if *installSvc {
 		if err := installService(); err != nil {
 			log.Fatalf("install: %v", err)
+		}
+		return
+	}
+
+	if *uninstallSvc {
+		// Resolve dataDir the same way the main loop does — env override + ~/.eidetic fallback.
+		dd := os.Getenv("EIDETIC_DATA_DIR")
+		if dd == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				log.Fatalf("uninstall: resolve home: %v", err)
+			}
+			dd = filepath.Join(home, ".eidetic")
+		}
+		if err := uninstallService(dd, *uninstallPurge); err != nil {
+			log.Fatalf("uninstall: %v", err)
 		}
 		return
 	}
