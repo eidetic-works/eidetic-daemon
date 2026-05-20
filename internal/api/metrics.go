@@ -39,6 +39,12 @@ type Metrics struct {
 	QueryP95Us  *float64 `json:"query_p95_us,omitempty"`
 	QueryP99Us  *float64 `json:"query_p99_us,omitempty"`
 	QueryCount  int      `json:"query_count,omitempty"`
+
+	// Latest released version + upgrade hint (v0.0.37+). Polled from GitHub
+	// releases API once per 24h with on-disk cache. Empty when poll has
+	// never succeeded (offline daemon, blocked egress, etc.).
+	LatestVersion    string `json:"latest_version,omitempty"`
+	UpdateAvailable  bool   `json:"update_available,omitempty"`
 }
 
 // MetricsProvider is supplied by main() so the api package stays decoupled

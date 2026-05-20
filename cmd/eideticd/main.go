@@ -25,6 +25,7 @@ import (
 	"github.com/eidetic-works/eidetic-daemon/internal/capture"
 	eidetic_sync "github.com/eidetic-works/eidetic-daemon/internal/sync"
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
+	"github.com/eidetic-works/eidetic-daemon/internal/versioncheck"
 )
 
 const (
@@ -186,6 +187,12 @@ func main() {
 			fmt.Printf("    last key:   %s\n", syncState.LastKey)
 			fmt.Printf("    last size:  %.1f MB\n", float64(syncState.LastBytes)/1e6)
 		}
+		// v0.0.37+: surface upgrade hint from cached release check.
+		ck := versioncheck.New(dataDir)
+		if ck.UpdateAvailable(Version) {
+			fmt.Printf("\n  ⬆ update available: %s → %s\n", Version, ck.Latest())
+			fmt.Printf("    brew upgrade eideticd  (or re-run install.sh)\n")
+		}
 		return
 	}
 
@@ -231,6 +238,10 @@ func main() {
 		opts.UDSPath = defaultUDSPath
 	}
 
+	// v0.0.37+: background poll of GitHub releases API (24h period) so /metrics
+	// can report update_available. Best-effort; offline daemons get empty fields.
+	verCheck := versioncheck.New(dataDir)
+
 	// /metrics provider (v0.0.7+). Closes over watcher (for capture
 	// skip-counter), store (for engram counts + DB path), and process
 	// start time (for uptime). Provider is built BEFORE watcher is
@@ -240,9 +251,11 @@ func main() {
 	startTime := time.Now()
 	opts.Metrics = func(ctx context.Context) (api.Metrics, error) {
 		m := api.Metrics{
-			Version:       Version,
-			UptimeSeconds: int64(time.Since(startTime).Seconds()),
-			DBPath:        dbPath,
+			Version:         Version,
+			UptimeSeconds:   int64(time.Since(startTime).Seconds()),
+			DBPath:          dbPath,
+			LatestVersion:   verCheck.Latest(),
+			UpdateAvailable: verCheck.UpdateAvailable(Version),
 		}
 		if total, err := s.Count(ctx); err == nil {
 			m.EngramTotal = total
@@ -332,6 +345,11 @@ func main() {
 			log.Printf("capture: %v", err)
 		}
 	}()
+
+	// v0.0.37+: background poll of GitHub releases API (24h period).
+	verStop := make(chan struct{})
+	go verCheck.Run(verStop)
+	defer close(verStop)
 
 	// v0.0.24+: periodic R2 sync poll — fires TriggerIfDue every 60s.
 	// No-ops if syncer is nil (sync.json absent → opt-out).

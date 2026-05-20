@@ -6,6 +6,20 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.37] — 2026-05-20
+
+Self-updating `update_available` flag via 24h GitHub releases poll.
+
+### Added
+
+- **`internal/versioncheck` package** — polls `github.com/eidetic-works/eidetic-daemon/releases/latest` every 24h. Caches result to `<dataDir>/version-check.json`. Network failures are silent (returns last successful cache or empty).
+- **`Metrics.LatestVersion` + `Metrics.UpdateAvailable`** — new additive fields on `/metrics` JSON. Empty when no successful poll has fired (offline daemon).
+- **`--stats` upgrade hint** — when a newer release is cached, prints `⬆ update available: vX.Y.Z → vA.B.C` with `brew upgrade eideticd` recipe.
+- **`semverLess()`** — conservative semver comparison; returns false on parse failure so we never falsely claim an update.
+- 5 unit tests on the version comparator: ordering, equal, dev fallback, pre-release stripping, parse-fail safe-default.
+
+---
+
 ## [v0.0.38] — 2026-05-20
 
 `/ask` HTTP endpoint: nucleus_ask semantics for non-MCP clients (web dashboard, mobile, curl).
