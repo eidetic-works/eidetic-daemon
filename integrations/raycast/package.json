@@ -1,0 +1,96 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "eidetic-engrams",
+  "title": "Eidetic Engrams",
+  "description": "Browse, search, and recall engrams captured by eidetic-daemon from Claude Code and Cursor sessions.",
+  "icon": "command-icon.png",
+  "author": "eidetic-works",
+  "categories": [
+    "Productivity",
+    "Developer Tools"
+  ],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "recent",
+      "title": "Recent Engrams",
+      "subtitle": "Eidetic",
+      "description": "Show the latest engrams captured across all surfaces.",
+      "mode": "view"
+    },
+    {
+      "name": "search",
+      "title": "Search Engrams",
+      "subtitle": "Eidetic",
+      "description": "Full-text search across the local engram store.",
+      "mode": "view"
+    },
+    {
+      "name": "recall",
+      "title": "Recall (Ask Question)",
+      "subtitle": "Eidetic",
+      "description": "Ask a natural-language question and get assembled instructions plus citations.",
+      "mode": "view"
+    },
+    {
+      "name": "stats",
+      "title": "Daemon Stats",
+      "subtitle": "Eidetic",
+      "description": "View engram totals, per-surface breakdown, and update status.",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "socketPath",
+      "title": "Daemon Socket Path",
+      "description": "Unix-domain socket where eidetic-daemon listens.",
+      "type": "textfield",
+      "default": "/tmp/eidetic-daemon.sock",
+      "required": false
+    },
+    {
+      "name": "surfaceFilter",
+      "title": "Surface Filter",
+      "description": "Optional surface name to filter results (empty = all surfaces).",
+      "type": "textfield",
+      "default": "",
+      "required": false
+    },
+    {
+      "name": "searchDebounceMs",
+      "title": "Search Debounce (ms)",
+      "description": "Delay before firing /search as you type.",
+      "type": "textfield",
+      "default": "250",
+      "required": false
+    },
+    {
+      "name": "timeoutMs",
+      "title": "Request Timeout (ms)",
+      "description": "Per-request timeout for daemon HTTP calls.",
+      "type": "textfield",
+      "default": "5000",
+      "required": false
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.78.0",
+    "@raycast/utils": "^1.16.0"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^1.0.11",
+    "@types/node": "22.13.10",
+    "@types/react": "19.0.10",
+    "eslint": "^8.51.0",
+    "prettier": "^3.0.3",
+    "typescript": "^5.2.2"
+  },
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "lint": "ray lint",
+    "fix-lint": "ray lint --fix",
+    "publish": "npx @raycast/api@latest publish"
+  }
+}

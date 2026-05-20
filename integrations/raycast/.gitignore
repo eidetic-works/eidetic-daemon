@@ -1,0 +1,12 @@
+# raycast
+.DS_Store
+node_modules
+.vscode-test
+*.vsix
+dist
+out
+.eslintcache
+
+# raycast build artifacts
+.raycast/
+raycast-env.d.ts
