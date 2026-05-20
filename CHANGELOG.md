@@ -6,6 +6,22 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.58] — 2026-05-20
+
+`--capture` engram meta auto-enriches with host + cwd + git_branch + user.
+
+### Added
+
+- **`buildCaptureMeta()`** — emits compact JSON `{source, host, cwd, git_branch, user}` for every `--capture` invocation. Lets nucleus_ask filter on "what was I doing in repo X yesterday."
+- **`gitBranch()`** — pure-Go (no `git` exec) — walks up from CWD reading `.git/HEAD` to extract the current branch; returns "" if detached or not in a repo. Works in minimal containers without git installed.
+- 4 new tests: meta always has `source`, includes `host` when available, valid JSON shape, gitBranch returns empty outside a repo.
+
+### Why
+
+Before: `--capture` engrams had `meta: {"source":"cli-capture"}` — opaque. After: `meta: {"source":"cli-capture","host":"lokesh-mbp","cwd":"/Users/lokesh/projects/foo","git_branch":"feature/x","user":"lokesh"}`. Three weeks later you can ask "what did I capture from the `feature/x` branch?" and get filtered results.
+
+---
+
 ## [v0.0.56] — 2026-05-20
 
 Regex hook patterns + `/hooks` status endpoint.

@@ -195,6 +195,7 @@ func main() {
 	}
 
 	// --capture: read stdin as an engram and insert directly. v0.0.52+.
+	// v0.0.58+: meta is enriched with host + cwd + git_branch (if in repo).
 	if *captureFlag {
 		if *captureSurface == "" {
 			log.Fatal("capture: -surface required (e.g. -surface kubernetes)")
@@ -215,7 +216,7 @@ func main() {
 			Surface: *captureSurface,
 			TS:      time.Now().UnixNano(),
 			Payload: string(payload),
-			Meta:    `{"source":"cli-capture"}`,
+			Meta:    buildCaptureMeta(),
 		}
 		id, err := s.Insert(context.Background(), e)
 		if err != nil {
@@ -634,3 +635,55 @@ func main() {
 	<-captureDone
 }
 
+
+// buildCaptureMeta enriches --capture engram meta with host + cwd + git branch
+// (when in a git repo). Lets nucleus_ask filter on "what was I doing in repo X".
+// Never errors — best-effort discovery; missing fields stay absent. (v0.0.58+)
+func buildCaptureMeta() string {
+	parts := []string{`"source":"cli-capture"`}
+
+	if host, err := os.Hostname(); err == nil && host != "" {
+		parts = append(parts, fmt.Sprintf(`"host":%q`, host))
+	}
+	if cwd, err := os.Getwd(); err == nil && cwd != "" {
+		parts = append(parts, fmt.Sprintf(`"cwd":%q`, cwd))
+	}
+	if branch := gitBranch(); branch != "" {
+		parts = append(parts, fmt.Sprintf(`"git_branch":%q`, branch))
+	}
+	if user := os.Getenv("USER"); user != "" {
+		parts = append(parts, fmt.Sprintf(`"user":%q`, user))
+	}
+
+	return "{" + strings.Join(parts, ",") + "}"
+}
+
+// gitBranch returns the current git branch by reading .git/HEAD walking up
+// from CWD. Returns "" if not in a git repo or HEAD is detached/error.
+// Pure-Go, no exec of `git` (works in minimal containers).
+func gitBranch() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	dir := cwd
+	for {
+		head := filepath.Join(dir, ".git", "HEAD")
+		if b, err := os.ReadFile(head); err == nil {
+			line := strings.TrimSpace(string(b))
+			if ref, ok := strings.CutPrefix(line, "ref: refs/heads/"); ok {
+				return ref
+			}
+			// Detached HEAD — return the abbreviated sha
+			if len(line) >= 7 {
+				return line[:7]
+			}
+			return ""
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
