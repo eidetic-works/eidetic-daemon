@@ -213,11 +213,16 @@ func (w *Watcher) scanInitial(ctx context.Context, c SurfaceConfig) {
 }
 
 func (w *Watcher) matches(c SurfaceConfig, path string) bool {
-	if c.Glob == "" {
-		return true
+	if c.Glob != "" {
+		ok, err := filepath.Match(c.Glob, filepath.Base(path))
+		if err != nil || !ok {
+			return false
+		}
 	}
-	ok, err := filepath.Match(c.Glob, filepath.Base(path))
-	return err == nil && ok
+	if c.PathContains != "" && !strings.Contains(path, c.PathContains) {
+		return false
+	}
+	return true
 }
 
 func (w *Watcher) onEvent(ctx context.Context, fw *fsnotify.Watcher, ev fsnotify.Event) {
@@ -380,7 +385,13 @@ func DefaultSurfaces() []SurfaceConfig {
 			Surface: "cursor",
 			Root:    cursorRoot(home),
 			Glob:    "*.json",
-			Parser:  NewCursorParser("cursor"),
+			// Only capture chatSessions/*.json — every workspace also has a
+			// noise-only workspace.json with `{"folder":"file:///..."}`. The
+			// chatSessions/ subdir contains actual conversation history. Without
+			// this filter the daemon emits thousands of useless 50-byte engrams.
+			// (v0.0.41+)
+			PathContains: "chatSessions/",
+			Parser:       NewCursorParser("cursor"),
 		},
 	}
 }

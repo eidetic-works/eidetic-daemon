@@ -30,9 +30,18 @@ type Parser interface {
 
 // SurfaceConfig pairs a parser with the directory + glob pattern fsnotify
 // watches for that surface.
+//
+// Glob is matched against filepath.Base(path) — same semantics as filepath.Match.
+//
+// PathContains (v0.0.41+) is an OPTIONAL additional filter: when non-empty,
+// the file's full path must contain this substring. Used for surfaces where
+// the basename glob is too permissive (e.g. Cursor: every workspace has a
+// useless workspace.json + a goldmine of chatSessions/*.json; we want only
+// the latter). Empty PathContains skips this check.
 type SurfaceConfig struct {
-	Surface string
-	Root    string
-	Glob    string
-	Parser  Parser
+	Surface      string
+	Root         string
+	Glob         string
+	PathContains string
+	Parser       Parser
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -218,6 +219,61 @@ func TestWatcherRespectsGlob(t *testing.T) {
 	all := sink.all()
 	if len(all) != 1 || all[0].Payload != `{"a":1}` {
 		t.Errorf("glob filter failed: %+v", all)
+	}
+}
+
+// TestWatcherPathContainsFilter verifies the v0.0.41+ PathContains filter
+// excludes files in non-matching subdirectories even when the basename Glob
+// would otherwise admit them. Mirrors the Cursor capture fix: workspace.json
+// at the root of each workspace dir is noise; only chatSessions/*.json is
+// the real session data we want.
+func TestWatcherPathContainsFilter(t *testing.T) {
+	dir := t.TempDir()
+	// Mock Cursor layout: workspaceHash/workspace.json (noise) + workspaceHash/chatSessions/conv.json (real)
+	noise := filepath.Join(dir, "abc123")
+	if err := os.MkdirAll(noise, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	real := filepath.Join(dir, "abc123", "chatSessions")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	sink := &memSink{}
+	state, _ := LoadState(filepath.Join(t.TempDir(), "state.json"))
+	cfg := []SurfaceConfig{{
+		Surface:      "cursor",
+		Root:         dir,
+		Glob:         "*.json",
+		PathContains: "chatSessions/",
+		Parser:       NewCursorParser("cursor"),
+	}}
+	w := NewWatcher(sink, state, cfg, 5*time.Millisecond)
+	doneCh := make(chan ParseDone, 16)
+	w.SetParseDoneChannel(doneCh)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = w.Run(ctx) }()
+	time.Sleep(50 * time.Millisecond)
+
+	// Write noise file — should be ignored
+	if err := os.WriteFile(filepath.Join(noise, "workspace.json"), []byte(`{"folder":"file:///x"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Write real file — should be captured
+	if err := os.WriteFile(filepath.Join(real, "conv.json"), []byte(`{"version":3,"requests":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	waitFor(t, doneCh, 1, 2*time.Second)
+	drainExtra(doneCh, 200*time.Millisecond)
+
+	all := sink.all()
+	if len(all) != 1 {
+		t.Fatalf("PathContains filter failed: expected 1 engram (chatSessions only), got %d:\n%+v", len(all), all)
+	}
+	if !strings.Contains(all[0].Payload, "version") {
+		t.Errorf("captured wrong file — expected chatSessions content, got payload: %s", all[0].Payload)
 	}
 }
 

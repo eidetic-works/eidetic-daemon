@@ -23,6 +23,22 @@ Right-to-export. "I own my data" was a Pro promise; this is the proof. Also enab
 
 ---
 
+## [v0.0.41] — 2026-05-20
+
+Cursor capture noise reduction: only capture `chatSessions/*.json`, skip per-workspace `workspace.json` stubs.
+
+### Added
+
+- **`SurfaceConfig.PathContains`** — optional substring filter that runs alongside the basename `Glob`. When set, paths must contain the substring to be captured.
+- **Cursor surface now sets `PathContains: "chatSessions/"`** — every workspace's `workspace.json` (3-line noise: `{"folder":"file:///..."}`) is excluded. Only actual conversation history (`chatSessions/*.json`) flows through to engrams.
+- 1 new test: `TestWatcherPathContainsFilter` — verifies workspace.json ignored, chatSessions captured.
+
+### Why
+
+Pre-v0.0.41: every Cursor workspace produced a single useless `workspace.json` engram + real session engrams from `chatSessions/`. On a developer with 50 workspaces, that's 50 noise engrams polluting FTS results.
+
+---
+
 ## [v0.0.39] — 2026-05-20
 
 Shared-team surface foundation: daemon sends `X-Team-ID` header for Team subscribers.
