@@ -2,6 +2,42 @@
 
 eidetic-daemon reads user-private filesystem state (AI assistant session logs, editor history) and exposes it over a local socket. This document is the explicit threat model + reporting channel before W1 public release.
 
+## Reporting a vulnerability
+
+**Email:** security@eidetic.works (or hi@eidetic.works as fallback)
+
+Please include:
+- Affected component (daemon, eidetic-mcp Python bridge, eidetic-sync Worker, gumroad-kit-sync Worker, landing/dashboard)
+- Affected version (`eideticd --version` for the daemon)
+- Reproduction steps
+- Impact assessment (what an attacker can read, modify, or exfiltrate)
+
+**Response timeline:**
+- Acknowledgement: within 48 hours
+- Triage + initial assessment: within 5 business days
+- Fix or mitigation timeline: within 14 days for high/critical, 30 days for medium, best-effort for low
+
+**Coordinated disclosure:** please give us 30 days before public disclosure for high/critical issues. We'll credit you in the fix release notes unless you prefer anonymity.
+
+**No bug bounty (yet)** — we're a 1-operator shop. We'll consider a paid program once MRR supports it.
+
+### Scope
+
+In scope:
+- `eidetic-works/eidetic-daemon` Go binary + capture/parse code
+- `eidetic-mcp` PyPI package (bridge/python/eidetic_mcp/)
+- `eidetic-sync` Cloudflare Worker (bridge/cloudflare/worker.js)
+- `gumroad-kit-sync` Cloudflare Worker (this repo's webhook bridge)
+- `eidetic.works` landing + `/dashboard`
+
+Out of scope:
+- DoS against R2 bucket via authenticated overage (Cloudflare's rate-limit is the safeguard; we'll handle quota issues operationally)
+- Social engineering against Lokesh or future Eidetic Works employees
+- Physical access to the user's machine (the threat model below assumes physical access = total trust)
+- Issues in upstream dependencies that have no Eidetic-specific impact (file an issue upstream, then cc us)
+
+## Threat model
+
 ## Trust boundary
 
 The daemon is a **single-user, single-host** process. Everything it reads, stores, and serves is private to the local user account.
