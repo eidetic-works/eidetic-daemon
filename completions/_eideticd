@@ -1,0 +1,51 @@
+#compdef eideticd
+#
+# zsh completion for eideticd (v0.0.48+)
+#
+# Install:
+#   1. Copy to a directory in $fpath, e.g.:
+#        mkdir -p ~/.zsh/completions
+#        cp _eideticd ~/.zsh/completions/
+#        echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc
+#        echo 'autoload -Uz compinit && compinit' >> ~/.zshrc
+#   2. Homebrew installs to $(brew --prefix)/share/zsh/site-functions/_eideticd
+#      automatically on `brew install eideticd` (v0.0.48+ formula).
+
+_eideticd() {
+    local -a args
+    args=(
+        '-version[print version and exit]'
+        '--version[print version and exit]'
+        '-stats[print engram database statistics and exit]'
+        '--stats[print engram database statistics and exit]'
+        '-check[validate sync.json + test Worker connectivity]'
+        '--check[validate sync.json + test Worker connectivity]'
+        '-backups[list recent cloud backups from local history]'
+        '--backups[list recent cloud backups from local history]'
+        '-sync-now[upload engrams.db to Cloudflare R2 immediately and exit]'
+        '--sync-now[upload engrams.db to Cloudflare R2 immediately and exit]'
+        '-restore[download latest R2 backup and replace local DB]'
+        '--restore[download latest R2 backup and replace local DB]'
+        '-install[register eideticd as a login-time service]'
+        '--install[register eideticd as a login-time service]'
+        '-uninstall[stop + unregister service and optionally delete local data]'
+        '--uninstall[stop + unregister service and optionally delete local data]'
+        '-init[first-run interactive setup wizard]'
+        '--init[first-run interactive setup wizard]'
+        '-yes[with -init or -uninstall, skip prompts and use defaults]'
+        '--yes[with -init or -uninstall, skip prompts and use defaults]'
+        '-purge[with -uninstall, also delete <dataDir> unattended]'
+        '--purge[with -uninstall, also delete <dataDir> unattended]'
+        '-auth[enable Bearer-token caller authentication on UDS]'
+        '--auth[enable Bearer-token caller authentication on UDS]'
+        '-uds[+:Unix domain socket path:_files]'
+        '--uds[+:Unix domain socket path:_files]'
+        '-tcp[+:TCP listen address (host:port):()]'
+        '--tcp[+:TCP listen address (host:port):()]'
+        '-bridge[+:Bridge TCP listen address (host:port):()]'
+        '--bridge[+:Bridge TCP listen address (host:port):()]'
+    )
+    _arguments -s -S $args
+}
+
+_eideticd "$@"

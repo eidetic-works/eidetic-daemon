@@ -6,6 +6,23 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.48] — 2026-05-20
+
+Shell completions (bash + zsh) shipped in release tarballs + auto-installed by Homebrew.
+
+### Added
+
+- **`completions/eideticd.bash`** — bash completion for every flag (`-stats`, `-check`, `-backups`, `-restore`, `-sync-now`, `-install`, `-uninstall`, `-init`, `-yes`, `-purge`, `-auth`, value-taking `-uds`/`-tcp`/`-bridge`).
+- **`completions/_eideticd`** — zsh `#compdef` script with per-flag descriptions.
+- **Release tarball changes** — `release.yml` now stages completions/ alongside the binary; tarball top-level layout: `eideticd` + `completions/`.
+- **Homebrew formula auto-install** — `bash_completion.install` + `zsh_completion.install` stanzas added to the auto-generated formula (v0.0.43+ workflow); guards on `File.exist?` so pre-v0.0.48 tarballs without completions don't break.
+
+### Why
+
+Tab-completion is one of those tiny conversion lubricants that signals "this is a real tool." Especially helpful for new Pro users who don't remember whether the flag is `-stats` or `--stats` or `eideticd stats`.
+
+---
+
 ## [v0.0.47] — 2026-05-20
 
 `/timeline` cross-tool query + `/digest` weekly recap endpoints.

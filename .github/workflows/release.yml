@@ -24,10 +24,18 @@ jobs:
         run: |
           mkdir -p release
           for target in darwin-arm64 linux-amd64 linux-arm64; do
-            cp dist/eideticd-${target} release/eideticd
-            ( cd release && tar -czf eideticd-${target}.tar.gz eideticd && rm eideticd )
+            # Stage binary + completions in a per-target dir so the tarball
+            # has predictable layout: eideticd + completions/ at the top level.
+            staging=$(mktemp -d)
+            cp dist/eideticd-${target} "$staging/eideticd"
+            if [ -d completions ]; then
+              cp -r completions "$staging/completions"
+            fi
+            ( cd "$staging" && tar -czf "$GITHUB_WORKSPACE/release/eideticd-${target}.tar.gz" eideticd $([ -d completions ] && echo completions) )
+            rm -rf "$staging"
           done
-          # Windows ships as a zipped exe rather than tarball.
+          # Windows ships as a zipped exe rather than tarball — no completions
+          # path on Windows yet (PowerShell completions are a future ship).
           ( cd dist && zip -j ../release/eideticd-windows-amd64.zip eideticd-windows-amd64.exe )
           ls -la release/
 
@@ -123,6 +131,13 @@ jobs:
 
             def install
               bin.install "eideticd"
+              # Shell completions (v0.0.48+)
+              if File.exist?("completions/eideticd.bash")
+                bash_completion.install "completions/eideticd.bash" => "eideticd"
+              end
+              if File.exist?("completions/_eideticd")
+                zsh_completion.install "completions/_eideticd"
+              end
             end
 
             def caveats
