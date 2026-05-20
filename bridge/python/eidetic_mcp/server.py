@@ -80,6 +80,15 @@ Tools exposed:
     promoted to the top of the payload telling the host LLM to render
     the result as a brief activity narrative.
 
+  nucleus_link(engram_id, window_minutes=30, limit=20)
+    "What else was happening when I wrote this?" surface (v0.0.8+).
+    Composes /engrams/{id} + /timeline?since=ts-window&before=ts+window
+    to return the anchor engram plus adjacent engrams across all
+    surfaces in the surrounding time window. Returns
+    {anchor_engram, adjacent_engrams, window_minutes, instructions}
+    with the anchor itself filtered out of adjacent_engrams (the host
+    LLM gets it once via anchor_engram).
+
 Run:
 
     eideticd &                          # daemon listens on UDS
@@ -599,6 +608,50 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "required": [],
                 },
             ),
+            Tool(
+                name="nucleus_link",
+                description=(
+                    "Given an anchor engram, return adjacent engrams across all "
+                    "surfaces in the surrounding time window (v0.0.8+). Composes "
+                    "GET /engrams/{id} + GET /timeline?since=<ts-window>&before="
+                    "<ts+window>&limit=<limit> with no daemon-side changes.\n\n"
+                    "Use this to answer 'what else was happening when I wrote "
+                    "this?' — pull cross-surface context around a specific "
+                    "moment without manually computing the time window. Pairs "
+                    "naturally with `nucleus_ask` (find the anchor) then "
+                    "`nucleus_link` (expand the context).\n\n"
+                    "`engram_id` is required (positive integer). `window_minutes` "
+                    "defaults to 30 = ±30 min around the anchor (range 1..1440 "
+                    "= up to ±24h). `limit` defaults to 20 (cap 1000). Returns "
+                    "{anchor_engram, adjacent_engrams, window_minutes, "
+                    "instructions} with the anchor itself filtered out of "
+                    "adjacent_engrams. The tool does NOT call any external LLM "
+                    "— your engrams never leave the local daemon."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "engram_id": {
+                            "type": "integer",
+                            "description": "Positive integer primary key of the anchor engram.",
+                            "minimum": 1,
+                        },
+                        "window_minutes": {
+                            "type": "integer",
+                            "description": "Half-width of the time window in minutes (1..1440). Default 30.",
+                            "minimum": 1,
+                            "maximum": 1440,
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max adjacent engrams to return (default 20, max 1000).",
+                            "minimum": 1,
+                            "maximum": 1000,
+                        },
+                    },
+                    "required": ["engram_id"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -826,6 +879,32 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     if k != "instructions":
                         ordered[k] = v
                 body = ordered
+            return [TextContent(type="text", text=json.dumps(body, indent=2))]
+
+        if name == "nucleus_link":
+            raw_id = arguments.get("engram_id")
+            try:
+                engram_id = int(raw_id)
+            except (TypeError, ValueError):
+                return [TextContent(type="text", text="error: engram_id must be a positive integer")]
+            try:
+                window_minutes = int(arguments.get("window_minutes", 30))
+            except (TypeError, ValueError):
+                return [TextContent(type="text", text="error: window_minutes must be an integer")]
+            try:
+                limit = int(arguments.get("limit", 20))
+            except (TypeError, ValueError):
+                return [TextContent(type="text", text="error: limit must be an integer")]
+            try:
+                body = daemon.link(
+                    engram_id=engram_id,
+                    window_minutes=window_minutes,
+                    limit=limit,
+                )
+            except (DaemonError, ValueError) as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            # body is already shaped with `instructions` first — no reorder
+            # needed; client.link() builds the dict in the canonical order.
             return [TextContent(type="text", text=json.dumps(body, indent=2))]
 
         return [TextContent(type="text", text=f"error: unknown tool {name!r}")]

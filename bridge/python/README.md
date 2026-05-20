@@ -22,6 +22,7 @@ Per spec § 7 Open Q #5: this is the "separate Python wrapper" path — the daem
 | `delete_engram_by_id` | `id` (required — positive integer) | Remove a single engram by primary key. Returns `{"deleted": 1}`. Error on non-existent ID or non-positive integer. Irreversible (v0.0.19+). |
 | `nucleus_digest` | `window` (one of `"24h"`, `"7d"` (default), `"30d"`) | Windowed activity recap (v0.0.6+; requires daemon v0.0.47+). Calls `GET /digest?window=...` and returns the JSON verbatim: `window`, `since`, `total_engrams`, `by_surface`, `top_hours`, `top_terms`, `sample_engrams`, plus an `instructions` field (promoted to the top of the payload) telling the host LLM how to render the recap. |
 | `nucleus_timeline` | `window` (one of `"24h"`, `"7d"` (default), `"30d"`), `surfaces` (optional list, empty = all surfaces), `limit` (default 200, max 1000) | Cross-surface chronological engram stream (v0.0.7+; requires daemon v0.0.47+). Calls `GET /timeline?since=...&limit=...&surfaces=...` and returns the daemon JSON: `engrams` (interleaved by `ts` ascending across the requested surfaces), `count`, `surfaces`, plus an `instructions` field (promoted to the top of the payload) telling the host LLM to render the result as a brief activity narrative. Pairs naturally with `nucleus_digest` for stats-then-narrative recaps. |
+| `nucleus_link` | `engram_id` (required positive integer), `window_minutes` (default 30, range 1..1440), `limit` (default 20, max 1000) | "What else was happening when I wrote this?" surface (v0.0.8+). Composes `GET /engrams/{id}` + `GET /timeline?since=ts-window&before=ts+window&limit=limit` to return the anchor engram plus cross-surface engrams in the surrounding time window. Returns `{anchor_engram, adjacent_engrams, window_minutes, instructions}` with the anchor filtered out of `adjacent_engrams`. No daemon-side changes required. |
 
 ### Chunked-record reassembly (ADR-018)
 
@@ -170,6 +171,18 @@ nucleus_timeline(window="24h", surfaces=["claude_code","cursor"], limit=50)
     ],
     "count": 42,
     "surfaces": ["claude_code","cursor"]
+  }
+
+nucleus_link(engram_id=1234, window_minutes=30, limit=20)
+→ {
+    "anchor_engram": {"id":1234,"surface":"claude_code","ts":...,"payload":"...","meta":""},
+    "adjacent_engrams": [
+      {"id":N,"surface":"cursor","ts":...,"payload":"...","meta":""},
+      {"id":N,"surface":"cowork","ts":...,"payload":"...","meta":""},
+      ...
+    ],
+    "window_minutes": 30,
+    "instructions": "These engrams happened around the time of the anchor. Find connections, common themes, or 'what else was happening when I wrote this' answers."
   }
 ```
 

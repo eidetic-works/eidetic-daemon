@@ -6,6 +6,22 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.59] — 2026-05-20
+
+`/hooks` endpoint test coverage + eidetic-mcp 0.0.8 nucleus_link tool.
+
+### Added (daemon)
+
+- 3 new tests for `GET /hooks`: 503 when not configured, 200 + JSON shape when configured, 405 on non-GET.
+
+### Added (eidetic-mcp 0.0.8)
+
+- **`nucleus_link(engram_id, window_minutes=30, limit=20)`** — given an engram ID, returns temporally-adjacent engrams across all surfaces. Closes "what else was happening when I wrote this" recall pattern.
+- 14 new tests (114/114 passing across all MCP tools): happy path, default ±30min window, custom window/limit, anchor-ts-near-zero clamp, ValueError gates (engram_id ≤ 0, window outside 1..1440, limit outside 1..1000), anchor 404 short-circuits, mid-flight 500, transport unreachable.
+- **Off-by-one fix:** daemon's /timeline since/before bounds are exclusive — naive `ts-window`/`ts+window` would silently drop the anchor + edge engrams. nucleus_link shifts ±1ns to make the window inclusive, then filters anchor client-side so host LLM sees it exactly once via `anchor_engram` field.
+
+---
+
 ## [v0.0.58] — 2026-05-20
 
 `--capture` engram meta auto-enriches with host + cwd + git_branch + user.

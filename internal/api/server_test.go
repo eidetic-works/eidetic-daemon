@@ -1902,3 +1902,65 @@ func TestDigestWithRealData(t *testing.T) {
 		t.Errorf("sample_engrams: got %d, want 20", len(samples))
 	}
 }
+
+// ── GET /hooks tests (v0.0.56+) ────────────────────────────────────────────
+
+func TestHooks503WhenNotConfigured(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0"})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/hooks", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("no hooks: want 503, got %d", resp.StatusCode)
+	}
+}
+
+func TestHooks200WhenConfigured(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{
+		TCPAddr: "127.0.0.1:0",
+		HookStatusFn: func() any {
+			return []map[string]any{
+				{"name": "test-hook", "url": "https://example.com", "fire_count": 7},
+			}
+		},
+	})
+	defer stop()
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/hooks", srv.Addr()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	var got []map[string]any
+	json.NewDecoder(resp.Body).Decode(&got)
+	if len(got) != 1 || got[0]["name"] != "test-hook" {
+		t.Errorf("unexpected response shape: %+v", got)
+	}
+	if int(got[0]["fire_count"].(float64)) != 7 {
+		t.Errorf("fire_count: got %v, want 7", got[0]["fire_count"])
+	}
+}
+
+func TestHooksMethodNotAllowed(t *testing.T) {
+	st := tempStore(t)
+	srv, stop := startServer(t, st, api.Options{TCPAddr: "127.0.0.1:0", HookStatusFn: func() any { return []any{} }})
+	defer stop()
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://%s/hooks", srv.Addr()), nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST /hooks: want 405, got %d", resp.StatusCode)
+	}
+}

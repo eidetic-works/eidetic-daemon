@@ -452,6 +452,83 @@ class DaemonClient:
             raise DaemonError(f"expected object, got {type(body).__name__}")
         return body
 
+    def link(
+        self,
+        engram_id: int,
+        window_minutes: int = 30,
+        limit: int = 20,
+    ) -> dict:
+        """Find engrams adjacent in time to an anchor engram (v0.0.8+ bridge).
+
+        Two-call composition over existing daemon endpoints:
+          1. GET /engrams/{id} — fetch the anchor engram + its timestamp.
+          2. GET /timeline?since=ts-window&before=ts+window&limit=limit —
+             interleave engrams from all surfaces in the surrounding window.
+
+        Returns a dict with shape:
+            {
+              "anchor_engram": <engram dict>,
+              "adjacent_engrams": [<engram dict>, ...],
+              "window_minutes": <int>,
+              "instructions": <str for host LLM>,
+            }
+
+        The anchor itself is removed from `adjacent_engrams` (the LLM gets it
+        once in `anchor_engram`). Adjacent engrams are returned in the
+        daemon's ts-asc order, so the LLM can reason about before/after.
+
+        Args:
+            engram_id: positive integer primary key of the anchor.
+            window_minutes: half-width of the time window in minutes (1..1440).
+                Default 30 = ±30 min window around the anchor.
+            limit: max adjacent engrams to return (forwarded to /timeline,
+                client-validated to 1..1000 — same cap as timeline()).
+
+        Raises:
+            ValueError: engram_id <= 0, window_minutes outside 1..1440, or
+                limit outside 1..1000. No HTTP dispatched in any of these cases.
+            DaemonError: anchor 404, daemon transport failure on either call,
+                or a 5xx mid-flight on the /timeline call.
+        """
+        if not isinstance(engram_id, int) or engram_id <= 0:
+            raise ValueError(
+                f"engram_id must be a positive integer, got {engram_id!r}"
+            )
+        if not isinstance(window_minutes, int) or window_minutes < 1 or window_minutes > 1440:
+            raise ValueError(
+                f"window_minutes must be in 1..1440, got {window_minutes!r}"
+            )
+        # Reuse timeline()'s limit gate so behavior + error text match.
+        if not isinstance(limit, int) or limit < 1 or limit > 1000:
+            raise ValueError(
+                f"limit must be in 1..1000, got {limit!r}"
+            )
+
+        anchor = self.get_engram_by_id(engram_id)
+        window_ns = window_minutes * 60 * 1_000_000_000
+        # since/before are EXCLUSIVE on the daemon side (see routes.go); shift
+        # by 1 ns so the boundary timestamps are still admitted to the window.
+        since = max(0, anchor.ts - window_ns - 1)
+        before = anchor.ts + window_ns + 1
+
+        body = self.timeline(since=since, before=before, limit=limit)
+        adjacent = [
+            row for row in body.get("engrams", [])
+            if int(row.get("id", -1)) != engram_id
+        ]
+
+        from dataclasses import asdict
+        return {
+            "anchor_engram": asdict(anchor),
+            "adjacent_engrams": adjacent,
+            "window_minutes": window_minutes,
+            "instructions": (
+                "These engrams happened around the time of the anchor. "
+                "Find connections, common themes, or 'what else was happening "
+                "when I wrote this' answers."
+            ),
+        }
+
     def timeline(
         self,
         since: int = 0,
