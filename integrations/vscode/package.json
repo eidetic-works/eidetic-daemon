@@ -1,0 +1,140 @@
+{
+  "name": "eidetic-vscode",
+  "displayName": "Eidetic Engrams",
+  "description": "Browse, search, and recall engrams captured by eidetic-daemon from Claude Code and Cursor sessions.",
+  "version": "0.0.1",
+  "publisher": "eidetic-works",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "eidetic",
+    "engram",
+    "claude",
+    "cursor",
+    "memory",
+    "recall"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:eidetic.recent",
+    "onCommand:eidetic.search",
+    "onCommand:eidetic.recall",
+    "onCommand:eidetic.recentEngrams"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "eidetic.search",
+        "title": "Eidetic: Search Engrams",
+        "category": "Eidetic"
+      },
+      {
+        "command": "eidetic.recall",
+        "title": "Eidetic: Recall (Ask Question)",
+        "category": "Eidetic"
+      },
+      {
+        "command": "eidetic.recentEngrams",
+        "title": "Eidetic: Show Recent Engrams",
+        "category": "Eidetic"
+      },
+      {
+        "command": "eidetic.refreshRecent",
+        "title": "Refresh",
+        "category": "Eidetic",
+        "icon": "$(refresh)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "eidetic",
+          "title": "Eidetic",
+          "icon": "$(database)"
+        }
+      ]
+    },
+    "views": {
+      "eidetic": [
+        {
+          "id": "eidetic.recent",
+          "name": "Recent Engrams",
+          "contextualTitle": "Eidetic"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "eidetic.refreshRecent",
+          "when": "view == eidetic.recent",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Eidetic Engrams",
+      "properties": {
+        "eidetic.socketPath": {
+          "type": "string",
+          "default": "/tmp/eidetic-daemon.sock",
+          "description": "Unix-domain socket path where eidetic-daemon listens (macOS/Linux only)."
+        },
+        "eidetic.tcpHost": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "TCP host used on Windows (where UDS is unavailable)."
+        },
+        "eidetic.tcpPort": {
+          "type": "number",
+          "default": 9876,
+          "description": "TCP port used on Windows (where UDS is unavailable)."
+        },
+        "eidetic.timeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 250,
+          "description": "Request timeout in milliseconds for daemon HTTP calls."
+        },
+        "eidetic.surfaceFilter": {
+          "type": "string",
+          "default": "",
+          "description": "Optional surface filter for /search and /recent (empty = all surfaces)."
+        },
+        "eidetic.recentPollMs": {
+          "type": "number",
+          "default": 60000,
+          "minimum": 5000,
+          "description": "Polling interval for the Recent Engrams tree view (ms)."
+        },
+        "eidetic.metricsPollMs": {
+          "type": "number",
+          "default": 300000,
+          "minimum": 30000,
+          "description": "Polling interval for the status-bar engram count (ms)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "npm run check-types && node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "check-types": "tsc --noEmit",
+    "package": "npm run check-types && node esbuild.js --production",
+    "test": "node ./out/test/runTest.js",
+    "build-tests": "tsc -p tsconfig.test.json"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.0",
+    "mocha": "^10.2.0",
+    "typescript": "^5.3.3"
+  }
+}
