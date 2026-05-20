@@ -240,7 +240,125 @@ Reply to this email if anything doesn't work — I reply same day.
 
 ---
 
-## 6. Sequencing (current state as of 2026-05-19)
+## 6. Onboarding drip — Day 2 + Day 7 (drop into Kit when free-plan seq limit lifts)
+
+Kit free plan allows 1 sequence (`Cost Playbook v0` already occupies it). When subscriber count justifies a paid upgrade — or you switch to broadcast-by-tag — these are the next two touches for each Pro subscriber.
+
+### Day 2 — "Did sync fire? Here's what you can do now."
+
+**Trigger:** 48h after `eidetic-pro` tag is applied.
+**Subject:** Your engrams should be in the cloud now — here's how to check + what else you can do
+
+**Body:**
+
+```
+You should have your sync.json by now. Quick checks + three things you might not have tried:
+
+1. CONFIRM SYNC IS FIRING
+
+   eideticd --check
+
+   Expect: "worker: ✓ reachable (200 OK)" + a "last sync" timestamp within
+   the last hour. If anything's off, reply to this email — I respond same-day.
+
+2. AI-POWERED RECALL (nucleus_ask)
+
+   In any Claude Code session: "What was that Postgres tuning trick I worked
+   on last week?" — Claude calls nucleus_ask, retrieves the matching engrams
+   from your local store, and synthesizes the answer. Your engrams never leave
+   your machine; the AI is the Claude session you already pay for.
+
+   Full setup recipe (Claude Code, Cursor, Cline, CLI, web dashboard):
+   https://github.com/eidetic-works/eidetic-daemon/blob/main/docs/PROMPT.md
+
+3. WEB DASHBOARD
+
+   eideticd -bridge :8421
+   open https://eidetic.works/dashboard
+
+   Paste http://127.0.0.1:8421 + the token from ~/.eidetic/bridge-token.
+   You'll see every engram you've ever captured, searchable. No data leaves
+   your machine — the page only talks to your daemon.
+
+4. RESTORE-READY
+
+   New laptop? `eideticd --restore` and you're back in 60 seconds.
+
+Any of this not working? Reply — same-day response on weekdays.
+
+— Lokesh
+```
+
+---
+
+### Day 7 — "How to actually use this every day"
+
+**Trigger:** 7 days after `eidetic-pro` tag is applied.
+**Subject:** One week in — three eidetic habits that compound
+
+**Body:**
+
+```
+You've had eidetic Pro for a week. If you've been using it casually, here are
+three habits that turn it into a real cognitive multiplier:
+
+1. ASK BEFORE YOU GREP
+
+   Stop opening Spotlight / VS Code search / your browser history when you
+   remember "I worked on that thing." Open Claude Code and ask:
+
+      "Find what I wrote about <thing> in the last <window>"
+
+   If it's in your engrams, Claude finds it in <1 sec via nucleus_ask. The
+   memory-tax of context-switching is what eidetic eliminates.
+
+2. CHECK YOUR BACKUP HISTORY ONCE A MONTH
+
+   eideticd --backups
+
+   You'll see your last 10 cloud uploads. If timing looks wrong or sizes look
+   off, you'll catch it before the day you actually need a restore.
+
+3. EXPORT BEFORE EXPERIMENTING
+
+   eideticd --export > engrams-$(date +%F).ndjson
+
+   The /export endpoint streams every engram as NDJSON. Use it before:
+   - Trying a different MCP server in the same Claude Code project
+   - Cleaning up surfaces with --purge
+   - Migrating to a new machine (in addition to --restore)
+
+   It's your "right to leave" — proof that you own the data, not us.
+
+NEXT WEEK we'll start sending feature previews to Pro subscribers first
+(retention policy templates, multi-device coordination for Team tier, and an
+early look at what's coming after nucleus_ask).
+
+Hit reply with whatever's missing for you — what you want to do that the
+daemon doesn't yet support. That list IS the roadmap.
+
+— Lokesh
+```
+
+---
+
+### Optional Day 30 — value recap (only when usage telemetry exists)
+
+When the daemon ships usage analytics (post-W4 candidate), the Day 30 touch becomes:
+
+```
+You searched your engrams <N> times this month. nucleus_ask answered <M>
+questions. Your engram store grew by <X> MB. At the current rate, you'll
+hit <Y> at year-end.
+
+[renew confidence] — your $29/mo is buying you a verifiable second brain.
+```
+
+Not shippable until usage counters land daemon-side (no telemetry leaves the machine; the recap is generated client-side from `eideticd --stats` and the `/metrics` `query_count`/etc).
+
+---
+
+## 7. Sequencing (current state as of 2026-05-19)
 
 | Step | Status | Who |
 |---|---|---|
