@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/eidetic-works/eidetic-daemon/internal/api"
+	"github.com/eidetic-works/eidetic-daemon/internal/auth"
 )
 
 // TestCORSHeadersPresentWhenEnabled verifies that responses include the
@@ -139,5 +140,68 @@ func TestBridgeDualListenerSharesStore(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("addr %s: /healthz status = %d, want 200", addr, resp.StatusCode)
 		}
+	}
+}
+
+// TestCORSPreflightBypassesAuth verifies that OPTIONS preflight returns 204
+// even when auth is enabled — browsers don't send Authorization on preflight,
+// so blocking preflight would break the web dashboard entirely.
+func TestCORSPreflightBypassesAuth(t *testing.T) {
+	s := tempStore(t)
+	defer s.Close()
+
+	tok := &auth.Token{}
+	tok.Set("secret-bearer-token")
+
+	srv, err := api.New(s, api.Options{
+		TCPAddr:   "127.0.0.1:0",
+		CORS:      true,
+		AuthToken: tok,
+	})
+	if err != nil {
+		t.Fatalf("api.New: %v", err)
+	}
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = srv.Serve(ctx) }()
+
+	// Preflight — no Authorization header (matches what browsers send)
+	req, _ := http.NewRequest(http.MethodOptions, "http://"+srv.Addr().String()+"/surfaces", nil)
+	req.Header.Set("Origin", "https://eidetic.works")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	req.Header.Set("Access-Control-Request-Headers", "Authorization")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("OPTIONS /surfaces: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		t.Errorf("preflight status = %d, want 204 (auth-bypassed)", resp.StatusCode)
+	}
+
+	// Actual GET WITHOUT auth should fail (proves auth middleware is still active)
+	resp2, err := http.Get("http://" + srv.Addr().String() + "/surfaces")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusUnauthorized {
+		t.Errorf("unauth GET /surfaces: status = %d, want 401", resp2.StatusCode)
+	}
+
+	// Actual GET WITH auth should succeed
+	req3, _ := http.NewRequest(http.MethodGet, "http://"+srv.Addr().String()+"/surfaces", nil)
+	req3.Header.Set("Authorization", "Bearer secret-bearer-token")
+	resp3, err := http.DefaultClient.Do(req3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp3.Body.Close()
+	if resp3.StatusCode != http.StatusOK {
+		t.Errorf("auth GET /surfaces: status = %d, want 200", resp3.StatusCode)
 	}
 }
