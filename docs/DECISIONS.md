@@ -100,3 +100,33 @@ For the inverse (Pro sync ACTIVE), the same tcpdump shows exactly one POST per 6
 **Posture lock-in.** This ADR is a HARD CONTRACT. Any future code adding outbound network calls must (a) add a row to the table above, (b) be opt-in or HEAD-only-with-no-data, (c) pass the tcpdump-audit test. PRs that add network calls without ADR amendment must be rejected.
 
 **Reference:** PROMPT.md ("nucleus_ask: your engrams never leave your machine"); landing 5th bullet; SECURITY.md threat model; CHANGELOG.md v0.0.32 / v0.0.37 / v0.0.42 (the network-touching ships this audits).
+
+---
+
+## ADR-021 (2026-05-20): ADR-011 amendment — scoped TB-unpause carve-out (recall + training-from-engrams)
+
+**Decision:** ADR-011 (90-day eidetic-works pivot, 2026-05-10 → 2026-08-08) is amended to allow scoped TB substrate work that COMPOUNDS with the shipped eidetic-works artifacts. Pure substrate work (PR #309 NL surface, watch-relay v0.4, identity-substrate research) remains paused until W4 bright-line clears.
+
+**What's unpaused:**
+- TB Personal AI Phase 4+ (recall + retrieval surfaces that pair with eidetic's nucleus_ask / nucleus_digest / nucleus_timeline)
+- Training-from-engrams work — turning eidetic-captured engrams into TB training corpus (real "Work = Training" loop per `project_work_equals_training.md`)
+- TB-side bridges that consume eidetic's HTTP endpoints (`/ask`, `/digest`, `/timeline`, `/export`) — TB as an eidetic-mcp client surface
+- Sparring loops (TB writes instructions → eidetic captures Claude corrections → trains TB on the delta)
+
+**What stays paused:**
+- PR #309 v0.3 NL surface (snazzy-floating-blum.md plan) — pure substrate, no eidetic compounding axis
+- watch-relay v0.4 worktree-per-session — substrate-only
+- identity-substrate research (`.brain/research/2026-05-09_identity_substrate/`) — substrate-only
+- nucleus-delegate v0.4+ — substrate-only
+- Pure ADR drafts on substrate topics (defer per `feedback_compounding_shape.md`)
+
+**Why this scope:** Eidetic Works compression (Lokesh directive 2026-05-20) is substantially done — 24+ daemon versions, 14 integration surfaces, 7 Workers, 7 docs, ~60 tests added in ~24h. Distribution + customer purchases are the now-blocker, and those don't consume TB cycles. TB work that creates a compounding loop (eidetic engram → TB training corpus → better recall → more eidetic value) is positive-sum and merits resumption. Pure substrate stays gated by W4 bright-line per the original ADR-011 framing.
+
+**Gate triggers that re-open the rest of substrate:**
+- Day-60 hard-kill threshold from ADR-011 remains in force (2026-07-08): if <5 paid Pro Track A → broader pivot decision
+- W4 bright-line (2026-06-08): if 5 paid Pro achieved → all substrate work green-lit
+- New explicit operator ADR amendment
+
+**Posture:** cc-tb resumes only on items in the "what's unpaused" list above. Any cc-tb work item must self-justify the eidetic-works compounding axis before starting; if no axis exists, item stays in queue. Audit via `nucleus_sync.search_threads from:cc_tb since:2026-05-20`.
+
+**Reference:** cc-tb relay `20260520_000000_relay_tb_work_permission_request.json` (the request); ADR-011 (the original 90-day pause); `project_work_equals_training.md` (the compounding rationale this amendment activates); Lokesh delegation 2026-05-20 ("Do as recommended on my direction items").
