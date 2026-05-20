@@ -4,7 +4,7 @@
 
 278,561 engrams. 803 sessions. 3.3 GB. Two weeks of real dogfood. Free and MIT.
 
-**→ [eidetic.works](https://eidetic.works)** · [v0.0.32 release](https://github.com/eidetic-works/eidetic-daemon/releases/latest) · [CHANGELOG](./CHANGELOG.md)
+**→ [eidetic.works](https://eidetic.works)** · [latest release](https://github.com/eidetic-works/eidetic-daemon/releases/latest) · [CHANGELOG](./CHANGELOG.md) · [Pro $29/mo](https://eideticworks.gumroad.com/l/eidetic-pro)
 
 ---
 
@@ -21,7 +21,9 @@
 - **Surface listing** — `GET /surfaces` — map of every active surface to its engram count; live view of what the daemon has seen.
 - **Full-text search** — `GET /search?q=...` — FTS5 keyword/phrase/boolean search over engram payloads, ranked by relevance. Answers "what did I say about X?"
 - **Recent activity** — `GET /recent?[since=unix-ns][&before=unix-ns]&limit=N` — newest engrams across all surfaces, newest-first. `since`+`before` enable sliding-window polling. Answers "what happened lately?" without a keyword or surface filter.
-- **Multi-surface mirror** — Cursor / Cowork / Claude Code all feed one canonical store, indexed `(surface, ts DESC)`.
+- **AI-powered recall** — `GET /ask?question=<text>` (v0.0.38+) — extracts keywords from a natural-language question, FTS5-retrieves top-K engrams, returns them wrapped in answer-scaffolding for the caller's host LLM. Same semantics as the `nucleus_ask` MCP tool. LRU+TTL cache so repeat questions don't re-hit the index (v0.0.45+).
+- **Bulk export** — `GET /export[?surface=X][&since=ns][&before=ns]` (v0.0.42+) — paginated NDJSON stream of every engram, asc timestamp order. `curl -O` saves as `engrams-export.ndjson`; pipe to `jq` for one-engram-per-line consumption. Memory-bounded — safe against 10M-row stores.
+- **Multi-surface mirror** — Cursor / Cowork / Claude Code all feed one canonical store, indexed `(surface, ts DESC)`. v0.0.41+: Cursor capture filters to `chatSessions/*.json` (excludes per-workspace `workspace.json` noise).
 
 Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + linux-arm64 + windows-amd64.
 
@@ -41,11 +43,11 @@ brew install eideticd
 To remove:
 
 ```sh
-curl -fsSL https://eidetic.works/uninstall.sh | sh          # stops service, removes binary; keeps ~/.eidetic/
-curl -fsSL https://eidetic.works/uninstall.sh | sh -s -- --purge-data  # also wipes engram data (irreversible)
+eideticd -uninstall          # v0.0.44+: stops service, removes plist/unit, prompts y/N to delete data
+eideticd -uninstall -purge   # unattended: skip prompt, delete <dataDir>
 ```
 
-Latest release: [v0.0.32](https://github.com/eidetic-works/eidetic-daemon/releases/latest) (darwin-arm64, linux-amd64, linux-arm64, windows-amd64; pure-Go, no CGO). See `scripts/install.sh` for what the one-line installer runs.
+Latest release artifacts: darwin-arm64, linux-amd64, linux-arm64, windows-amd64 — pure-Go, no CGO, statically linked. See `scripts/install.sh` for what the one-line installer runs. Homebrew formula auto-updates on every tag push (v0.0.43+).
 
 Full demo flow with expected outputs at every step: [`docs/demo.md`](./docs/demo.md). Architecture decisions: [`docs/DECISIONS.md`](./docs/DECISIONS.md). Release notes per version: [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -65,7 +67,23 @@ eideticd --restore
 
 **Bring your own R2 (free tier):** create an R2 bucket, deploy the sync Worker from `bridge/cloudflare/`, set `EIDETIC_API_KEY`, drop `sync.json`. No ongoing cost for personal use.
 
-**[Pro — $29/mo](https://eidetic.works):** Eidetic Works hosts the bucket. Personal API key + `sync.json` delivered within 24h. First 50 subscribers keep this price.
+**[Pro — $29/mo](https://eideticworks.gumroad.com/l/eidetic-pro):** Eidetic Works hosts the bucket. Personal API key + `sync.json` delivered within 24h. Includes `nucleus_ask` AI recall + web dashboard. First 50 subscribers keep this price.
+
+**[Team — $99/mo](mailto:hi@eidetic.works?subject=eidetic%20Team):** 5 seats with shared-team engram pooling (v0.0.39+: `X-Team-ID` header dual-writes to `engrams/team/<team_id>/<device_id>/` for cross-seat recall).
+
+### Web dashboard
+
+Browse + search engrams in the browser without MCP:
+
+```sh
+# Expose the daemon over a TCP bridge with auth + CORS (v0.0.31+)
+eideticd -bridge :8421
+
+# Visit https://eidetic.works/dashboard
+# Paste http://127.0.0.1:8421 + the token from ~/.eidetic/bridge-token
+```
+
+Pure static HTML, no backend — page talks only to YOUR daemon (or your Cloudflare tunnel if you've exposed it). Credentials stored in localStorage, never POSTed anywhere.
 
 ### MCP bridge (Cursor / Claude Code / Cline / any MCP client)
 
@@ -78,7 +96,7 @@ claude mcp add eidetic -- python -m eidetic_mcp.server
 #   {"eidetic": {"command": "python", "args": ["-m", "eidetic_mcp.server"]}}
 ```
 
-Tools: `query_engrams(surface, limit, since)` + `daemon_status()` + `daemon_metrics()` (v0.0.8+ — wraps the daemon's `/metrics` endpoint as an MCP-callable tool). See [`bridge/python/README.md`](./bridge/python/README.md) for full setup + per-client config snippets.
+Tools (eidetic-mcp 0.0.5+): `query_engrams`, `search_engrams`, `recent_engrams`, `count_engrams`, `get_engram_by_id`, `delete_engram_by_id`, `insert_engram`, `insert_engrams_batch`, `purge_engrams`, `list_surfaces`, `daemon_status`, `daemon_metrics`, **`nucleus_ask(question)`** — RAG over your local engrams: extracts keywords, retrieves top-K via FTS5, returns answer-scaffolding for the host LLM. Your engrams never leave your machine. See [`bridge/python/README.md`](./bridge/python/README.md) for per-client config + [`docs/PROMPT.md`](./docs/PROMPT.md) for 5 integration recipes.
 
 If the daemon is running with caller auth on (v0.0.9+, opt-in), the bridge auto-discovers the token from `<dataDir>/auth-token` (or `EIDETIC_AUTH_TOKEN` env var). No bridge config change required.
 
@@ -93,13 +111,29 @@ To verify:
 ```sh
 # See your engram stats (works whether daemon is running or not)
 eideticd --stats
-# → eideticd v0.0.29 — engram statistics
-# →   engrams:    141502
-# →     claude_code          141502
+# → eideticd v0.0.45 — engram statistics
+# →   engrams:    278561
+# →     claude_code          274203
+# →     cursor                 4135
+# →     cowork                  223
 # →   oldest:     2026-03-01
-# →   newest:     2026-05-19
-# →   db size:    71.2 MB
+# →   newest:     2026-05-20
+# →   db size:    3.3 GB
 # →   P95 fetch:  0.27 ms
+# →
+# →   cloud sync:
+# →     last sync:  2026-05-20 09:00:00
+# →     last key:   engrams/macbook-m2/engrams-1779235200000.db
+# →     last size:  3.3 MB
+
+# Diagnose your cloud sync (v0.0.34+ — Pro users use this if sync feels broken)
+eideticd --check
+# → worker: ✓ reachable (200 OK)
+# → last sync: 2026-05-20 09:00 (4m ago)
+# → status: ✓ sync healthy
+
+# Browse last 10 cloud backups (v0.0.36+)
+eideticd --backups
 
 # Confirm the daemon is alive.
 curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/healthz
@@ -245,7 +279,11 @@ See [docs/SPEC.md](docs/SPEC.md) for the binding W1 spec, [docs/IMPLEMENTATION_P
 
 ## Status
 
-W1 complete — 22 releases v0.0.2 → v0.0.23. Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase sequencing.
+Live at v0.0.45 (2026-05-20) — 45 releases since v0.0.2. Pro launch complete: managed Cloudflare R2 sync, Gumroad subscription product (`eideticworks.gumroad.com/l/eidetic-pro`), Team tier ($99/mo, multi-seat), web dashboard at `eidetic.works/dashboard`, AI-powered recall via `nucleus_ask` MCP tool. See `CHANGELOG.md` for per-version detail.
+
+### Phase table (W1)
+
+Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase sequencing.
 
 | Phase | What | State |
 |---|---|---|
