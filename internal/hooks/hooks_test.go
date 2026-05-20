@@ -214,3 +214,72 @@ func TestDispatcher_Names(t *testing.T) {
 		t.Errorf("Names(): got %v, want [a b]", names)
 	}
 }
+
+func TestDispatcher_RegexPattern(t *testing.T) {
+	var fired atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fired.Add(1)
+	}))
+	defer srv.Close()
+
+	cfg := &Config{Hooks: []HookSpec{{
+		Name:         "ip-pattern",
+		URL:          srv.URL,
+		MatchPattern: `regex:\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`,
+	}}}
+	d := NewDispatcher(cfg)
+
+	// Should fire (has an IP)
+	d.Maybe(context.Background(), engram.Engram{Surface: "logs", Payload: "client 192.168.1.42 connected"})
+	// Should NOT fire (no IP)
+	d.Maybe(context.Background(), engram.Engram{Surface: "logs", Payload: "no addresses here"})
+
+	for i := 0; i < 50 && fired.Load() == 0; i++ {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if fired.Load() != 1 {
+		t.Errorf("regex match: expected 1 fire, got %d", fired.Load())
+	}
+}
+
+func TestDispatcher_InvalidRegexDoesNotFire(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("invalid regex should never fire")
+	}))
+	defer srv.Close()
+
+	cfg := &Config{Hooks: []HookSpec{{
+		Name:         "broken-regex",
+		URL:          srv.URL,
+		MatchPattern: "regex:[unclosed",
+	}}}
+	d := NewDispatcher(cfg)
+	d.Maybe(context.Background(), engram.Engram{Surface: "x", Payload: "anything"})
+	time.Sleep(100 * time.Millisecond)
+}
+
+func TestDispatcher_Status(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+
+	cfg := &Config{Hooks: []HookSpec{
+		{Name: "a", URL: srv.URL, MatchPattern: "x"},
+		{Name: "b", URL: srv.URL, MatchPattern: "regex:y"},
+	}}
+	d := NewDispatcher(cfg)
+
+	d.Maybe(context.Background(), engram.Engram{Surface: "s", Payload: "x"})
+	d.Maybe(context.Background(), engram.Engram{Surface: "s", Payload: "y"})
+	time.Sleep(150 * time.Millisecond)
+
+	st := d.Status()
+	if len(st) != 2 {
+		t.Fatalf("Status length: got %d, want 2", len(st))
+	}
+	if st[0].Name != "a" || st[0].FireCount != 1 {
+		t.Errorf("hook a: got %+v", st[0])
+	}
+	if st[1].Name != "b" || !st[1].IsRegex || st[1].FireCount != 1 {
+		t.Errorf("hook b: got %+v (want IsRegex=true)", st[1])
+	}
+}

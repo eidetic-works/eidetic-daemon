@@ -39,8 +39,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/eidetic-works/eidetic-daemon/internal/engram"
@@ -65,10 +67,12 @@ type HookSpec struct {
 
 // Dispatcher fires webhooks for matching engrams.
 type Dispatcher struct {
-	mu     sync.Mutex
-	hooks  []HookSpec
-	lastAt map[string]time.Time // hook name → last fired time (for rate-limit)
-	client *http.Client
+	mu      sync.Mutex
+	hooks   []HookSpec
+	lastAt  map[string]time.Time // hook name → last fired time (for rate-limit)
+	regexes map[string]*regexp.Regexp // compiled regex per hook (only for "regex:" patterns); nil for substring
+	counts  map[string]*atomic.Uint64 // per-hook fire counts; surfaced by /hooks endpoint
+	client  *http.Client
 }
 
 // LoadConfig reads ~/.eidetic/hooks.json (or returns nil if absent).
@@ -90,15 +94,36 @@ func LoadConfig(dataDir string) (*Config, error) {
 
 // NewDispatcher builds a Dispatcher from a Config. Returns nil if cfg is nil
 // or has zero hooks (no overhead when feature is off).
+//
+// Patterns prefixed with "regex:" are compiled once at startup; non-compileable
+// regexes log a warning and the hook silently never fires. Plain string
+// patterns use case-insensitive substring matching (v0.0.55 behavior).
+// (Regex support added in v0.0.56)
 func NewDispatcher(cfg *Config) *Dispatcher {
 	if cfg == nil || len(cfg.Hooks) == 0 {
 		return nil
 	}
-	return &Dispatcher{
-		hooks:  cfg.Hooks,
-		lastAt: make(map[string]time.Time, len(cfg.Hooks)),
-		client: &http.Client{Timeout: 10 * time.Second},
+	d := &Dispatcher{
+		hooks:   cfg.Hooks,
+		lastAt:  make(map[string]time.Time, len(cfg.Hooks)),
+		regexes: make(map[string]*regexp.Regexp, len(cfg.Hooks)),
+		counts:  make(map[string]*atomic.Uint64, len(cfg.Hooks)),
+		client:  &http.Client{Timeout: 10 * time.Second},
 	}
+	for _, h := range cfg.Hooks {
+		d.counts[h.Name] = new(atomic.Uint64)
+		if strings.HasPrefix(h.MatchPattern, "regex:") {
+			pattern := strings.TrimPrefix(h.MatchPattern, "regex:")
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "hooks: %q has invalid regex %q (hook will never fire): %v\n",
+					h.Name, pattern, err)
+				continue
+			}
+			d.regexes[h.Name] = re
+		}
+	}
+	return d
 }
 
 // Maybe runs all hooks against the engram; fires HTTP requests asynchronously
@@ -123,12 +148,20 @@ func (d *Dispatcher) matches(e engram.Engram, h HookSpec) bool {
 	if h.MatchSurface != "" && h.MatchSurface != e.Surface {
 		return false
 	}
-	if h.MatchPattern != "" {
-		if !strings.Contains(strings.ToLower(e.Payload), strings.ToLower(h.MatchPattern)) {
+	if h.MatchPattern == "" {
+		return true
+	}
+	// Regex hook (v0.0.56+) — prefix "regex:" routes through pre-compiled regex
+	if strings.HasPrefix(h.MatchPattern, "regex:") {
+		re, ok := d.regexes[h.Name]
+		if !ok {
+			// Regex didn't compile at startup; never fire
 			return false
 		}
+		return re.MatchString(e.Payload)
 	}
-	return true
+	// Plain substring match — case-insensitive (v0.0.55 behavior)
+	return strings.Contains(strings.ToLower(e.Payload), strings.ToLower(h.MatchPattern))
 }
 
 func (d *Dispatcher) canFire(h HookSpec) bool {
@@ -179,6 +212,43 @@ func (d *Dispatcher) fire(ctx context.Context, h HookSpec, e engram.Engram) {
 		return // best-effort; don't block capture, don't log noise
 	}
 	resp.Body.Close()
+	// Only increment on actual HTTP attempt + non-error path so the counter
+	// reflects "fired" (request sent) not "matched" (would have fired).
+	if c, ok := d.counts[h.Name]; ok {
+		c.Add(1)
+	}
+}
+
+// Status returns per-hook fire counts + config snapshot for /hooks endpoint.
+// Safe to call concurrently.
+type HookStatus struct {
+	Name         string `json:"name"`
+	URL          string `json:"url"`
+	MatchPattern string `json:"match_pattern,omitempty"`
+	MatchSurface string `json:"match_surface,omitempty"`
+	IsRegex      bool   `json:"is_regex,omitempty"`
+	FireCount    uint64 `json:"fire_count"`
+}
+
+func (d *Dispatcher) Status() []HookStatus {
+	if d == nil {
+		return nil
+	}
+	out := make([]HookStatus, 0, len(d.hooks))
+	for _, h := range d.hooks {
+		st := HookStatus{
+			Name:         h.Name,
+			URL:          h.URL,
+			MatchPattern: h.MatchPattern,
+			MatchSurface: h.MatchSurface,
+			IsRegex:      strings.HasPrefix(h.MatchPattern, "regex:"),
+		}
+		if c, ok := d.counts[h.Name]; ok {
+			st.FireCount = c.Load()
+		}
+		out = append(out, st)
+	}
+	return out
 }
 
 // SinkInterface is the subset of internal/capture.Sink we wrap.

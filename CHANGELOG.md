@@ -6,6 +6,24 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.56] — 2026-05-20
+
+Regex hook patterns + `/hooks` status endpoint.
+
+### Added
+
+- **Regex hook patterns** — prefix `match_pattern` with `regex:` to use Go regex semantics; non-prefix patterns continue substring-matching (case-insensitive). Invalid regexes log a warning at startup + the hook silently never fires.
+- **`Status()` method** on Dispatcher — returns `[]HookStatus` with per-hook fire counts (atomic.Uint64), URL, pattern, is_regex flag.
+- **`GET /hooks` HTTP endpoint** — surfaces Status() as JSON for dashboard/observability tooling. 503 when no hooks.json configured.
+- **`Options.HookStatusFn`** — optional callback in `api.Options` so main.go closes over the Dispatcher without api/ importing hooks/.
+- 3 new tests: regex matching (IP pattern), invalid-regex-no-fire safety, Status() per-hook counts.
+
+### Why
+
+v0.0.55 substring-match was too narrow for log-line patterns (CIDR, status codes, error class). Regex unlocks real alerting recipes. `/hooks` endpoint gives the dashboard a way to show "your alert fired 12 times today" without scraping the daemon logs.
+
+---
+
 ## [v0.0.55] — 2026-05-20
 
 Outbound webhook hooks — daemon fires HTTP events when matching engrams arrive.

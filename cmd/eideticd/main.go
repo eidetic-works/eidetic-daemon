@@ -343,6 +343,18 @@ func main() {
 	}
 	defer s.Close()
 
+	// v0.0.55+: outbound webhook hooks. Built early so opts.HookStatusFn can
+	// reference it. nil-safe when ~/.eidetic/hooks.json is absent.
+	hookCfg, hookErr := hooks.LoadConfig(dataDir)
+	if hookErr != nil {
+		log.Printf("hooks: config error (hooks disabled): %v", hookErr)
+	}
+	hookDispatcher := hooks.NewDispatcher(hookCfg)
+	if names := hookDispatcher.Names(); len(names) > 0 {
+		log.Printf("hooks: %d webhook(s) registered: %v", len(names), names)
+	}
+	sink := hookDispatcher.WrapSink(s)
+
 	// v0.0.24+: optional Cloudflare R2 sync (ADR-019). Opt-in via sync.json.
 	// v0.0.35+: sync.json is hot-reloaded — dropping a new file is detected via
 	// fsnotify and the Syncer is recreated without daemon restart.
@@ -427,6 +439,9 @@ func main() {
 	queryTracker := api.NewLatencyTracker(1000)
 
 	opts := api.Options{Timeout: 5 * time.Second, AuthToken: authToken, QueryLatency: queryTracker}
+	if hookDispatcher != nil {
+		opts.HookStatusFn = func() any { return hookDispatcher.Status() }
+	}
 	switch {
 	case *udsPath != "":
 		opts.UDSPath = *udsPath
@@ -540,18 +555,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("capture state load: %v", err)
 	}
-	// v0.0.55+: outbound webhook hooks. If ~/.eidetic/hooks.json exists,
-	// the dispatcher wraps the sink so matching engrams fire user-configured
-	// webhooks AFTER InsertBatch succeeds. nil-safe when config absent.
-	hookCfg, hookErr := hooks.LoadConfig(dataDir)
-	if hookErr != nil {
-		log.Printf("hooks: config error (hooks disabled): %v", hookErr)
-	}
-	hookDispatcher := hooks.NewDispatcher(hookCfg)
-	if names := hookDispatcher.Names(); len(names) > 0 {
-		log.Printf("hooks: %d webhook(s) registered: %v", len(names), names)
-	}
-	sink := hookDispatcher.WrapSink(s)
+	// hookDispatcher + sink are built earlier (right after store.Open) so opts.HookStatusFn
+	// can reference the dispatcher. See ~line 348.
 
 	watcher := capture.NewWatcher(sink, state, capture.DefaultSurfaces(), 0)
 	watcherPtr = watcher // satisfy /metrics provider closure forward-decl

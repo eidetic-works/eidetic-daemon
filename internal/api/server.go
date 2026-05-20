@@ -49,6 +49,12 @@ type Options struct {
 	// store.Retrieve round-trip duration; percentiles surface via /metrics.
 	// When nil, no timing overhead is incurred.
 	QueryLatency *LatencyTracker
+
+	// HookStatusFn is an optional callback returning per-hook fire counts
+	// for the GET /hooks endpoint (v0.0.56+). Decouples api from hooks
+	// package — main.go closes over the Dispatcher's Status() method.
+	// When nil, /hooks returns 503 "hooks not configured".
+	HookStatusFn func() any
 }
 
 // Server wraps an http.Server bound to a local listener (UDS or TCP).
@@ -62,6 +68,7 @@ type Server struct {
 	metrics      MetricsProvider // may be nil; /metrics returns 503 in that case
 	auth         *auth.Token     // may be nil OR disabled; middleware passes through
 	queryLatency *LatencyTracker // may be nil; no timing overhead when absent
+	hookStatusFn func() any      // may be nil; /hooks returns 503 in that case
 }
 
 // New constructs a server bound per opts. Cleans up a stale UDS file at
@@ -78,7 +85,7 @@ func New(s *store.Store, opts Options) (*Server, error) {
 		opts.Timeout = 5 * time.Second
 	}
 
-	srv := &Server{store: s, timeout: opts.Timeout, metrics: opts.Metrics, auth: opts.AuthToken, queryLatency: opts.QueryLatency}
+	srv := &Server{store: s, timeout: opts.Timeout, metrics: opts.Metrics, auth: opts.AuthToken, queryLatency: opts.QueryLatency, hookStatusFn: opts.HookStatusFn}
 
 	var (
 		listener net.Listener
@@ -121,6 +128,7 @@ func New(s *store.Store, opts Options) (*Server, error) {
 	mux.HandleFunc("/export", srv.handleExport)
 	mux.HandleFunc("/timeline", srv.handleTimeline)
 	mux.HandleFunc("/digest", srv.handleDigest)
+	mux.HandleFunc("/hooks", srv.handleHooks)
 	mux.HandleFunc("/healthz", srv.handleHealthz)
 	mux.HandleFunc("/metrics", srv.handleMetrics)
 

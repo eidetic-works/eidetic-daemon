@@ -786,3 +786,19 @@ func topNInt(m map[int]int, n int) []map[string]any {
 	}
 	return out
 }
+
+// handleHooks serves GET /hooks. Returns per-hook config snapshot + fire counts
+// from the configured Dispatcher (v0.0.56+). 503 when hooks are not wired up
+// (no ~/.eidetic/hooks.json). Useful for dashboard/observability tooling.
+func (s *Server) handleHooks(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.hookStatusFn == nil {
+		http.Error(w, "hooks not configured (drop ~/.eidetic/hooks.json to enable)", http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(s.hookStatusFn())
+}
