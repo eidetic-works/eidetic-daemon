@@ -59,3 +59,44 @@ D1 requires a $5/mo Workers paid plan as a prerequisite, making it a $60/year ma
 **Privacy posture:** R2 blobs are encrypted at rest by default (Cloudflare-managed keys). Worker-side encryption with a user-supplied key is a W3+ enhancement — not required for W2 launch where the value proposition is "your engrams follow you across machines" not "your engrams are zero-knowledge to Cloudflare."
 
 **Reference:** Cloudflare D1 pricing (developers.cloudflare.com/d1/platform/pricing/); R2 pricing (developers.cloudflare.com/r2/pricing/); Workers pricing (developers.cloudflare.com/workers/platform/pricing/); CHANGELOG.md W2+ candidate "Cloudflare D1+R2+Workers cloud sync (per ADR-005, encrypted blobs only)".
+
+---
+
+## ADR-020 (2026-05-20): Local-first AI privacy posture — every network call is opt-in
+
+**Decision:** Codify the "engrams never leave your machine without explicit user action" promise as a checked-into-source contract. Every code path that touches the network must be (a) opt-in via user-side config and (b) enumerated in this ADR with a curl-reproducible test.
+
+**Why:** PROMPT.md, the landing page, and `nucleus_ask`'s instructions all repeat this claim informally ("engrams never leave your machine"). As features grow (Pro sync, web dashboard, Team shared-context, future AI-recall variants), the promise needs a single source of truth that engineers can verify against — and customers can audit.
+
+**The contract.** As of v0.0.43, eidetic-daemon makes outbound network connections in exactly these cases:
+
+| Code path | Trigger | Opt-in via | What's sent | Recipient |
+|---|---|---|---|---|
+| `/sync` upload | sync.json present + 60-min timer or `--sync-now` | User drops sync.json | Encrypted-at-rest SQLite blob | Cloudflare R2 (user's bucket on Pro; user's own on BYOR2) |
+| `/download` for restore | `eideticd --restore` invocation | User runs the flag | None (GET request) | Cloudflare R2 (same as above) |
+| `/healthz` check | `eideticd --check` invocation | User runs the flag | None (HEAD request) | Configured Worker URL |
+| GitHub releases poll | 24h timer (v0.0.37+) | Always on (telemetry-free; HEAD-only request to GH redirect) | None | `github.com/eidetic-works/eidetic-daemon/releases/latest` |
+| `gumroad-kit-sync` ping | `pip install eidetic-mcp` post-install hook (when enabled) | User-side toggle (opt-out via `EIDETIC_PING=0`) | Single 204-target ping, no payload, no tracking ID | `gumroad-kit-sync.morning-lake-f944.workers.dev/ping` |
+
+**Never sent over the network:** engram payloads (without sync.json), file paths, surface IDs, hostname, OS version, user identity, capture metadata, MCP tool call arguments, MCP tool call results, `nucleus_ask` questions or answers.
+
+**What `nucleus_ask` does NOT do:** call an external LLM, call an embedding service, send the question or matching engrams to any third party. The "AI" is the host LLM (Claude Code / Cursor) reading the local engrams in-context. Daemon and MCP only do FTS retrieval + scaffolding.
+
+**Auditable today.** Every claim above is reproducible:
+
+```sh
+# Capture every outbound socket the daemon opens for 60 seconds:
+sudo tcpdump -i any -nn 'src host '"$(hostname -I | awk '{print $1}')"' and (tcp[tcpflags] & tcp-syn) != 0' -c 100 &
+sleep 60; kill %1
+# Expected output (without sync.json): 0 lines OR one HEAD to github.com once per 24h.
+```
+
+For the inverse (Pro sync ACTIVE), the same tcpdump shows exactly one POST per 60 min to the configured Worker URL — nothing else.
+
+**Failure modes acknowledged:**
+- If a user's Worker URL gets hijacked at DNS (compromised account) the daemon will upload to the attacker. Mitigation: bearer-token auth on the Worker side; users should rotate API keys via `wrangler kv:key delete` if credential leak is suspected.
+- The 24h GitHub poll could be used to fingerprint deployment patterns. Mitigation: every install hits the same URL (no per-install identifier sent); poll is HEAD-only so the request body is empty.
+
+**Posture lock-in.** This ADR is a HARD CONTRACT. Any future code adding outbound network calls must (a) add a row to the table above, (b) be opt-in or HEAD-only-with-no-data, (c) pass the tcpdump-audit test. PRs that add network calls without ADR amendment must be rejected.
+
+**Reference:** PROMPT.md ("nucleus_ask: your engrams never leave your machine"); landing 5th bullet; SECURITY.md threat model; CHANGELOG.md v0.0.32 / v0.0.37 / v0.0.42 (the network-touching ships this audits).
