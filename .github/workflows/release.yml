@@ -80,6 +80,20 @@ jobs:
           git clone "https://x-access-token:${HOMEBREW_TAP_PAT}@github.com/eidetic-works/homebrew-nucleus.git" "$TAP_DIR"
           cd "$TAP_DIR"
 
+          # Semver guard: never downgrade. Tag pushes are sometimes out-of-order
+          # (hotfix re-tag, forgotten fold-back) — if the tap is already at a
+          # higher version, skip rather than regress users.
+          NEW_VER="${{ steps.shas.outputs.version }}"
+          CUR_VER=$(grep -E '^\s*version\s+' Formula/eideticd.rb | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || true)
+          if [ -n "$CUR_VER" ]; then
+            # Compare via sort -V (-V handles semver lexically)
+            HIGHER=$(printf '%s\n%s\n' "$CUR_VER" "$NEW_VER" | sort -V | tail -1)
+            if [ "$HIGHER" != "$NEW_VER" ] || [ "$CUR_VER" = "$NEW_VER" ]; then
+              echo "::warning::Tap already at $CUR_VER ≥ pushing tag $NEW_VER — skip (no downgrade)."
+              exit 0
+            fi
+          fi
+
           # Regenerate Formula/eideticd.rb with new version + SHAs.
           # Preserves the def install + def caveats blocks via marker-aware render.
           cat > Formula/eideticd.rb <<RUBY
