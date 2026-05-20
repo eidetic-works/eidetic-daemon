@@ -452,6 +452,51 @@ class DaemonClient:
             raise DaemonError(f"expected object, got {type(body).__name__}")
         return body
 
+    def timeline(
+        self,
+        since: int = 0,
+        before: int = 0,
+        surfaces: Sequence[str] = (),
+        limit: int = 200,
+    ) -> dict:
+        """GET /timeline — cross-surface chronological engram stream (v0.0.47+).
+
+        Returns the daemon's /timeline JSON verbatim as a dict with keys
+        ``engrams`` (list of engram dicts ordered by ts asc, interleaved
+        across the requested surfaces), ``count`` (int), and ``surfaces``
+        (the list of surfaces requested; may be empty when no filter was
+        applied).
+
+        Args:
+            since: Unix nanoseconds lower bound (exclusive). 0 = no bound.
+            before: Unix nanoseconds upper bound (exclusive). 0 = no bound.
+            surfaces: surfaces to interleave (empty = all surfaces).
+            limit: max engrams to return. Client-validated to 1..1000;
+                daemon also caps at 1000.
+
+        Raises ValueError when limit is outside 1..1000. Raises DaemonError
+        on transport failure or daemons predating v0.0.47.
+        """
+        if not isinstance(limit, int) or limit < 1 or limit > 1000:
+            raise ValueError(
+                f"limit must be in 1..1000, got {limit!r}"
+            )
+        params: list[tuple[str, str]] = []
+        if since > 0:
+            params.append(("since", str(since)))
+        if before > 0:
+            params.append(("before", str(before)))
+        if surfaces:
+            # Daemon expects comma-separated surfaces in a single query param.
+            joined = ",".join(s for s in surfaces if s)
+            if joined:
+                params.append(("surfaces", joined))
+        params.append(("limit", str(limit)))
+        body = self._get_json(f"/timeline?{urlencode(params)}")
+        if not isinstance(body, dict):
+            raise DaemonError(f"expected object, got {type(body).__name__}")
+        return body
+
 
 def _parse_engram(row: object) -> Engram:
     if not isinstance(row, dict):

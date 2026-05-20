@@ -71,6 +71,15 @@ Tools exposed:
     verbatim with `instructions` field promoted to the top of the
     payload so the host LLM renders the recap correctly.
 
+  nucleus_timeline(window="7d", surfaces=[], limit=200)
+    Cross-surface chronological engram stream (v0.0.7+). Calls daemon's
+    /timeline endpoint (v0.0.47+). window ∈ {"24h", "7d", "30d"} maps
+    to a since= lower bound. Optional `surfaces` filter restricts to a
+    set of surfaces; empty = all surfaces. Returns the daemon JSON
+    (engrams interleaved by ts asc) plus an `instructions` field
+    promoted to the top of the payload telling the host LLM to render
+    the result as a brief activity narrative.
+
 Run:
 
     eideticd &                          # daemon listens on UDS
@@ -94,6 +103,7 @@ Set EIDETIC_UDS_PATH to override the default UDS path.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import asdict
 from typing import Any
 
@@ -135,6 +145,29 @@ def _question_to_fts(question: str) -> str:
     # OR explicitly so a 5-word question doesn't require all 5 to land in
     # the same engram.
     return " OR ".join(keywords)
+
+
+# Window strings → seconds; mirrors the daemon's /digest window vocabulary so
+# nucleus_timeline can map a friendly window arg to a since= lower bound.
+_WINDOW_SECONDS = {
+    "24h": 24 * 3600,
+    "7d": 7 * 24 * 3600,
+    "30d": 30 * 24 * 3600,
+}
+
+
+def _window_to_since_ns(window: str) -> int:
+    """Map {'24h','7d','30d'} → since-nanoseconds = now - window.
+
+    Raises ValueError for any other window string. Used by nucleus_timeline
+    so the host LLM can pass a friendly string instead of computing a
+    nanosecond timestamp.
+    """
+    if window not in _WINDOW_SECONDS:
+        raise ValueError(
+            f"window must be one of '24h', '7d', '30d', got {window!r}"
+        )
+    return time.time_ns() - _WINDOW_SECONDS[window] * 1_000_000_000
 
 
 # Lazy import of mcp SDK so client.py + tests can be exercised without it.
@@ -525,6 +558,47 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "required": [],
                 },
             ),
+            Tool(
+                name="nucleus_timeline",
+                description=(
+                    "Cross-surface chronological engram stream (v0.0.7+). Calls the "
+                    "daemon's /timeline endpoint (v0.0.47+) and returns the JSON: "
+                    "engrams (interleaved by ts ascending across the requested "
+                    "surfaces), count, surfaces, plus an `instructions` field "
+                    "(promoted to the top of the payload) telling the host LLM to "
+                    "render the result as a brief activity narrative.\n\n"
+                    "Use this to answer 'what was I doing on a given day across "
+                    "every tool at once?' — pairs naturally with `nucleus_digest` "
+                    "for a quick stats-then-narrative recap.\n\n"
+                    "`window` ∈ {'24h', '7d' (default), '30d'} sets a `since=` "
+                    "lower bound. Optional `surfaces` filter restricts to a list "
+                    "of surfaces (e.g. ['claude_code', 'cursor']); empty = all "
+                    "surfaces. `limit` defaults to 200, capped at 1000. The tool "
+                    "does NOT call any external LLM — your engrams never leave the local daemon."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "window": {
+                            "type": "string",
+                            "description": "Time window for the timeline. One of '24h', '7d', '30d'. Default '7d'.",
+                            "enum": ["24h", "7d", "30d"],
+                        },
+                        "surfaces": {
+                            "type": "array",
+                            "description": "Optional list of surfaces to interleave. Empty = all surfaces.",
+                            "items": {"type": "string"},
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Max engrams to return (default 200, max 1000).",
+                            "minimum": 1,
+                            "maximum": 1000,
+                        },
+                    },
+                    "required": [],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -717,6 +791,37 @@ def build_server(client: DaemonClient | None = None) -> Any:
             # stays prominent at the top of the dict by reinjecting it first.
             if isinstance(body, dict) and "instructions" in body:
                 ordered = {"instructions": body["instructions"]}
+                for k, v in body.items():
+                    if k != "instructions":
+                        ordered[k] = v
+                body = ordered
+            return [TextContent(type="text", text=json.dumps(body, indent=2))]
+
+        if name == "nucleus_timeline":
+            window = str(arguments.get("window", "7d")).strip() or "7d"
+            raw_surfaces = arguments.get("surfaces", []) or []
+            if not isinstance(raw_surfaces, list):
+                return [TextContent(type="text", text="error: surfaces must be a list of strings")]
+            surfaces = [str(s).strip() for s in raw_surfaces if str(s).strip()]
+            limit = int(arguments.get("limit", 200))
+            try:
+                since = _window_to_since_ns(window)
+            except ValueError as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            try:
+                body = daemon.timeline(since=since, surfaces=surfaces, limit=limit)
+            except (DaemonError, ValueError) as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            # Promote `instructions` to the top of the payload so the host LLM
+            # reads it before parsing the engram stream. Daemon's /timeline
+            # does not author one daemon-side; we inject a static instruction
+            # tailored to the cross-tool narrative use case.
+            instructions = (
+                "These are cross-tool engrams in chronological order. "
+                "Render as a brief activity narrative."
+            )
+            if isinstance(body, dict):
+                ordered: dict[str, Any] = {"instructions": instructions}
                 for k, v in body.items():
                     if k != "instructions":
                         ordered[k] = v

@@ -21,6 +21,7 @@ Per spec § 7 Open Q #5: this is the "separate Python wrapper" path — the daem
 | `count_engrams` | `surface` (optional), `since` (unix ns, optional) | Return `{"count": N}` for engrams matching optional surface and time filters. Never fetches rows (v0.0.20+). |
 | `delete_engram_by_id` | `id` (required — positive integer) | Remove a single engram by primary key. Returns `{"deleted": 1}`. Error on non-existent ID or non-positive integer. Irreversible (v0.0.19+). |
 | `nucleus_digest` | `window` (one of `"24h"`, `"7d"` (default), `"30d"`) | Windowed activity recap (v0.0.6+; requires daemon v0.0.47+). Calls `GET /digest?window=...` and returns the JSON verbatim: `window`, `since`, `total_engrams`, `by_surface`, `top_hours`, `top_terms`, `sample_engrams`, plus an `instructions` field (promoted to the top of the payload) telling the host LLM how to render the recap. |
+| `nucleus_timeline` | `window` (one of `"24h"`, `"7d"` (default), `"30d"`), `surfaces` (optional list, empty = all surfaces), `limit` (default 200, max 1000) | Cross-surface chronological engram stream (v0.0.7+; requires daemon v0.0.47+). Calls `GET /timeline?since=...&limit=...&surfaces=...` and returns the daemon JSON: `engrams` (interleaved by `ts` ascending across the requested surfaces), `count`, `surfaces`, plus an `instructions` field (promoted to the top of the payload) telling the host LLM to render the result as a brief activity narrative. Pairs naturally with `nucleus_digest` for stats-then-narrative recaps. |
 
 ### Chunked-record reassembly (ADR-018)
 
@@ -157,6 +158,18 @@ nucleus_digest(window="7d")
     "top_hours": [...],
     "top_terms": [...],
     "sample_engrams": [...]
+  }
+
+nucleus_timeline(window="24h", surfaces=["claude_code","cursor"], limit=50)
+→ {
+    "instructions": "These are cross-tool engrams in chronological order. Render as a brief activity narrative.",
+    "engrams": [
+      {"id":N,"surface":"claude_code","ts":...,"payload":"...","meta":""},
+      {"id":N,"surface":"cursor","ts":...,"payload":"...","meta":""},
+      ...
+    ],
+    "count": 42,
+    "surfaces": ["claude_code","cursor"]
   }
 ```
 
