@@ -1,0 +1,31 @@
+{
+  "name": "eidetic-obsidian",
+  "version": "0.0.1",
+  "description": "Eidetic Engrams plugin for Obsidian: capture notes + recall via eidetic-daemon.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit && node esbuild.config.mjs production",
+    "check-types": "tsc --noEmit"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "eidetic",
+    "engram",
+    "recall",
+    "memory"
+  ],
+  "author": "Eidetic Works",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.20.0",
+    "obsidian": "^1.5.7",
+    "typescript": "^5.3.3"
+  },
+  "peerDependencies": {
+    "obsidian": "^1.5.7"
+  }
+}

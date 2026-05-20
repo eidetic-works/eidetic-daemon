@@ -1,0 +1,10 @@
+{
+  "id": "eidetic-obsidian",
+  "name": "Eidetic Engrams",
+  "version": "0.0.1",
+  "minAppVersion": "1.0.0",
+  "description": "Capture notes to eidetic-daemon and recall engrams from any Obsidian vault.",
+  "author": "Eidetic Works",
+  "authorUrl": "https://eidetic.works",
+  "isDesktopOnly": false
+}
