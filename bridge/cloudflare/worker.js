@@ -1,6 +1,6 @@
 /**
  * eidetic-sync Worker — receives SQLite backup uploads from eideticd and
- * stores them in R2 at engrams/{device_id}/engrams-{ts}.db
+ * stores them in R2.
  *
  * Environment bindings (set in wrangler.toml / CF dashboard):
  *   EIDETIC_SYNC_BUCKET  — R2 bucket binding
@@ -12,14 +12,19 @@
  *     If KV binding is present, KV is always checked first.
  *   Fallback mode (dev/self-hosted): EIDETIC_API_KEY env var, exact match.
  *
+ * R2 key layout:
+ *   engrams/<device_id>/engrams-<ts>.db          — per-device backup (all tiers)
+ *   engrams/team/<team_id>/<device_id>/engrams-<ts>.db — team copy (dual-written when X-Team-ID present)
+ *
  * Add a Pro key:   wrangler kv:key put --namespace-id=<id> <sha256(key)> '{"email":"...","device_id":"...","added":"..."}'
  * Revoke a key:    wrangler kv:key delete --namespace-id=<id> <sha256(key)>
  *
  * Endpoints:
- *   POST /sync           — upload engrams.db blob for a device
- *   GET  /latest         — return metadata for the most recent backup
- *   GET  /download       — stream the most recent backup blob (used by eideticd --restore)
- *   GET  /healthz        — liveness probe
+ *   POST /sync              — upload engrams.db blob; dual-writes to team prefix if X-Team-ID set
+ *   GET  /latest            — return metadata for the most recent backup
+ *   GET  /download          — stream the most recent backup blob (used by eideticd --restore)
+ *   GET  /team-engrams      — list all members' latest backups for a team (requires X-Team-ID)
+ *   GET  /healthz           — liveness probe
  */
 
 export default {
@@ -42,6 +47,10 @@ export default {
 
     if (url.pathname === "/download" && request.method === "GET") {
       return handleDownload(request, env);
+    }
+
+    if (url.pathname === "/team-engrams" && request.method === "GET") {
+      return handleTeamEngrams(request, env);
     }
 
     return new Response("not found", { status: 404 });
@@ -80,13 +89,15 @@ async function sha256hex(text) {
     .join("");
 }
 
+const DEVICE_ID_RE = /^[a-z0-9_-]{4,64}$/;
+
 async function handleSync(request, env) {
   if (!(await isAuthorized(request, env))) {
     return new Response("unauthorized", { status: 401 });
   }
 
   const deviceId = request.headers.get("X-Device-ID");
-  if (!deviceId || !/^[a-z0-9_-]{4,64}$/.test(deviceId)) {
+  if (!deviceId || !DEVICE_ID_RE.test(deviceId)) {
     return new Response("X-Device-ID header required (4-64 lowercase alphanum/-/_)", {
       status: 400,
     });
@@ -104,20 +115,37 @@ async function handleSync(request, env) {
 
   const tsMs = Date.now();
   const key = `engrams/${deviceId}/engrams-${tsMs}.db`;
+  const uploadedAt = new Date(tsMs).toISOString();
 
   await env.EIDETIC_SYNC_BUCKET.put(key, body, {
     httpMetadata: { contentType: "application/x-sqlite3" },
     customMetadata: {
       deviceId,
-      uploadedAt: new Date(tsMs).toISOString(),
+      uploadedAt,
       byteLength: String(body.byteLength),
     },
   });
 
   await pruneOldBackups(env, deviceId, 5);
 
+  // Team dual-write: if X-Team-ID is present, also write under the team prefix.
+  let teamKey = null;
+  const teamId = request.headers.get("X-Team-ID");
+  if (teamId && DEVICE_ID_RE.test(teamId)) {
+    teamKey = `engrams/team/${teamId}/${deviceId}/engrams-${tsMs}.db`;
+    await env.EIDETIC_SYNC_BUCKET.put(teamKey, body, {
+      httpMetadata: { contentType: "application/x-sqlite3" },
+      customMetadata: {
+        deviceId,
+        teamId,
+        uploadedAt,
+        byteLength: String(body.byteLength),
+      },
+    });
+  }
+
   return new Response(
-    JSON.stringify({ key, byteLength: body.byteLength, uploadedAt: new Date(tsMs).toISOString() }),
+    JSON.stringify({ key, teamKey, byteLength: body.byteLength, uploadedAt }),
     {
       status: 201,
       headers: { "Content-Type": "application/json" },
@@ -196,6 +224,71 @@ async function handleDownload(request, env) {
       "X-Uploaded-At": latest.customMetadata?.uploadedAt ?? "",
     },
   });
+}
+
+/**
+ * Lists all members' latest backups for a team.
+ * Requires X-Team-ID header. Reads from the engrams/team/<team_id>/ prefix.
+ * Optional ?since=<unix-ts> filters to objects uploaded after that timestamp.
+ * Caps at 100 R2 objects (covers 100 individual uploads, not 100 members).
+ */
+async function handleTeamEngrams(request, env) {
+  if (!(await isAuthorized(request, env))) {
+    return new Response("unauthorized", { status: 401 });
+  }
+
+  const teamId = request.headers.get("X-Team-ID");
+  if (!teamId || !DEVICE_ID_RE.test(teamId)) {
+    return new Response("X-Team-ID header required (4-64 lowercase alphanum/-/_)", {
+      status: 400,
+    });
+  }
+
+  const sinceParam = new URL(request.url).searchParams.get("since");
+  const sinceMs = sinceParam ? parseInt(sinceParam, 10) * 1000 : 0;
+
+  const listed = await env.EIDETIC_SYNC_BUCKET.list({
+    prefix: `engrams/team/${teamId}/`,
+    limit: 100,
+  });
+
+  // Group by device_id, keep only the latest key per device.
+  // Key shape: engrams/team/<team_id>/<device_id>/engrams-<ts>.db
+  const memberMap = new Map();
+  for (const obj of listed.objects ?? []) {
+    const parts = obj.key.split("/");
+    const devId = parts[3];
+    if (!devId) continue;
+
+    const uploadedAt = obj.customMetadata?.uploadedAt ?? null;
+    if (sinceMs && uploadedAt) {
+      if (new Date(uploadedAt).getTime() < sinceMs) continue;
+    }
+
+    // customMetadata not returned by R2 list() — parse ts from key name as fallback.
+    // Key: engrams/team/<tid>/<did>/engrams-<tsMs>.db
+    let resolvedAt = uploadedAt;
+    if (!resolvedAt) {
+      const filename = obj.key.split("/").pop() ?? "";
+      const tsMs = parseInt(filename.replace("engrams-", "").replace(".db", ""), 10);
+      if (!isNaN(tsMs)) resolvedAt = new Date(tsMs).toISOString();
+    }
+
+    const existing = memberMap.get(devId);
+    if (!existing || obj.key > existing.latest_key) {
+      memberMap.set(devId, {
+        device_id: devId,
+        latest_key: obj.key,
+        uploaded_at: resolvedAt,
+        bytes: obj.size,
+      });
+    }
+  }
+
+  return new Response(
+    JSON.stringify({ team_id: teamId, members: Array.from(memberMap.values()) }),
+    { headers: { "Content-Type": "application/json" } }
+  );
 }
 
 async function pruneOldBackups(env, deviceId, keepN) {
