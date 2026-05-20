@@ -53,6 +53,8 @@ func main() {
 	installSvc := flag.Bool("install", false, "register eideticd as a login-time service (launchd on macOS, systemd-user on Linux) and exit")
 	uninstallSvc := flag.Bool("uninstall", false, "stop + unregister the login-time service and optionally delete local data; inverse of -install")
 	uninstallPurge := flag.Bool("purge", false, "with -uninstall: skip interactive confirm and delete <dataDir> (engrams.db, state, tokens)")
+	initFlag := flag.Bool("init", false, "first-run interactive setup wizard — creates dataDir, detects surfaces, optionally registers service + pastes Pro sync.json, smoke-tests /healthz")
+	initYes := flag.Bool("yes", false, "with -init: skip prompts and accept defaults (non-interactive setup)")
 	flag.Parse()
 
 	if *showVersion {
@@ -63,6 +65,21 @@ func main() {
 	if *installSvc {
 		if err := installService(); err != nil {
 			log.Fatalf("install: %v", err)
+		}
+		return
+	}
+
+	if *initFlag {
+		dd := os.Getenv("EIDETIC_DATA_DIR")
+		if dd == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				log.Fatalf("init: resolve home: %v", err)
+			}
+			dd = filepath.Join(home, ".eidetic")
+		}
+		if err := initWizard(dd, *initYes); err != nil {
+			log.Fatalf("init: %v", err)
 		}
 		return
 	}
