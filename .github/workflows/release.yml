@@ -56,3 +56,106 @@ jobs:
             release/eideticd-linux-arm64.tar.gz
             release/eideticd-windows-amd64.zip
           generate_release_notes: true
+
+      - name: Compute SHA256s for Homebrew formula
+        id: shas
+        run: |
+          DARWIN_ARM64=$(shasum -a 256 release/eideticd-darwin-arm64.tar.gz | awk '{print $1}')
+          LINUX_AMD64=$(shasum -a 256 release/eideticd-linux-amd64.tar.gz   | awk '{print $1}')
+          LINUX_ARM64=$(shasum -a 256 release/eideticd-linux-arm64.tar.gz   | awk '{print $1}')
+          echo "darwin_arm64=${DARWIN_ARM64}" >> $GITHUB_OUTPUT
+          echo "linux_amd64=${LINUX_AMD64}" >> $GITHUB_OUTPUT
+          echo "linux_arm64=${LINUX_ARM64}" >> $GITHUB_OUTPUT
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Update Homebrew formula in tap
+        if: env.HOMEBREW_TAP_PAT != ''
+        env:
+          HOMEBREW_TAP_PAT: ${{ secrets.HOMEBREW_TAP_PAT }}
+        run: |
+          set -euo pipefail
+          TAP_DIR=$(mktemp -d)
+          git clone "https://x-access-token:${HOMEBREW_TAP_PAT}@github.com/eidetic-works/homebrew-nucleus.git" "$TAP_DIR"
+          cd "$TAP_DIR"
+
+          # Regenerate Formula/eideticd.rb with new version + SHAs.
+          # Preserves the def install + def caveats blocks via marker-aware render.
+          cat > Formula/eideticd.rb <<RUBY
+          class Eideticd < Formula
+            desc "Always-on memory daemon for AI workflows — captures Claude Code, Cursor, and Cowork sessions to local SQLite"
+            homepage "https://eidetic.works"
+            version "${{ steps.shas.outputs.version }}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/eidetic-works/eidetic-daemon/releases/download/${{ steps.shas.outputs.tag }}/eideticd-darwin-arm64.tar.gz"
+                sha256 "${{ steps.shas.outputs.darwin_arm64 }}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/eidetic-works/eidetic-daemon/releases/download/${{ steps.shas.outputs.tag }}/eideticd-linux-amd64.tar.gz"
+                sha256 "${{ steps.shas.outputs.linux_amd64 }}"
+              end
+              on_arm do
+                url "https://github.com/eidetic-works/eidetic-daemon/releases/download/${{ steps.shas.outputs.tag }}/eideticd-linux-arm64.tar.gz"
+                sha256 "${{ steps.shas.outputs.linux_arm64 }}"
+              end
+            end
+
+            def install
+              bin.install "eideticd"
+            end
+
+            def caveats
+              <<~EOS
+                Register eideticd as a login-time service (launchd / systemd-user):
+                  eideticd -install
+
+                Check it's running:
+                  curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/healthz
+
+                Show your engram stats:
+                  eideticd -stats
+
+                Validate cloud sync (Pro):
+                  eideticd --check
+
+                MCP bridge for Claude Code / Cursor:
+                  pip install eidetic-mcp
+                  claude mcp add eidetic -- python -m eidetic_mcp.server
+
+                Browse engrams in the browser:
+                  eideticd -bridge :8421
+                  open https://eidetic.works/dashboard
+              EOS
+            end
+
+            test do
+              system "#{bin}/eideticd", "-version"
+            end
+          end
+          RUBY
+
+          git config user.name  "eidetic-works-bot"
+          git config user.email "bot@eidetic.works"
+          git add Formula/eideticd.rb
+          if git diff --cached --quiet; then
+            echo "formula already up to date"
+            exit 0
+          fi
+          git commit -m "eideticd ${{ steps.shas.outputs.tag }} (auto from release workflow)"
+          git push origin main
+
+      - name: Tap update skipped (no PAT)
+        if: env.HOMEBREW_TAP_PAT == ''
+        env:
+          HOMEBREW_TAP_PAT: ${{ secrets.HOMEBREW_TAP_PAT }}
+        run: |
+          echo "::warning::HOMEBREW_TAP_PAT secret not set — Homebrew tap NOT updated."
+          echo "::warning::To enable auto-tap-update: create a PAT with repo scope on eidetic-works/homebrew-nucleus,"
+          echo "::warning::then add it as the HOMEBREW_TAP_PAT secret in eidetic-works/eidetic-daemon settings."
