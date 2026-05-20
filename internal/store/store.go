@@ -647,3 +647,20 @@ func defaultDBPath() (string, error) {
 	}
 	return filepath.Join(home, ".eidetic", "engrams.db"), nil
 }
+
+// Vacuum runs SQLite VACUUM to compact the database and reclaim space lost
+// to deleted/purged rows. SQLite's VACUUM rewrites the entire DB file with
+// no free pages, which can shrink a fragmented store by 20-40% in heavy-purge
+// scenarios. Long-running stores accumulate free pages even with auto_vacuum
+// enabled because WAL fragmentation isn't fully reclaimed until VACUUM.
+//
+// Must be called with no concurrent writers — typical use is `eideticd --vacuum`
+// while the daemon is stopped (the launchd plist's KeepAlive will restart it).
+// Holds an EXCLUSIVE lock for the duration; readers also blocked.
+//
+// Idempotent on already-compact DBs. Cost: ~5s per 100 MB on M-series Mac SSD.
+// (v0.0.54+)
+func (s *Store) Vacuum(ctx context.Context) error {
+	_, err := s.writer.ExecContext(ctx, "VACUUM;")
+	return err
+}

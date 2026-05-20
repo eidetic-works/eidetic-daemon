@@ -6,6 +6,22 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.54] — 2026-05-20
+
+`eideticd --vacuum` — SQLite compaction for long-running stores.
+
+### Added
+
+- **`Store.Vacuum(ctx)`** in `internal/store/store.go` — runs `VACUUM;` on the writer connection. Documented preconditions: no concurrent writers, EXCLUSIVE lock for the duration, idempotent on already-compact DBs.
+- **`--vacuum`** CLI flag — opens store, runs Vacuum, reports before/after file size + reclaimed bytes. Daemon must be down (acquires write lock).
+- 1 new test: `TestVacuumReducesSize` — insert 500 rows × 1 KB, purge 490 of them (fragments), VACUUM, verify count + no error.
+
+### Why
+
+Long-running stores accumulate WAL fragmentation that auto_vacuum doesn't fully reclaim. After purges or large delete-byid sweeps, the file holds free pages. VACUUM rewrites the whole file with no free pages — typical reduction 20-40% in heavy-purge scenarios. Hygiene ship for power users + the `eideticd-compliance` daemon's scheduled retention runs.
+
+---
+
 ## [v0.0.53] — 2026-05-20
 
 Refactor: `internal/textsearch` package — single source of truth for FTS question rewriting.

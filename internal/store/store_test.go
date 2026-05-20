@@ -516,3 +516,32 @@ func TestRetrieveNoFiltersReturnsAll(t *testing.T) {
 		t.Fatalf("no-filter retrieve: want 10, got %d", len(got))
 	}
 }
+
+func TestVacuumReducesSize(t *testing.T) {
+	st := tempStore(t)
+	defer st.Close()
+
+	ctx := context.Background()
+
+	for i := 0; i < 500; i++ {
+		_, err := st.Insert(ctx, engram.Engram{Surface: "test", TS: int64(i + 1), Payload: strings.Repeat("x", 1000)})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := st.Purge(ctx, "test", 491); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.Vacuum(ctx); err != nil {
+		t.Fatalf("Vacuum: %v", err)
+	}
+
+	n, err := st.Count(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 10 {
+		t.Errorf("post-vacuum count: got %d, want 10", n)
+	}
+}

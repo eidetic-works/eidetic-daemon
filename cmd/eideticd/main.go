@@ -58,6 +58,7 @@ func main() {
 	askQuery := flag.String("ask", "", "ask a natural-language question, retrieve top engrams via FTS5, print answer-scaffolding to stdout. Reads the store directly — no daemon required.")
 	captureFlag := flag.Bool("capture", false, "read stdin as an engram and insert into the local store; pair with -surface NAME. Reads the store directly — no daemon required.")
 	captureSurface := flag.String("surface", "", "with -capture: surface tag for the engram (e.g. kubernetes, clipboard, browser). Required.")
+	vacuumFlag := flag.Bool("vacuum", false, "run SQLite VACUUM on engrams.db to compact + reclaim space. Requires daemon to be down (write-lock). Reports before/after size.")
 	installSvc := flag.Bool("install", false, "register eideticd as a login-time service (launchd on macOS, systemd-user on Linux) and exit")
 	uninstallSvc := flag.Bool("uninstall", false, "stop + unregister the login-time service and optionally delete local data; inverse of -install")
 	uninstallPurge := flag.Bool("purge", false, "with -uninstall: skip interactive confirm and delete <dataDir> (engrams.db, state, tokens)")
@@ -124,6 +125,34 @@ func main() {
 	// (auth-token, state.json, engrams.db all live under it).
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		log.Fatalf("mkdir dataDir %s: %v", dataDir, err)
+	}
+
+	// --vacuum: SQLite compaction. Daemon must be down (acquires write-lock).
+	// Reports before/after size; safe to run periodically. v0.0.54+.
+	if *vacuumFlag {
+		fi, statErr := os.Stat(dbPath)
+		var before int64
+		if statErr == nil {
+			before = fi.Size()
+		}
+		s, err := store.Open(dbPath)
+		if err != nil {
+			log.Fatalf("vacuum: open store: %v (is the daemon running? stop it first)", err)
+		}
+		fmt.Printf("vacuum: starting on %s (current: %.1f MB)\n", dbPath, float64(before)/1e6)
+		if err := s.Vacuum(context.Background()); err != nil {
+			s.Close()
+			log.Fatalf("vacuum: %v", err)
+		}
+		s.Close()
+		fi, _ = os.Stat(dbPath)
+		after := fi.Size()
+		saved := before - after
+		fmt.Printf("vacuum: complete\n")
+		fmt.Printf("  before: %.2f MB\n", float64(before)/1e6)
+		fmt.Printf("  after:  %.2f MB\n", float64(after)/1e6)
+		fmt.Printf("  saved:  %.2f MB (%.1f%%)\n", float64(saved)/1e6, 100.0*float64(saved)/float64(before))
+		return
 	}
 
 	// --ask: query the store via FTS5, print top engrams + answer-scaffolding.
