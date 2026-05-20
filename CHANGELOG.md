@@ -6,6 +6,25 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.55] — 2026-05-20
+
+Outbound webhook hooks — daemon fires HTTP events when matching engrams arrive.
+
+### Added
+
+- **`internal/hooks/` package** — config loader, dispatcher, hooked-sink wrapper. Zero-overhead when `~/.eidetic/hooks.json` is absent.
+- **`hooks.json` schema** — array of `{name, url, method?, headers?, match_pattern?, match_surface?, include_payload?, min_interval_sec?}`. See `docs/HOOKS.md` for the full reference + recipes.
+- **Sink-wrapping integration** — `hooks.Dispatcher.WrapSink(s)` decorates the store; fires hooks AFTER successful InsertBatch in goroutines (non-blocking capture path).
+- **Privacy posture** — `include_payload: false` default sends only `{hook, surface, timestamp, pattern}` (NO engram content). Opt-in for payload forwarding to user's own backends.
+- 9 new tests: load-config (missing + valid), dispatcher (nil/empty config), fire-on-match, surface filter, no-match-no-fire, rate-limit enforcement, include-payload opt-in, Names() helper.
+- **`docs/HOOKS.md`** — full reference + 4 recipes (Slack deploy-alert, backend mirror, per-surface routing, multi-pattern alerting).
+
+### Why
+
+Closes the "act on engrams as they arrive" gap. Until now, users could capture + recall but couldn't react. Hooks let any matching engram fire a webhook to Slack/Discord/PagerDuty/their own backend without an external watcher process.
+
+---
+
 ## [v0.0.54] — 2026-05-20
 
 `eideticd --vacuum` — SQLite compaction for long-running stores.

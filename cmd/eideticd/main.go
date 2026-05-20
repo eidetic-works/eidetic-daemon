@@ -26,6 +26,7 @@ import (
 	"github.com/eidetic-works/eidetic-daemon/internal/auth"
 	"github.com/eidetic-works/eidetic-daemon/internal/capture"
 	"github.com/eidetic-works/eidetic-daemon/internal/engram"
+	"github.com/eidetic-works/eidetic-daemon/internal/hooks"
 	eidetic_sync "github.com/eidetic-works/eidetic-daemon/internal/sync"
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
 	"github.com/eidetic-works/eidetic-daemon/internal/textsearch"
@@ -539,7 +540,20 @@ func main() {
 	if err != nil {
 		log.Fatalf("capture state load: %v", err)
 	}
-	watcher := capture.NewWatcher(s, state, capture.DefaultSurfaces(), 0)
+	// v0.0.55+: outbound webhook hooks. If ~/.eidetic/hooks.json exists,
+	// the dispatcher wraps the sink so matching engrams fire user-configured
+	// webhooks AFTER InsertBatch succeeds. nil-safe when config absent.
+	hookCfg, hookErr := hooks.LoadConfig(dataDir)
+	if hookErr != nil {
+		log.Printf("hooks: config error (hooks disabled): %v", hookErr)
+	}
+	hookDispatcher := hooks.NewDispatcher(hookCfg)
+	if names := hookDispatcher.Names(); len(names) > 0 {
+		log.Printf("hooks: %d webhook(s) registered: %v", len(names), names)
+	}
+	sink := hookDispatcher.WrapSink(s)
+
+	watcher := capture.NewWatcher(sink, state, capture.DefaultSurfaces(), 0)
 	watcherPtr = watcher // satisfy /metrics provider closure forward-decl
 	captureDone := make(chan struct{})
 	go func() {
