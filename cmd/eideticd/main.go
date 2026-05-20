@@ -12,6 +12,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -24,6 +25,7 @@ import (
 	"github.com/eidetic-works/eidetic-daemon/internal/api"
 	"github.com/eidetic-works/eidetic-daemon/internal/auth"
 	"github.com/eidetic-works/eidetic-daemon/internal/capture"
+	"github.com/eidetic-works/eidetic-daemon/internal/engram"
 	eidetic_sync "github.com/eidetic-works/eidetic-daemon/internal/sync"
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
 	"github.com/eidetic-works/eidetic-daemon/internal/versioncheck"
@@ -52,6 +54,9 @@ func main() {
 	checkSync := flag.Bool("check", false, "validate sync.json config and test Worker connectivity, then exit")
 	showBackups := flag.Bool("backups", false, "list recent cloud backups from local sync history, then exit")
 	showDigest := flag.String("digest", "", "print a recap of recent engrams (window: 24h | 7d | 30d), then exit. Reads the store directly — no daemon required.")
+	askQuery := flag.String("ask", "", "ask a natural-language question, retrieve top engrams via FTS5, print answer-scaffolding to stdout. Reads the store directly — no daemon required.")
+	captureFlag := flag.Bool("capture", false, "read stdin as an engram and insert into the local store; pair with -surface NAME. Reads the store directly — no daemon required.")
+	captureSurface := flag.String("surface", "", "with -capture: surface tag for the engram (e.g. kubernetes, clipboard, browser). Required.")
 	installSvc := flag.Bool("install", false, "register eideticd as a login-time service (launchd on macOS, systemd-user on Linux) and exit")
 	uninstallSvc := flag.Bool("uninstall", false, "stop + unregister the login-time service and optionally delete local data; inverse of -install")
 	uninstallPurge := flag.Bool("purge", false, "with -uninstall: skip interactive confirm and delete <dataDir> (engrams.db, state, tokens)")
@@ -118,6 +123,77 @@ func main() {
 	// (auth-token, state.json, engrams.db all live under it).
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		log.Fatalf("mkdir dataDir %s: %v", dataDir, err)
+	}
+
+	// --ask: query the store via FTS5, print top engrams + answer-scaffolding.
+	// Works without a running daemon (read-only store open). v0.0.51+.
+	if *askQuery != "" {
+		s, err := store.Open(dbPath)
+		if err != nil {
+			log.Fatalf("ask: open store: %v", err)
+		}
+		defer s.Close()
+		// Reuse the same question→FTS heuristic as the daemon's /ask endpoint
+		// (server-side questionToFTS is in internal/api; for the CLI we inline
+		// the equivalent — kept tiny so we don't pull api into cmd).
+		fts := cliQuestionToFTS(*askQuery)
+		ctx := context.Background()
+		rows, err := s.Search(ctx, fts, "", 10)
+		if err != nil {
+			// fall back to bare query
+			rows, err = s.Search(ctx, *askQuery, "", 10)
+			if err != nil {
+				log.Fatalf("ask: %v", err)
+			}
+		}
+		fmt.Printf("Question: %s\n", *askQuery)
+		fmt.Printf("FTS query: %s\n\n", fts)
+		if len(rows) == 0 {
+			fmt.Println("No engrams matched. Try broader keywords.")
+			return
+		}
+		fmt.Printf("Top %d matching engrams (host LLM: synthesize an answer from these):\n\n", len(rows))
+		for i, r := range rows {
+			ts := time.Unix(0, r.TS).UTC().Format("2006-01-02 15:04")
+			payload := r.Payload
+			if len(payload) > 300 {
+				payload = payload[:300] + "..."
+			}
+			payload = strings.ReplaceAll(payload, "\n", " ")
+			fmt.Printf("[%d] [%s @ %s]\n  %s\n\n", i+1, r.Surface, ts, payload)
+		}
+		return
+	}
+
+	// --capture: read stdin as an engram and insert directly. v0.0.52+.
+	if *captureFlag {
+		if *captureSurface == "" {
+			log.Fatal("capture: -surface required (e.g. -surface kubernetes)")
+		}
+		payload, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			log.Fatalf("capture: read stdin: %v", err)
+		}
+		if len(payload) == 0 {
+			log.Fatal("capture: stdin was empty")
+		}
+		s, err := store.Open(dbPath)
+		if err != nil {
+			log.Fatalf("capture: open store: %v", err)
+		}
+		defer s.Close()
+		e := engram.Engram{
+			Surface: *captureSurface,
+			TS:      time.Now().UnixNano(),
+			Payload: string(payload),
+			Meta:    `{"source":"cli-capture"}`,
+		}
+		id, err := s.Insert(context.Background(), e)
+		if err != nil {
+			log.Fatalf("capture: insert: %v", err)
+		}
+		fmt.Printf("captured engram id=%d surface=%s bytes=%d\n", id, *captureSurface, len(payload))
+		return
 	}
 
 	// --digest: read store + render the same recap shape as GET /digest.
@@ -509,4 +585,44 @@ func main() {
 	// (issue #17). watcher.Run defers inflight.Wait() so no pending
 	// InsertBatch remains when this returns.
 	<-captureDone
+}
+
+// cliQuestionToFTS is the CLI-side mirror of api.questionToFTS — kept tiny so
+// cmd/ doesn't pull internal/api. Strips short tokens + a small stop-word set,
+// OR-joins what remains. Falls back to the raw question if everything strips.
+func cliQuestionToFTS(question string) string {
+	stopwords := map[string]bool{
+		"a": true, "an": true, "the": true, "is": true, "was": true,
+		"i": true, "you": true, "we": true, "they": true, "it": true,
+		"what": true, "when": true, "where": true, "why": true, "how": true,
+		"do": true, "did": true, "have": true, "had": true,
+		"and": true, "or": true, "of": true, "to": true, "in": true, "on": true,
+		"for": true, "with": true, "from": true, "by": true, "at": true, "as": true,
+		"that": true, "this": true,
+	}
+	var keywords []string
+	var cur []rune
+	flush := func() {
+		if len(cur) == 0 {
+			return
+		}
+		t := strings.ToLower(string(cur))
+		cur = cur[:0]
+		if len(t) < 3 || stopwords[t] {
+			return
+		}
+		keywords = append(keywords, t)
+	}
+	for _, r := range question {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			cur = append(cur, r)
+		} else {
+			flush()
+		}
+	}
+	flush()
+	if len(keywords) == 0 {
+		return question
+	}
+	return strings.Join(keywords, " OR ")
 }

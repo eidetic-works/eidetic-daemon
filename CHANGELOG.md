@@ -6,6 +6,36 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.52] — 2026-05-20
+
+`eideticd --capture` — pipe any command's output into your engram store.
+
+### Added
+
+- **`--capture`** flag — reads stdin, inserts as engram with the surface tag from `--surface NAME`. Reads engrams.db read-only opener (works alongside running daemon). Engram meta tagged `{"source":"cli-capture"}`.
+- Use cases: `kubectl logs ... | eideticd --capture --surface kubernetes`, `pbpaste | eideticd --capture --surface clipboard`, `gh pr view 123 | eideticd --capture --surface github`.
+
+### Why
+
+Captures from any tool that writes to a pipe — opens the surface beyond fsnotify-watched directories. Compounds with --ask: now any tool's output is recall-able 5 minutes later.
+
+---
+
+## [v0.0.51] — 2026-05-20
+
+`eideticd --ask "<question>"` — terminal nucleus_ask without daemon or MCP.
+
+### Added
+
+- **`--ask`** flag — opens engrams.db read-only, runs question→FTS keyword extraction (mirrors API's questionToFTS), prints top-10 matching engrams as `[surface @ timestamp] payload` lines.
+- **`cliQuestionToFTS()`** — minimal helper in cmd/eideticd/main.go; kept tiny so cmd/ doesn't import internal/api.
+
+### Why
+
+Closes the "I want recall but I'm in a terminal, not Claude Code" gap. `eideticd --ask "what was that postgres trick"` works on any machine with the binary + engrams.db.
+
+---
+
 ## [v0.0.50] — 2026-05-20
 
 `eideticd --digest [24h|7d|30d]` — local recap without bridge listener.
