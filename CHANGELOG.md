@@ -6,6 +6,21 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.50] — 2026-05-20
+
+`eideticd --digest [24h|7d|30d]` — local recap without bridge listener.
+
+### Added
+
+- **`--digest`** flag — opens the engrams.db read-only (SQLite WAL allows concurrent readers; no contention with running daemon), aggregates engrams in the window, prints plain-text recap to stdout: total, per-surface counts, most recent 5 samples.
+- **Companion: `scripts/weekly-digest.sh`** — cron-friendly wrapper around `GET /digest` (UDS curl) that renders extended recap (top hours, top terms) + optionally pipes via `mail` or `tee` to `/tmp/eidetic-weekly-digest.txt`.
+
+### Why
+
+Pro Day-30 sketch (PRO_LAUNCH.md) called for a renewal-confidence recap. `--digest` makes it shippable: `0 9 * * 1 eideticd --digest 7d | mail -s "weekly recap" you@x.com`. No network, no Worker, no daemon-running requirement.
+
+---
+
 ## [v0.0.49] — 2026-05-20
 
 `/metrics` exposes `/ask` cache hit/miss counters.

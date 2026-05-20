@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -50,6 +51,7 @@ func main() {
 	showStats := flag.Bool("stats", false, "print engram database statistics and exit")
 	checkSync := flag.Bool("check", false, "validate sync.json config and test Worker connectivity, then exit")
 	showBackups := flag.Bool("backups", false, "list recent cloud backups from local sync history, then exit")
+	showDigest := flag.String("digest", "", "print a recap of recent engrams (window: 24h | 7d | 30d), then exit. Reads the store directly — no daemon required.")
 	installSvc := flag.Bool("install", false, "register eideticd as a login-time service (launchd on macOS, systemd-user on Linux) and exit")
 	uninstallSvc := flag.Bool("uninstall", false, "stop + unregister the login-time service and optionally delete local data; inverse of -install")
 	uninstallPurge := flag.Bool("purge", false, "with -uninstall: skip interactive confirm and delete <dataDir> (engrams.db, state, tokens)")
@@ -116,6 +118,64 @@ func main() {
 	// (auth-token, state.json, engrams.db all live under it).
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		log.Fatalf("mkdir dataDir %s: %v", dataDir, err)
+	}
+
+	// --digest: read store + render the same recap shape as GET /digest.
+	// Works without a running daemon (opens engrams.db read-only). v0.0.50+.
+	if *showDigest != "" {
+		var dur time.Duration
+		switch *showDigest {
+		case "24h":
+			dur = 24 * time.Hour
+		case "7d":
+			dur = 7 * 24 * time.Hour
+		case "30d":
+			dur = 30 * 24 * time.Hour
+		default:
+			log.Fatalf("digest: window must be 24h | 7d | 30d (got %q)", *showDigest)
+		}
+		// Use a separate read-only opener: even if the daemon is running,
+		// SQLite WAL allows concurrent readers without contention.
+		s, err := store.Open(dbPath)
+		if err != nil {
+			log.Fatalf("digest: open store: %v", err)
+		}
+		defer s.Close()
+		since := time.Now().Add(-dur).UnixNano()
+		ctx := context.Background()
+		rows, err := s.Retrieve(ctx, "", since, 0, 2000, true)
+		if err != nil {
+			log.Fatalf("digest: %v", err)
+		}
+		fmt.Printf("eideticd %s — %s recap\n", Version, *showDigest)
+		fmt.Println("=============================================")
+		fmt.Println()
+		fmt.Printf("Total engrams: %d\n\n", len(rows))
+		if len(rows) == 0 {
+			fmt.Println("No engrams in window. Nothing to recap.")
+			return
+		}
+		// Per-surface counts
+		bySurface := make(map[string]int)
+		for _, r := range rows {
+			bySurface[r.Surface]++
+		}
+		fmt.Println("By surface:")
+		for s, n := range bySurface {
+			fmt.Printf("  %-20s %d\n", s, n)
+		}
+		fmt.Println()
+		// Tail samples
+		fmt.Println("Most recent engrams:")
+		for _, r := range rows[max(0, len(rows)-5):] {
+			payload := r.Payload
+			if len(payload) > 100 {
+				payload = payload[:100] + "..."
+			}
+			payload = strings.ReplaceAll(payload, "\n", " ")
+			fmt.Printf("  [%s] %s\n", r.Surface, payload)
+		}
+		return
 	}
 
 	// --backups: list last N cloud uploads from local history file. No DB needed.
