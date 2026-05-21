@@ -2,6 +2,7 @@ package sync_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,8 +13,25 @@ import (
 	"testing"
 	"time"
 
+	"github.com/eidetic-works/eidetic-daemon/internal/engram"
+	"github.com/eidetic-works/eidetic-daemon/internal/store"
 	eidetic_sync "github.com/eidetic-works/eidetic-daemon/internal/sync"
 )
+
+// makeTestDB creates a real SQLite DB at the given path with the engram
+// schema applied. Required because upload() now calls VACUUM INTO via the
+// SQLite driver — a hand-written "SQLITE3" byte string is no longer valid.
+// Returns the *store.Store so callers can seed engrams + verify they
+// survive the snapshot/upload round-trip.
+func makeTestDB(t *testing.T, path string) *store.Store {
+	t.Helper()
+	s, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("makeTestDB: store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
 
 func TestLoadConfig_Missing(t *testing.T) {
 	dir := t.TempDir()
@@ -116,12 +134,10 @@ func TestUploadToWorker(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Write a fake SQLite file
+	// Create a real SQLite DB so VACUUM INTO can snapshot it.
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "engrams.db")
-	if err := os.WriteFile(dbPath, []byte("SQLITE3"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	_ = makeTestDB(t, dbPath)
 
 	cfg := &eidetic_sync.Config{
 		WorkerURL: srv.URL,
@@ -142,8 +158,10 @@ func TestUploadToWorker(t *testing.T) {
 	if gotContentType != "application/x-sqlite3" {
 		t.Errorf("Content-Type: got %q, want %q", gotContentType, "application/x-sqlite3")
 	}
-	if gotBodyLen != len("SQLITE3") {
-		t.Errorf("body length: got %d, want %d", gotBodyLen, len("SQLITE3"))
+	// Body now contains a real SQLite snapshot — assert minimum plausibility
+	// (must begin with the SQLite file magic + be non-trivial in size).
+	if gotBodyLen < 4096 {
+		t.Errorf("body length: got %d, want >= 4096 (real SQLite snapshot expected)", gotBodyLen)
 	}
 }
 
@@ -158,7 +176,7 @@ func TestUploadRejectsNon201(t *testing.T) {
 
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "engrams.db")
-	os.WriteFile(dbPath, []byte("SQLITE3"), 0600)
+	_ = makeTestDB(t, dbPath)
 
 	cfg := &eidetic_sync.Config{
 		WorkerURL: srv.URL,
@@ -301,7 +319,7 @@ func TestUploadWritesSyncState(t *testing.T) {
 
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "engrams.db")
-	os.WriteFile(dbPath, []byte("SQLITE3fake"), 0600)
+	_ = makeTestDB(t, dbPath)
 
 	cfg := &eidetic_sync.Config{
 		WorkerURL: srv.URL,
@@ -323,8 +341,8 @@ func TestUploadWritesSyncState(t *testing.T) {
 	if state.LastKey != backupKey {
 		t.Errorf("LastKey: got %q, want %q", state.LastKey, backupKey)
 	}
-	if state.LastBytes != int64(len("SQLITE3fake")) {
-		t.Errorf("LastBytes: got %d, want %d", state.LastBytes, len("SQLITE3fake"))
+	if state.LastBytes < 4096 {
+		t.Errorf("LastBytes: got %d, want >= 4096 (real SQLite snapshot)", state.LastBytes)
 	}
 }
 
@@ -373,7 +391,7 @@ func TestUploadSendsXTeamIDWhenSet(t *testing.T) {
 
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "engrams.db")
-	os.WriteFile(dbPath, []byte("SQLITE3"), 0600)
+	_ = makeTestDB(t, dbPath)
 
 	// Without team_id — header should be empty
 	cfgSolo := &eidetic_sync.Config{WorkerURL: srv.URL, APIKey: "k", DeviceID: "dev"}
@@ -410,7 +428,7 @@ func TestUploadAppendsHistory(t *testing.T) {
 
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "engrams.db")
-	os.WriteFile(dbPath, []byte("SQLITE3"), 0600)
+	_ = makeTestDB(t, dbPath)
 
 	cfg := &eidetic_sync.Config{WorkerURL: srv.URL, APIKey: "k", DeviceID: "dev"}
 	s := eidetic_sync.New(cfg, dbPath, dir, nil)
@@ -532,5 +550,91 @@ func TestCheckConfig_WorkerUnauth(t *testing.T) {
 	err := eidetic_sync.CheckConfig(cfg, t.TempDir())
 	if err == nil {
 		t.Fatal("expected error for 401 response")
+	}
+}
+
+// TestUploadSnapshotIncludesWALPages is the regression test for the CRITICAL
+// audit finding (`internal/sync/syncer.go:387-405`): WAL-mode SQLite holds
+// uncommitted-to-main-file pages in engrams.db-wal until checkpoint. The
+// pre-fix upload() called os.Open + io.ReadAll on the live engrams.db,
+// silently dropping every row that lived only in the WAL.
+//
+// This test inserts a row immediately before SyncNow (the most likely real-
+// world data-loss path: capture row → idle gate fires → upload). The mock
+// worker captures the uploaded body, and we open it with the SQLite driver
+// to assert the freshly-inserted row is present.
+//
+// Pre-fix: this test FAILS — the row sits in engrams.db-wal but the upload
+// streams the bare engrams.db, so SELECT in the snapshot returns 0 rows.
+// Post-fix (VACUUM INTO): SELECT returns the inserted row.
+func TestUploadSnapshotIncludesWALPages(t *testing.T) {
+	const expectedPayload = "wal-survival-test-payload"
+
+	uploadedBody := make(chan []byte, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		uploadedBody <- body
+		w.Header().Set("X-Backup-Key", "engrams/dev/test.db")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "engrams.db")
+	st := makeTestDB(t, dbPath)
+
+	// Insert a row right before sync. WAL mode means this row lives in the
+	// -wal sidecar file until checkpoint; raw-file upload would drop it.
+	ctx := context.Background()
+	id, err := st.Insert(ctx, engramFor(expectedPayload))
+	if err != nil {
+		t.Fatalf("seed insert: %v", err)
+	}
+	if id <= 0 {
+		t.Fatalf("seed insert returned id=%d, want > 0", id)
+	}
+
+	cfg := &eidetic_sync.Config{WorkerURL: srv.URL, APIKey: "k", DeviceID: "dev"}
+	syn := eidetic_sync.New(cfg, dbPath, dir, st)
+	if err := syn.SyncNow(); err != nil {
+		t.Fatalf("SyncNow: %v", err)
+	}
+
+	body := <-uploadedBody
+	if len(body) < 4096 {
+		t.Fatalf("uploaded body too short (%d bytes); expected a real SQLite file", len(body))
+	}
+
+	// Write uploaded body to a temp file and SELECT through the driver to
+	// confirm the row landed in the snapshot.
+	snapPath := filepath.Join(t.TempDir(), "snap.db")
+	if err := os.WriteFile(snapPath, body, 0o600); err != nil {
+		t.Fatalf("write snap: %v", err)
+	}
+	db, err := sql.Open("sqlite", "file:"+snapPath+"?mode=ro")
+	if err != nil {
+		t.Fatalf("open uploaded snapshot: %v", err)
+	}
+	defer db.Close()
+
+	var got string
+	if err := db.QueryRowContext(ctx,
+		`SELECT payload FROM engrams WHERE id = ?`, id,
+	).Scan(&got); err != nil {
+		t.Fatalf("uploaded snapshot missing seeded row id=%d: %v "+
+			"(this is the WAL-data-loss regression — VACUUM INTO must include uncommitted-to-main-file pages)",
+			id, err)
+	}
+	if got != expectedPayload {
+		t.Errorf("uploaded snapshot payload mismatch: got %q, want %q", got, expectedPayload)
+	}
+}
+
+func engramFor(payload string) engram.Engram {
+	return engram.Engram{
+		Surface: "test_surface",
+		TS:      time.Now().UnixNano(),
+		Payload: payload,
 	}
 }

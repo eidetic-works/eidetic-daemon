@@ -15,17 +15,21 @@ package sync
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
 	"github.com/fsnotify/fsnotify"
+
+	_ "modernc.org/sqlite"
 )
 
 const (
@@ -384,16 +388,65 @@ func RestoreFromConfig(cfg *Config, dbPath string) error {
 	return nil
 }
 
-func (s *Syncer) upload() error {
-	f, err := os.Open(s.dbPath)
+// snapshotDB produces a consistent point-in-time copy of the WAL-mode SQLite
+// DB at s.dbPath into a temp file alongside it, returning the temp path.
+//
+// Why VACUUM INTO: a raw os.Open + io.ReadAll of the live DB file skips pages
+// that still live only in the WAL (engrams.db-wal) until a checkpoint runs.
+// Uploading the bare engrams.db therefore loses every uncommitted-to-main-file
+// page on restore. VACUUM INTO opens its own connection through the SQLite
+// driver, performs a checkpointed copy, and atomically writes a fresh,
+// fully-merged DB file — independent of the live writer pool, safe under
+// concurrent reads, and guaranteed to include the latest committed rows.
+//
+// Audit ref: CRITICAL `internal/sync/syncer.go:387-405` — backup-data-loss.
+func (s *Syncer) snapshotDB() (string, error) {
+	tmp, err := os.CreateTemp(filepath.Dir(s.dbPath), "engrams-sync-*.db")
 	if err != nil {
-		return fmt.Errorf("sync: open db: %w", err)
+		return "", fmt.Errorf("sync: create snapshot tmp: %w", err)
+	}
+	tmpPath := tmp.Name()
+	// VACUUM INTO requires the target file NOT to exist. CreateTemp made it
+	// empty; remove the placeholder so SQLite can create it fresh.
+	_ = tmp.Close()
+	_ = os.Remove(tmpPath)
+
+	// Open a dedicated short-lived connection. Use the read-only path query
+	// shape modernc accepts; VACUUM INTO writes the *target* file, not the
+	// source, so a ro source connection still works.
+	db, err := sql.Open("sqlite", "file:"+s.dbPath+"?mode=ro&_pragma=busy_timeout(5000)")
+	if err != nil {
+		return "", fmt.Errorf("sync: open snapshot src: %w", err)
+	}
+	defer db.Close()
+
+	// SQLite parses the path inside the string literal — quote any single
+	// quote in tmpPath to avoid breaking the SQL. Snapshot temp paths are
+	// generated via os.CreateTemp so this is paranoia, not a known vector.
+	quoted := strings.ReplaceAll(tmpPath, "'", "''")
+	if _, err := db.ExecContext(context.Background(), "VACUUM INTO '"+quoted+"'"); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", fmt.Errorf("sync: vacuum into snapshot: %w", err)
+	}
+	return tmpPath, nil
+}
+
+func (s *Syncer) upload() error {
+	snapshotPath, err := s.snapshotDB()
+	if err != nil {
+		return err
+	}
+	defer os.Remove(snapshotPath)
+
+	f, err := os.Open(snapshotPath)
+	if err != nil {
+		return fmt.Errorf("sync: open snapshot: %w", err)
 	}
 	defer f.Close()
 
 	info, err := f.Stat()
 	if err != nil {
-		return fmt.Errorf("sync: stat db: %w", err)
+		return fmt.Errorf("sync: stat snapshot: %w", err)
 	}
 	if info.Size() > maxDBSize {
 		return fmt.Errorf("sync: db too large (%d bytes > %d limit)", info.Size(), maxDBSize)
@@ -401,7 +454,7 @@ func (s *Syncer) upload() error {
 
 	body, err := io.ReadAll(f)
 	if err != nil {
-		return fmt.Errorf("sync: read db: %w", err)
+		return fmt.Errorf("sync: read snapshot: %w", err)
 	}
 
 	req, err := http.NewRequest(http.MethodPost, s.cfg.WorkerURL+"/sync", bytes.NewReader(body))
