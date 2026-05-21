@@ -51,11 +51,66 @@ func uninstallService(dataDir string, purge bool) error {
 		}
 	}
 
-	if err := os.RemoveAll(dataDir); err != nil {
-		return fmt.Errorf("remove dataDir %s: %w", dataDir, err)
+	if err := safeRemoveDataDir(dataDir); err != nil {
+		return err
 	}
 	fmt.Printf("uninstall: removed %s\n", dataDir)
 	printHomebrewHint()
+	return nil
+}
+
+// safeRemoveDataDir validates that `dataDir` looks like a legitimate eidetic
+// data directory before recursive-deleting it. Guards against catastrophic
+// accidents such as `EIDETIC_DATA_DIR=$HOME eideticd -uninstall -purge`
+// nuking the entire home directory.
+//
+// Required invariants (ALL must hold):
+//   - dataDir is non-empty after cleaning
+//   - dataDir is NOT "/" or "." or a single segment ("just a filename")
+//   - filepath.Base(dataDir) == ".eidetic" (the canonical install dirname)
+//   - dataDir resolves under the current user's home directory
+//
+// Any failure aborts with a non-zero exit (returned error). Tests cover
+// the refusal paths.
+//
+// Audit ref: CRITICAL `cmd/eideticd/uninstall.go:54`.
+func safeRemoveDataDir(dataDir string) error {
+	if dataDir == "" {
+		return fmt.Errorf("uninstall: refusing to purge: dataDir is empty")
+	}
+	cleaned := filepath.Clean(dataDir)
+	if cleaned == "/" || cleaned == "." || cleaned == ".." {
+		return fmt.Errorf("uninstall: refusing to purge dangerous path %q", cleaned)
+	}
+	if filepath.Base(cleaned) != ".eidetic" {
+		return fmt.Errorf("uninstall: refusing to purge %q: basename must be \".eidetic\" "+
+			"(set EIDETIC_DATA_DIR back to its default or rename the directory before purging)", cleaned)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("uninstall: refusing to purge: cannot resolve home dir: %w", err)
+	}
+	// Resolve symlinks on both sides so a symlinked tempdir under HOME still
+	// passes. EvalSymlinks fails on a missing path, so fall back to the
+	// cleaned path if the dir was already removed mid-flow.
+	resolvedHome, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		resolvedHome = home
+	}
+	resolvedDir, err := filepath.EvalSymlinks(cleaned)
+	if err != nil {
+		resolvedDir = cleaned
+	}
+	// Use filepath.Rel as the containment check — robust against trailing
+	// slashes and intermediate "..". A safe child path produces a rel that
+	// neither starts with ".." nor is absolute.
+	rel, err := filepath.Rel(resolvedHome, resolvedDir)
+	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return fmt.Errorf("uninstall: refusing to purge %q: not inside user home %q", cleaned, resolvedHome)
+	}
+	if err := os.RemoveAll(dataDir); err != nil {
+		return fmt.Errorf("remove dataDir %s: %w", dataDir, err)
+	}
 	return nil
 }
 
