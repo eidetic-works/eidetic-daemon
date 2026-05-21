@@ -318,6 +318,14 @@ Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase sequencing.
 
 ---
 
+## Support
+
+🐛 Bug reports + feature requests: https://github.com/eidetic-works/eidetic-issues
+
+Private/billing questions → support@eidetic.works.
+
+---
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
