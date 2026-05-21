@@ -96,7 +96,7 @@ claude mcp add eidetic -- python -m eidetic_mcp.server
 #   {"eidetic": {"command": "python", "args": ["-m", "eidetic_mcp.server"]}}
 ```
 
-Tools (eidetic-mcp 0.0.5+): `query_engrams`, `search_engrams`, `recent_engrams`, `count_engrams`, `get_engram_by_id`, `delete_engram_by_id`, `insert_engram`, `insert_engrams_batch`, `purge_engrams`, `list_surfaces`, `daemon_status`, `daemon_metrics`, **`nucleus_ask(question)`** — RAG over your local engrams: extracts keywords, retrieves top-K via FTS5, returns answer-scaffolding for the host LLM. Your engrams never leave your machine. See [`bridge/python/README.md`](./bridge/python/README.md) for per-client config + [`docs/PROMPT.md`](./docs/PROMPT.md) for 5 integration recipes.
+Tools (eidetic-mcp 0.0.10+, 17 registered): `query_engrams`, `search_engrams`, `recent_engrams`, `count_engrams`, `get_engram_by_id`, `delete_engram_by_id`, `insert_engram`, `insert_engrams_batch`, `purge_engrams`, `list_surfaces`, `daemon_status`, `daemon_metrics`, **`nucleus_ask(question)`** — RAG over your local engrams: extracts keywords, retrieves top-K via FTS5, returns answer-scaffolding for the host LLM. Your engrams never leave your machine. Plus four more recall tools: `nucleus_digest(window)` (24h/7d/30d summary), `nucleus_timeline(window, surfaces?)` (cross-tool chronology), `nucleus_link(engram_id)` (related-engram neighborhood), `nucleus_curate(query, limit?)` (de-noised top-K for downstream LLM context). See [`bridge/python/README.md`](./bridge/python/README.md) for per-client config + [`docs/PROMPT.md`](./docs/PROMPT.md) for 5 integration recipes.
 
 If the daemon is running with caller auth on (v0.0.9+, opt-in), the bridge auto-discovers the token from `<dataDir>/auth-token` (or `EIDETIC_AUTH_TOKEN` env var). No bridge config change required.
 
@@ -111,7 +111,7 @@ To verify:
 ```sh
 # See your engram stats (works whether daemon is running or not)
 eideticd --stats
-# → eideticd v0.0.45 — engram statistics
+# → eideticd v0.0.62 — engram statistics
 # →   engrams:    278561
 # →     claude_code          274203
 # →     cursor                 4135
@@ -279,7 +279,7 @@ See [docs/SPEC.md](docs/SPEC.md) for the binding W1 spec, [docs/IMPLEMENTATION_P
 
 ## Status
 
-Live at v0.0.45 (2026-05-20) — 45 releases since v0.0.2. Pro launch complete: managed Cloudflare R2 sync, Gumroad subscription product (`eideticworks.gumroad.com/l/eidetic-pro`), Team tier ($99/mo, multi-seat), web dashboard at `eidetic.works/dashboard`, AI-powered recall via `nucleus_ask` MCP tool. See `CHANGELOG.md` for per-version detail.
+Live at v0.0.62 (2026-05-21) — 62 releases since v0.0.2. Pro launch complete: managed Cloudflare R2 sync, Gumroad subscription product (`eideticworks.gumroad.com/l/eidetic-pro`), Team tier ($99/mo, multi-seat), web dashboard at `eidetic.works/dashboard`, AI-powered recall via `nucleus_ask` MCP tool. See `CHANGELOG.md` for per-version detail.
 
 ### Phase table (W1)
 

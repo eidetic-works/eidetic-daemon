@@ -470,7 +470,7 @@ curl -fsSL https://eidetic.works/uninstall.sh | sh -s -- --purge-data
 
 `EIDETIC_DATA_DIR=/path/to/dir` overrides the data root.
 
-See [SECURITY.md](./SECURITY.md) for the full threat model + storage modes before relying on the daemon for anything sensitive.
+See [SECURITY.md](../SECURITY.md) for the full threat model + storage modes before relying on the daemon for anything sensitive.
 
 ---
 

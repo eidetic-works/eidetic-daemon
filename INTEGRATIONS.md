@@ -4,8 +4,8 @@ eidetic-daemon ships in 14 places. Most are free + open-source. Pick the one tha
 
 | # | Surface | Path / Distribution | Status | Quickstart |
 |---|---|---|---|---|
-| 1 | **Daemon** (the thing itself) | `brew install eideticd` · curl install.sh · install.ps1 | ✅ v0.0.53 live, 4 platforms | `eideticd -init` |
-| 2 | **eidetic-mcp** (MCP bridge) | `pip install eidetic-mcp` | ✅ v0.0.7 on PyPI | `claude mcp add eidetic -- python -m eidetic_mcp.server` |
+| 1 | **Daemon** (the thing itself) | `brew install eideticd` · curl install.sh · install.ps1 | ✅ v0.0.62 live, 4 platforms | `eideticd -init` |
+| 2 | **eidetic-mcp** (MCP bridge) | `pip install eidetic-mcp` | ✅ v0.0.10 on PyPI | `claude mcp add eidetic -- python -m eidetic_mcp.server` |
 | 3 | **VS Code extension** | `integrations/vscode/` | ✅ scaffolded, 11/11 tests | `cd integrations/vscode && npm install && npm run compile` |
 | 4 | **JetBrains plugin** (IntelliJ/PyCharm/GoLand/...) | `integrations/jetbrains/` | ✅ scaffolded (Kotlin+Gradle v2) | `./gradlew buildPlugin` then install from disk |
 | 5 | **Raycast extension** | `integrations/raycast/` | ✅ scaffolded, 4 commands | `cd integrations/raycast && npm install && npx ray dev` |

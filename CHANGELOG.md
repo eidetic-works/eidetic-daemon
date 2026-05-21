@@ -6,6 +6,42 @@ All notable changes to eidetic-daemon. Format inspired by [Keep a Changelog](htt
 
 ---
 
+## [v0.0.62] — 2026-05-21
+
+Auth posture + install hardening + capture parser bounds.
+
+### Fixed
+
+- **`internal/auth/auth.go:186`** — Middleware now returns a single generic `unauthorized` body across all failure modes. Pre-fix three distinct error strings leaked which arm of validation failed (missing-token vs token-not-set vs token-mismatch); operators get the detail via server-side `log.Printf`.
+- **`internal/auth/auth.go:133`** — Bearer scheme matching is now case-insensitive (RFC 7235 §2.1). `Authorization: bearer xxx` from curl/scripts no longer silently fails.
+- **`cmd/eideticd/init.go:158-169`** — `-init` wizard now runs pasted `sync.json` through `sync.LoadConfig` before writing 0600. `worker_url`, `api_key`, `device_id` are required; `{}` and other partial JSON are rejected up-front. No more daemon hot-reloading into a broken state.
+- **`cmd/eideticd/install.go`** — launchd plist exe path is now XML-escaped via `renderLaunchdPlist(label, exe)`. Paths containing `&`, `<`, `>` (custom brew prefixes, usernames with ampersand) no longer produce malformed XML.
+- **`internal/capture/cursor.go`** — file read capped at 100 MiB per chunk; oversized files are chunked instead of read whole.
+- **`internal/capture/jsonl.go`** — single-pass read capped at 500 MiB. No more boot-time OOM on multi-GB session logs.
+- **`cmd/eideticd/uninstall.go`** — refuses to purge if `dataDir` is not `~/.eidetic` (defence-in-depth against an `rm -rf $HOME` configuration mistake).
+- **`internal/api/handlers.go`** + **`internal/store/store.go`** — `/export` pagination uses compound `(ts, id)` cursor; no more row drops at page boundaries.
+- **`internal/sync/`** — uploads use a `VACUUM INTO` snapshot of the engram DB; WAL-state mid-write is no longer captured.
+
+### Fixed (bridge)
+
+- **`bridge/python/eidetic_mcp/server.py`** — eidetic-mcp 0.0.10: `purge_engrams` requires explicit confirm gate; `insert_engram` no longer strips required fields; `nucleus_curate` description now uses present tense.
+
+---
+
+## [v0.0.61] — 2026-05-21
+
+`--import-bundle` universal (ndjson + markdown + text auto-detect, stdin pipe).
+
+### Added (daemon)
+
+- **`-import-bundle <path|->` + `-bundle-format auto|ndjson|markdown|text`** — bulk ingest from any source. Auto-detects format; supports stdin piping for one-shot import. 14 new tests covering each format + auto-detect heuristics.
+
+### Why
+
+Unlocks one-line corpus import from any prior tool's export (ChatGPT, Notion, journal, plain log).
+
+---
+
 ## [v0.0.60] — 2026-05-21
 
 `--auto-tag` heuristic classifier + `eideticd-browse` TUI binary.

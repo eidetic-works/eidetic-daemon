@@ -74,7 +74,7 @@ The daemon watches three default surface roots (paths shown for macOS):
 
 Files are read with the daemon's effective user, which means **the daemon can read anything that user can read**. There is no path-traversal protection on globs; configurations beyond `DefaultSurfaces()` are at the operator's risk.
 
-Parsers treat each newline-delimited record as opaque text. The daemon does **not** rewrite, exfiltrate, or upload captured content in W1. Cloud-sync is explicitly **not** in W1 scope (see [`docs/specs/eidetic-daemon-w1.md`](https://github.com/eidetic-works/eidetic-daemon/blob/main/docs/specs/eidetic-daemon-w1.md) section 1; W2+).
+Parsers treat each newline-delimited record as opaque text. The daemon does **not** rewrite, exfiltrate, or upload captured content in W1. Cloud-sync is explicitly **not** in W1 scope (see [`docs/SPEC.md`](docs/SPEC.md) section 1; W2+).
 
 ## What the daemon does NOT do
 
