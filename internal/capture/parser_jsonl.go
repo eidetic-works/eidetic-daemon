@@ -6,12 +6,21 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/eidetic-works/eidetic-daemon/internal/engram"
 )
+
+// jsonlMaxFileBytes caps the unconsumed (size - fromOffset) byte count for
+// a single Parse pass so a 5 GB legacy Claude Code session JSONL discovered
+// on first startup can't OOM the daemon. Above this cap we skip + WARN; the
+// operator can split the file into the `.archive/` subdir to capture it
+// piece-meal. 500 MiB is generous — real session JSONLs observed in the
+// wild top out around 100 MiB.
+const jsonlMaxFileBytes = 500 << 20 // 500 MiB
 
 // JSONLParser tails an append-only JSONL file. Each newline-terminated record
 // becomes one engram with payload = the raw line (no internal JSON parsing
@@ -63,14 +72,36 @@ func (p *JSONLParser) Parse(path string, fromOffset int64) ([]engram.Engram, int
 		fromOffset = 0
 	}
 
+	// Audit ref: CRITICAL `internal/capture/parser_jsonl.go:70` — pre-fix
+	// `io.ReadAll` on (size - fromOffset) → a 5 GB legacy session JSONL at
+	// first-startup scan → 5 GB allocation → daemon OOM at boot. Bound the
+	// per-pass read; on the first scan, advance the offset past the file
+	// so subsequent polls don't re-trip the same WARN.
+	if size-fromOffset > jsonlMaxFileBytes {
+		log.Printf("jsonl: WARN skipping %s (unconsumed %d bytes > %d cap) — "+
+			"legacy oversized session; please split or move to .archive/ to capture its contents",
+			path, size-fromOffset, jsonlMaxFileBytes)
+		// Advance to EOF so we don't keep re-warning every poll. If the
+		// file is later truncated (size < fromOffset) the truncation branch
+		// above kicks in and we re-start from 0.
+		return nil, size, nil
+	}
+
 	if _, err := f.Seek(fromOffset, io.SeekStart); err != nil {
 		return nil, fromOffset, err
 	}
 
-	buf, err := io.ReadAll(f)
-	if err != nil {
+	// Bounded read instead of io.ReadAll. We know exactly how many bytes
+	// remain (size - fromOffset, already capped above) — read no more, even
+	// if the file grows mid-Parse. Late-arriving bytes get picked up next
+	// poll via the updated offset.
+	remaining := size - fromOffset
+	buf := make([]byte, remaining)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && err != io.ErrUnexpectedEOF {
 		return nil, fromOffset, err
 	}
+	buf = buf[:n]
 	if len(buf) == 0 {
 		return nil, fromOffset, nil
 	}
