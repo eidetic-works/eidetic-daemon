@@ -188,3 +188,204 @@ jobs:
           echo "::warning::HOMEBREW_TAP_PAT secret not set — Homebrew tap NOT updated."
           echo "::warning::To enable auto-tap-update: create a PAT with repo scope on eidetic-works/homebrew-nucleus,"
           echo "::warning::then add it as the HOMEBREW_TAP_PAT secret in eidetic-works/eidetic-daemon settings."
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Marketplace fan-out — each job no-ops cleanly if its publisher token
+  # isn't set yet, then activates the moment Lokesh adds the secret.
+  # See docs/DISTRIBUTION_AUTOPILOT.md for the one-time setup walkthrough.
+  # All 5 jobs run in parallel after `release` finishes successfully.
+  # ─────────────────────────────────────────────────────────────────────────
+
+  publish-vscode:
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.ref_name, '-rc') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check publisher token
+        id: token_check
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::warning::VSCE_PAT not set — skipping VS Code Marketplace publish."
+            echo "::warning::Setup: claim 'eidetic-works' publisher at marketplace.visualstudio.com/manage,"
+            echo "::warning::generate PAT (scope: Marketplace > Manage) at dev.azure.com,"
+            echo "::warning::add as VSCE_PAT secret."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Build + publish .vsix
+        if: steps.token_check.outputs.skip != 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          cd integrations/vscode
+          npm ci
+          npm run package
+          npx @vscode/vsce publish --no-yarn --skip-license
+
+  publish-chrome:
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.ref_name, '-rc') }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Chrome Web Store credentials
+        id: token_check
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+        run: |
+          if [ -z "$CWS_CLIENT_ID" ] || [ -z "$CWS_CLIENT_SECRET" ] || [ -z "$CWS_REFRESH_TOKEN" ] || [ -z "$CWS_EXTENSION_ID" ]; then
+            echo "::warning::Chrome Web Store secrets incomplete — skipping CWS publish."
+            echo "::warning::Setup: register at chrome.google.com/webstore/devconsole (\$5),"
+            echo "::warning::create OAuth2 creds at console.cloud.google.com (Chrome Web Store API enabled),"
+            echo "::warning::add CWS_CLIENT_ID + CWS_CLIENT_SECRET + CWS_REFRESH_TOKEN + CWS_EXTENSION_ID secrets."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Package extension .zip
+        if: steps.token_check.outputs.skip != 'true'
+        run: |
+          # Source the chrome extension from the substrate repo if present;
+          # fall back to integrations/chrome-extension if mirrored here later.
+          SRC=""
+          if [ -d "../ai-mvp-backend/integrations/chrome-extension" ]; then
+            SRC="../ai-mvp-backend/integrations/chrome-extension"
+          elif [ -d "integrations/chrome-extension" ]; then
+            SRC="integrations/chrome-extension"
+          else
+            echo "::warning::chrome-extension source not found — skipping CWS package."
+            exit 0
+          fi
+          cd "$SRC"
+          mkdir -p dist
+          zip -r dist/eidetic-chrome.zip . -x "dist/*" "*.DS_Store" "README.md" "TESTING.md" "node_modules/*"
+      - name: Upload + publish via CWS API
+        if: steps.token_check.outputs.skip != 'true'
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(curl -s -X POST -d "client_id=$CWS_CLIENT_ID&client_secret=$CWS_CLIENT_SECRET&refresh_token=$CWS_REFRESH_TOKEN&grant_type=refresh_token" \
+            https://www.googleapis.com/oauth2/v4/token | jq -r .access_token)
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "::error::Failed to refresh CWS OAuth token"; exit 1
+          fi
+          # Upload new package
+          ZIP=$(find . -name "eidetic-chrome.zip" -path "*/dist/*" | head -1)
+          curl -s -H "Authorization: Bearer $TOKEN" -H "x-goog-api-version: 2" \
+            -X PUT -T "$ZIP" \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$CWS_EXTENSION_ID"
+          # Publish
+          curl -s -H "Authorization: Bearer $TOKEN" -H "x-goog-api-version: 2" \
+            -H "Content-Length: 0" -X POST \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/$CWS_EXTENSION_ID/publish"
+          echo "Chrome Web Store: publish requested for $CWS_EXTENSION_ID"
+
+  publish-jetbrains:
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.ref_name, '-rc') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Check JetBrains token
+        id: token_check
+        env:
+          JETBRAINS_HUB_TOKEN: ${{ secrets.JETBRAINS_HUB_TOKEN }}
+        run: |
+          if [ -z "$JETBRAINS_HUB_TOKEN" ]; then
+            echo "::warning::JETBRAINS_HUB_TOKEN not set — skipping JetBrains Marketplace publish."
+            echo "::warning::Setup: account at plugins.jetbrains.com/author/me,"
+            echo "::warning::generate hub permanent token (scope: Marketplace), add as JETBRAINS_HUB_TOKEN secret."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Build + publish plugin
+        if: steps.token_check.outputs.skip != 'true'
+        env:
+          ORG_GRADLE_PROJECT_intellijPlatformPublishingToken: ${{ secrets.JETBRAINS_HUB_TOKEN }}
+        run: |
+          cd integrations/jetbrains
+          # Generate gradle wrapper if missing (first-run on a fresh checkout)
+          if [ ! -f "./gradlew" ]; then
+            gradle wrapper --gradle-version=8.10
+          fi
+          ./gradlew buildPlugin publishPlugin
+
+  publish-raycast:
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.ref_name, '-rc') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check Raycast token
+        id: token_check
+        env:
+          RAYCAST_API_TOKEN: ${{ secrets.RAYCAST_API_TOKEN }}
+        run: |
+          if [ -z "$RAYCAST_API_TOKEN" ]; then
+            echo "::warning::RAYCAST_API_TOKEN not set — skipping Raycast Store publish."
+            echo "::warning::Setup: raycast.com account (free), generate API key at raycast.com/account,"
+            echo "::warning::add as RAYCAST_API_TOKEN secret. Note: Raycast publish opens a PR against"
+            echo "::warning::raycast/extensions; their team merges (1-7 days)."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Publish to Raycast Store
+        if: steps.token_check.outputs.skip != 'true'
+        env:
+          RAYCAST_API_TOKEN: ${{ secrets.RAYCAST_API_TOKEN }}
+        run: |
+          cd integrations/raycast
+          npm ci
+          # Raycast CLI reads RAYCAST_API_TOKEN from env automatically.
+          npx @raycast/api@latest publish --non-interactive
+
+  publish-obsidian-assets:
+    needs: release
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.ref_name, '-rc') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Build Obsidian plugin
+        if: hashFiles('integrations/obsidian/package.json') != ''
+        run: |
+          cd integrations/obsidian
+          if [ -f package.json ]; then
+            npm ci
+            npm run build || echo "::warning::obsidian build script missing — skipping"
+          fi
+      - name: Attach Obsidian assets to GitHub Release
+        if: hashFiles('integrations/obsidian/main.js') != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            integrations/obsidian/main.js
+            integrations/obsidian/manifest.json
+            integrations/obsidian/styles.css
+          fail_on_unmatched_files: false
+
