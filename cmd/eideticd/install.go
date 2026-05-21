@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/xml"
 	"fmt"
 	"os"
 	"os/exec"
@@ -50,28 +52,11 @@ func installMacOS(exe string) error {
 	}
 	plist := filepath.Join(agentDir, launchdLabel+".plist")
 
-	content := `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>` + launchdLabel + `</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>` + exe + `</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/eideticd.out.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/eideticd.err.log</string>
-</dict>
-</plist>
-`
-	if err := os.WriteFile(plist, []byte(content), 0o644); err != nil {
+	content, err := renderLaunchdPlist(launchdLabel, exe)
+	if err != nil {
+		return fmt.Errorf("render plist: %w", err)
+	}
+	if err := os.WriteFile(plist, content, 0o644); err != nil {
 		return fmt.Errorf("write plist: %w", err)
 	}
 	fmt.Printf("install: wrote %s\n", plist)
@@ -88,6 +73,56 @@ func installMacOS(exe string) error {
 	fmt.Println("install: eideticd will now start automatically at login")
 	fmt.Println("install: check health: curl --unix-socket /tmp/eidetic-daemon.sock http://localhost/healthz")
 	return nil
+}
+
+// renderLaunchdPlist builds the launchd plist XML for an executable at `exe`,
+// escaping all XML metacharacters (<, >, &, ', ") via encoding/xml so an
+// executable path containing any of those characters can't smuggle malformed
+// XML into the plist (which would either crash launchctl bootstrap or, worse,
+// silently misconfigure the service).
+//
+// macOS allows < > & ' " in file paths. A naïve string concatenation
+// approach (the pre-fix code) would produce broken XML for any such path.
+//
+// We use `encoding/xml.EscapeText` for the dynamic exe path. The plist
+// shell (label + log paths + true/false keys) stays as a string template
+// since launchctl is strict about element ordering (key-then-value pair
+// semantics, not arbitrary XML).
+//
+// Audit ref: CRITICAL `cmd/eideticd/install.go:53-73`.
+func renderLaunchdPlist(label, exe string) ([]byte, error) {
+	var (
+		labelBuf bytes.Buffer
+		exeBuf   bytes.Buffer
+	)
+	if err := xml.EscapeText(&labelBuf, []byte(label)); err != nil {
+		return nil, fmt.Errorf("escape label: %w", err)
+	}
+	if err := xml.EscapeText(&exeBuf, []byte(exe)); err != nil {
+		return nil, fmt.Errorf("escape exe: %w", err)
+	}
+	body := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>` + labelBuf.String() + `</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>` + exeBuf.String() + `</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/eideticd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/eideticd.err.log</string>
+</dict>
+</plist>
+`
+	return []byte(body), nil
 }
 
 const systemdUnit = "eideticd.service"
