@@ -1,22 +1,25 @@
 # SHIPPED — Compression sprint catalog (2026-05-19 → 2026-05-21)
 
-Index of everything shipped during Lokesh's "finish the 80-day plan in 2 days" compression directive. ~36h of intensive parallel-agent build, 7+ surfaces shipping concurrently. Read this to know what exists; read `CHANGELOG.md` for per-version detail.
+Index of everything shipped during Lokesh's "finish the 80-day plan in 2 days" compression directive. ~48h of intensive parallel-agent build, 7+ surfaces shipping concurrently. Read this to know what exists; read `CHANGELOG.md` for per-version detail.
+
+**Sprint close 2026-05-21 morning IST:** All Lokesh-keyboard items resolved (5 captured + Reddit deliberately skipped per memory). All 8 workers deployed + verified. Daemon at v0.0.61.
 
 ## Quick numbers
 
-- **30 daemon versions tagged** (v0.0.32 → v0.0.60)
+- **31 daemon versions tagged** (v0.0.32 → v0.0.61)
 - **8 MCP package versions** (eidetic-mcp 0.0.1 → 0.0.8, four published this sprint: 0.0.5 / 0.0.6 / 0.0.7 / 0.0.8)
 - **15 integration surfaces** (every major dev tool ecosystem)
-- **8 Cloudflare Workers** (sync, payments, analytics, affiliate, account, 3 chat bots)
+- **8 Cloudflare Workers** — **all live** (sync, payments, analytics, affiliate, account, Slack/Discord/Telegram chat bots)
+- **3 chat-app registrations live** (Slack `eidetic-works`, Discord app `Eidetic`, Telegram `@eideticworks_bot`)
 - **12 docs** (compliance, pricing, integrations, ADRs)
 - **6 daemon scripts** (operator + customer-facing CLI)
-- **~110 new tests**
+- **~125 new tests** (14 added in v0.0.61 internal/bundle)
 
 ## Daemon (Go binary, 4 platforms, MIT)
 
-Stable at v0.0.60. Cross-compiles to darwin-arm64 + linux-amd64 + linux-arm64 + windows-amd64. Pure-Go (modernc.org/sqlite), no CGO. Tagged versions auto-publish via `release.yml`; Homebrew tap auto-updates via `HOMEBREW_TAP_PAT`.
+Stable at v0.0.61. Cross-compiles to darwin-arm64 + linux-amd64 + linux-arm64 + windows-amd64. Pure-Go (modernc.org/sqlite), no CGO. Tagged versions auto-publish via `release.yml`; Homebrew tap auto-updates via `HOMEBREW_TAP_PAT`.
 
-### CLI flags (24 total)
+### CLI flags (26 total)
 
 - **Lifecycle:** `-install`, `-uninstall`, `-purge`, `-init`, `-yes`
 - **Inspection:** `-version`, `-stats`, `-check`, `-backups`
@@ -24,6 +27,7 @@ Stable at v0.0.60. Cross-compiles to darwin-arm64 + linux-amd64 + linux-arm64 + 
 - **Server:** `-uds`, `-tcp`, `-bridge`, `-auth`
 - **CLI access:** `-ask <q>`, `-digest 24h|7d|30d`, `-export` (NDJSON stream)
 - **Capture:** `-capture` + `-surface NAME`
+- **Bulk ingest:** `-import-bundle <path|->` + `-bundle-format auto|ndjson|markdown|text` (v0.0.61+)
 - **Maintenance:** `-vacuum`, `-auto-tag 24h|7d|30d`
 
 ### HTTP API (15+ endpoints)
@@ -43,6 +47,7 @@ Stable at v0.0.60. Cross-compiles to darwin-arm64 + linux-amd64 + linux-arm64 + 
 | 0.0.49-52 | Cache metrics + `--digest` CLI + `--ask` CLI + `--capture` |
 | 0.0.53-56 | Refactor textsearch + `--vacuum` + hooks + regex/status |
 | 0.0.58-60 | Meta enrichment + `nucleus_link` + auto-tag classifier + TUI |
+| 0.0.61 | `--import-bundle` universal (ndjson + markdown + text auto-detect, stdin pipe) |
 
 ## MCP package (eidetic-mcp on PyPI)
 
@@ -79,7 +84,7 @@ Stable at 0.0.8. 13 tools registered.
 | 14 | Obsidian plugin | `integrations/obsidian/` | ✅ TS, 3 features |
 | 15 | Daemon TUI | `cmd/eideticd-browse/` | ✅ Bubble Tea binary |
 
-Plus web dashboard PWA at eidetic.works/dashboard (installable on iPhone/Android) and the docs site at eidetic.works/dashboard (live at https://69420685.eidetic-docs.pages.dev pending docs.eidetic.works CNAME).
+Plus web dashboard PWA at eidetic.works/dashboard (installable on iPhone/Android) and the docs site **LIVE at https://docs.eidetic.works/** (CF Pages + custom domain, SSL via Cloudflare).
 
 ## Cloudflare Workers (8 live + 1 deployment-pending)
 
@@ -88,11 +93,11 @@ Plus web dashboard PWA at eidetic.works/dashboard (installable on iPhone/Android
 | eidetic-sync | Pro R2 backup + Team dual-write | ✅ Live va4e1c516 |
 | gumroad-kit-sync | 4-tier Gumroad routing (Pro/Annual/Founder/Team) | ✅ Live ve1287839 |
 | eidetic-affiliate | `/ref/<code>` attribution tracking | ✅ Live |
-| eidetic-analytics | Privacy-safe conversion funnel | ✅ Live (degraded — AE binding pending Lokesh-keyboard enable) |
-| eidetic-account | Customer Pro dashboard (paste api_key → see backups) | ⏳ Deploy pending op-assistant |
-| eidetic-slack | `/eidetic` Slack slash command | ✅ Deployed (pending Lokesh-keyboard Slack app registration) |
-| eidetic-discord | `/eidetic` Discord bot | ✅ Deployed (pending Lokesh-keyboard Discord app registration) |
-| eidetic-telegram | `/eidetic` Telegram bot | ✅ Deployed (pending Lokesh-keyboard @BotFather token) |
+| eidetic-analytics | Privacy-safe conversion funnel | ✅ **LIVE** — AE binding live (dataset `eidetic_funnel`, binding `ANALYTICS`), `POST /event` 204 verified |
+| eidetic-account | Customer Pro dashboard (paste api_key → see backups) | ✅ Live |
+| eidetic-slack | `/eidetic` Slack slash command | ✅ **LIVE** — app `eidetic-works`, workspace `eidetic-works.slack.com`, /healthz 200 |
+| eidetic-discord | `/eidetic` Discord bot | ✅ **LIVE** — app `Eidetic` (1506865174773108836), interactions endpoint verified by Discord PING |
+| eidetic-telegram | `/eidetic` Telegram bot | ✅ **LIVE** — `@eideticworks_bot`, webhook registered + secret-validated |
 
 ## Docs (12)
 
@@ -122,16 +127,16 @@ Plus web dashboard PWA at eidetic.works/dashboard (installable on iPhone/Android
 | `scripts/notion-poll.sh` (in landing repo) | Local Notion DB poller |
 | `scripts/deploy-worker.sh` | One-time operator setup helper |
 
-## Lokesh-keyboard remaining (6 items)
+## Lokesh-keyboard — ALL CLEARED (2026-05-21)
 
-After op-assistant's exhaustive automation pass:
+All 6 items resolved in one driven session:
 
-1. **docs.eidetic.works CNAME** — DNS only; domain registered, CF Pages waiting
-2. **CF Analytics Engine enable** — dashboard one-time flag; then redeploy eidetic-analytics
-3. **Slack app registration** — api.slack.com → From manifest (`integrations/slack-app/manifest.yaml`)
-4. **Discord app registration** — discord.com/developers → New Application "Eidetic"
-5. **Telegram bot** — @BotFather → /newbot → wrangler secret + setWebhook
-6. **Reddit r/SaaS** — paste `docs/posts/reddit-rsaas-day10.md`
+1. **docs.eidetic.works CNAME** — ✅ Live (200, CF cert provisioned)
+2. **CF Analytics Engine enable** — ✅ Live (dataset `eidetic_funnel`, binding `ANALYTICS`)
+3. **Slack app registration** — ✅ Live (workspace `eidetic-works.slack.com`, app `Eidetic`)
+4. **Discord app registration** — ✅ Live (app `Eidetic`, Interactions Endpoint PING-verified)
+5. **Telegram bot** — ✅ Live (`@eideticworks_bot`, webhook registered)
+6. **Reddit r/SaaS** — ❌ **Permanently skipped** per `feedback_reddit_low_yield.md` (pseudonymous accounts auto-mod-removed; not retrying)
 
 (HN Show HN skipped per Lokesh.)
 
