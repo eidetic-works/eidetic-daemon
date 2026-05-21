@@ -212,3 +212,75 @@ func TestMiddlewareValidTokenPassesThrough(t *testing.T) {
 		t.Errorf("valid token blocked: got %d, want 200 (body=%s)", rec.Code, rec.Body.String())
 	}
 }
+
+// TestValidateAcceptsBearerCaseInsensitive — RFC 7235 §2.1 requires
+// case-insensitive scheme matching. curl and many client libraries send
+// `bearer` lower-case; the pre-fix `strings.TrimPrefix(got, "Bearer ")`
+// was case-sensitive and rejected them.
+//
+// Audit ref: HIGH `internal/auth/auth.go:133`.
+func TestValidateAcceptsBearerCaseInsensitive(t *testing.T) {
+	tok := &auth.Token{}
+	tok.Set("good-token-aaaa-bbbb-cccc-dddd")
+	cases := []string{
+		"Bearer good-token-aaaa-bbbb-cccc-dddd",
+		"bearer good-token-aaaa-bbbb-cccc-dddd",
+		"BEARER good-token-aaaa-bbbb-cccc-dddd",
+		"BeArEr good-token-aaaa-bbbb-cccc-dddd",
+	}
+	for _, c := range cases {
+		if err := tok.Validate(c); err != nil {
+			t.Errorf("Validate(%q) RFC 7235 §2.1 case-insensitive: got %v, want nil", c, err)
+		}
+	}
+}
+
+// TestMiddlewareReturnsGenericUnauthorized — the 401 response body MUST
+// be a generic "unauthorized" (no leaking which validation arm failed:
+// `token mismatch` vs `missing token` vs `token not set`). Pre-fix
+// leakage told an attacker whether auth was even configured.
+//
+// Audit ref: HIGH `internal/auth/auth.go:186`.
+func TestMiddlewareReturnsGenericUnauthorized(t *testing.T) {
+	tok := &auth.Token{}
+	tok.Set("active-token-aaaa-bbbb-cccc-dddd")
+	wrapped := tok.Middleware(http.NotFoundHandler(), "/healthz")
+
+	for _, header := range []string{
+		"",                                          // missing
+		"Bearer ",                                   // empty bearer
+		"Bearer wrong-token-aaaa-bbbb-cccc-dddd",    // mismatch (same length)
+		"short",                                     // length mismatch
+	} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/metrics", nil)
+		if header != "" {
+			req.Header.Set("Authorization", header)
+		}
+		wrapped.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("header=%q: got code %d, want 401", header, rec.Code)
+		}
+		body := rec.Body.String()
+		if !contains(body, "unauthorized") {
+			t.Errorf("header=%q: body=%q does not contain \"unauthorized\"", header, body)
+		}
+		// Headline assertion: must NOT leak internal failure mode.
+		for _, leak := range []string{"token mismatch", "missing token",
+			"token not set", "auth:"} {
+			if contains(body, leak) {
+				t.Errorf("header=%q: response body leaks internal detail %q: %q",
+					header, leak, body)
+			}
+		}
+	}
+}
+
+func contains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}

@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -121,16 +122,26 @@ func (t *Token) Enabled() bool {
 // active token. Returns nil on match, an error otherwise. Constant-time
 // comparison via subtle (avoids timing oracle on prefix matches).
 //
-// Accepted header forms:
-//   Authorization: Bearer <token>
-//   Authorization: <token>            (bare; convenience for shell users)
+// Accepted header forms (RFC 7235 §2.1 — scheme name is case-INSENSITIVE):
+//
+//	Authorization: Bearer <token>
+//	Authorization: bearer <token>     (curl + many client libraries lower-case)
+//	Authorization: BEARER <token>     (also valid per RFC)
+//	Authorization: <token>            (bare; convenience for shell users)
+//
+// Audit ref: HIGH `internal/auth/auth.go:133` — `strings.TrimPrefix(got, "Bearer ")`
+// pre-fix was case-sensitive, breaking lower-case "bearer" callers.
 func (t *Token) Validate(header string) error {
 	want := t.Get()
 	if want == "" {
 		return errors.New("auth: token not set")
 	}
 	got := strings.TrimSpace(header)
-	got = strings.TrimPrefix(got, "Bearer ")
+	// Case-insensitive scheme strip: if the header starts with "bearer "
+	// in any case, drop the first 7 chars.
+	if len(got) >= 7 && strings.EqualFold(got[:7], "bearer ") {
+		got = got[7:]
+	}
 	got = strings.TrimSpace(got)
 	if got == "" {
 		return errors.New("auth: missing token")
@@ -182,8 +193,14 @@ func (t *Token) Middleware(next http.Handler, openPaths ...string) http.Handler 
 			return
 		}
 		if err := t.Validate(r.Header.Get("Authorization")); err != nil {
+			// Audit ref: HIGH `internal/auth/auth.go:186` — leaking the
+			// validation path (`token mismatch` vs `missing token` vs
+			// `token not set`) tells an attacker whether auth is even
+			// configured and which arm failed. Generic-ize the client-
+			// facing message; log the detail server-side for operators.
+			log.Printf("auth: rejecting %s %s: %v", r.Method, r.URL.Path, err)
 			w.Header().Set("WWW-Authenticate", `Bearer realm="eidetic-daemon"`)
-			http.Error(w, "unauthorized: "+err.Error(), http.StatusUnauthorized)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		next.ServeHTTP(w, r)

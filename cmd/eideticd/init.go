@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	eidetic_sync "github.com/eidetic-works/eidetic-daemon/internal/sync"
 )
 
 // udsDialer returns a DialContext that forces every connection to the given
@@ -155,11 +157,15 @@ func initWizard(dataDir string, nonInteractive bool) error {
 			}
 			content.WriteString(line)
 		}
-		// Validate it parses as a Config-shaped JSON
-		var probe map[string]any
-		if err := json.Unmarshal([]byte(content.String()), &probe); err != nil {
-			fmt.Printf("  ⚠ pasted content is not valid JSON: %v\n", err)
-			fmt.Printf("  → save it manually at %s\n", syncPath)
+		// Audit ref: MEDIUM `cmd/eideticd/init.go:158-169` — pre-fix
+		// accepted any valid JSON (including `{}`) and wrote it 0600;
+		// daemon hot-reloaded into a broken state. Validate via the
+		// sync package's own LoadConfig round-trip: write to a temp
+		// file, ask sync.LoadConfig to parse it, only promote to the
+		// real path on success.
+		if err := validatePastedSyncJSON(content.String()); err != nil {
+			fmt.Printf("  ⚠ pasted content invalid: %v\n", err)
+			fmt.Printf("  → save corrected sync.json manually at %s\n", syncPath)
 		} else {
 			if err := os.WriteFile(syncPath, []byte(content.String()), 0o600); err != nil {
 				fmt.Printf("  ⚠ write failed: %v\n", err)
@@ -221,4 +227,32 @@ func generateToken() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// validatePastedSyncJSON parses the wizard-pasted sync.json content via
+// the sync package's own LoadConfig contract (round-trip through a temp
+// dir). Required: well-formed JSON + the three mandatory fields
+// (worker_url, api_key, device_id). Returns nil iff sync.LoadConfig
+// would accept it.
+//
+// Audit ref: MEDIUM `cmd/eideticd/init.go:158-169`.
+func validatePastedSyncJSON(content string) error {
+	// Fast JSON-parse first so a totally garbled paste produces a tight
+	// error rather than triggering temp-file IO.
+	var probe map[string]any
+	if err := json.Unmarshal([]byte(content), &probe); err != nil {
+		return fmt.Errorf("not valid JSON: %w", err)
+	}
+	tmp, err := os.MkdirTemp("", "eideticd-sync-validate-*")
+	if err != nil {
+		return fmt.Errorf("create validation tmpdir: %w", err)
+	}
+	defer os.RemoveAll(tmp)
+	if err := os.WriteFile(filepath.Join(tmp, "sync.json"), []byte(content), 0o600); err != nil {
+		return fmt.Errorf("write tmp sync.json: %w", err)
+	}
+	if _, err := eidetic_sync.LoadConfig(tmp); err != nil {
+		return err
+	}
+	return nil
 }
