@@ -1,8 +1,8 @@
 # SHIPPED — Compression sprint catalog (2026-05-19 → 2026-05-21)
 
-Index of everything shipped during Lokesh's "finish the 80-day plan in 2 days" compression directive. ~48h of intensive parallel-agent build, 7+ surfaces shipping concurrently. Read this to know what exists; read `CHANGELOG.md` for per-version detail.
+Index of everything shipped during the operator's "finish the 80-day plan in 2 days" compression directive. ~48h of intensive parallel-agent build, 7+ surfaces shipping concurrently. Read this to know what exists; read `CHANGELOG.md` for per-version detail.
 
-**Sprint close 2026-05-21 morning IST:** All Lokesh-keyboard items resolved (5 captured + Reddit deliberately skipped per memory). All 8 workers deployed + verified. Daemon at v0.0.62.
+**Sprint close 2026-05-21 morning IST:** All operator-keyboard items resolved (5 captured + Reddit deliberately skipped per memory). All 8 workers deployed + verified. Daemon at v0.0.62.
 
 ## Quick numbers
 
