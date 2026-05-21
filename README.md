@@ -1,10 +1,46 @@
 # eidetic-daemon
 
-**Local-first Go daemon** that captures every Claude Code / Cursor / Cowork session into a single SQLite-WAL engram store, and serves it back in <100ms P95.
+[![Release](https://img.shields.io/github/v/release/eidetic-works/eidetic-daemon?style=flat-square&color=5eead4&logo=github&label=release)](https://github.com/eidetic-works/eidetic-daemon/releases/latest)
+[![License](https://img.shields.io/github/license/eidetic-works/eidetic-daemon?style=flat-square&color=5eead4)](./LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/eidetic-works/eidetic-daemon/total?style=flat-square&color=5eead4&label=downloads)](https://github.com/eidetic-works/eidetic-daemon/releases)
+[![Stars](https://img.shields.io/github/stars/eidetic-works/eidetic-daemon?style=flat-square&color=5eead4&label=stars)](https://github.com/eidetic-works/eidetic-daemon/stargazers)
+[![PyPI](https://img.shields.io/pypi/v/eidetic-mcp?style=flat-square&color=5eead4&label=mcp%20bridge)](https://pypi.org/project/eidetic-mcp/)
 
-278,561 engrams. 803 sessions. 3.3 GB. Two weeks of real dogfood. Free and MIT.
+> **Local-first AI memory.** Always-on Go daemon that captures every Claude Code / Cursor / Cowork session into a single SQLite-WAL engram store and serves it back in <100ms P95.
 
-**→ [eidetic.works](https://eidetic.works)** · [latest release](https://github.com/eidetic-works/eidetic-daemon/releases/latest) · [CHANGELOG](./CHANGELOG.md) · [Pro $29/mo](https://eideticworks.gumroad.com/l/eidetic-pro)
+**278,561 engrams · 803 sessions · 3.3 GB · two weeks of real dogfood. Free + MIT.**
+
+[**eidetic.works**](https://eidetic.works) · [Pro $29/mo](https://eideticworks.gumroad.com/l/eidetic-pro) · [latest release](https://github.com/eidetic-works/eidetic-daemon/releases/latest) · [CHANGELOG](./CHANGELOG.md) · [issues](https://github.com/eidetic-works/eidetic-issues)
+
+## How it works
+
+```
+   Claude Code session  ─┐
+   Cursor session       ─┼─► fsnotify ─►  SQLite WAL          ◄── MCP tools
+   Cowork session       ─┘   watcher      engrams.db              (ask · link
+   POST /engrams        ─┘   <50ms write   ~/.eidetic/             digest · curate
+                                              │                    timeline · ...)
+                                              ▼  (opt-in)
+                                       Cloudflare R2 sync
+```
+
+Single static binary. No CGO. Cross-compiles to `darwin-arm64` + `linux-amd64` + `linux-arm64` + `windows-amd64`.
+
+## Quickstart
+
+```sh
+# 1. Install (macOS + Linux; Homebrew + Windows below)
+curl -fsSL https://eidetic.works/install.sh | sh
+
+# 2. Confirm capture is live
+eideticd --stats
+# → engrams: <growing>  ·  P95 fetch: 0.27 ms  ·  last_capture: <recent>
+
+# 3. Ask your engrams a question (works without an LLM running — just RAG retrieval)
+curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/ask?question=what+did+I+ship+yesterday'
+```
+
+Every claim in this README has a `curl`. If a section says "do X", the next code block shows you exactly how to verify.
 
 ---
 
