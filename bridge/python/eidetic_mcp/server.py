@@ -291,11 +291,19 @@ def build_server(client: DaemonClient | None = None) -> Any:
             Tool(
                 name="purge_engrams",
                 description=(
-                    "Delete engrams from the daemon's store for a given surface "
-                    "(v0.0.13+). Irreversible. Returns {'deleted': N}.\n\n"
+                    "[DESTRUCTIVE — DO NOT INVOKE WITHOUT EXPLICIT USER CONSENT] "
+                    "Permanently delete engrams from the daemon's store for a "
+                    "given surface (v0.0.13+). Irreversible — no undo. "
+                    "Returns {'deleted': N}.\n\n"
                     "With `before` (unix epoch nanoseconds): only removes engrams "
                     "older than that timestamp, leaving newer ones intact.\n"
-                    "Without `before` (or before=0): removes ALL engrams for the surface."
+                    "Without `before` (or before=0): removes ALL engrams for the "
+                    "surface — wipes history.\n\n"
+                    "Before calling: ALWAYS confirm with the user which surface + "
+                    "timeframe they intend to purge. Prefer `list_surfaces` + "
+                    "`count_engrams` first to scope the impact. The `confirm` "
+                    "field is REQUIRED and must be true — server-side defense "
+                    "against autonomous LLM invocation."
                 ),
                 inputSchema={
                     "type": "object",
@@ -309,8 +317,12 @@ def build_server(client: DaemonClient | None = None) -> Any:
                             "description": "Unix epoch nanoseconds cutoff. Purges ts < before. 0 = purge all.",
                             "minimum": 0,
                         },
+                        "confirm": {
+                            "type": "boolean",
+                            "description": "Must be true. Server rejects calls without confirm=true to prevent autonomous purges. The LLM should only set this true after explicit user consent.",
+                        },
                     },
-                    "required": ["surface"],
+                    "required": ["surface", "confirm"],
                 },
             ),
             Tool(
@@ -655,16 +667,14 @@ def build_server(client: DaemonClient | None = None) -> Any:
             Tool(
                 name="nucleus_curate",
                 description=(
-                    "Mark an engram as canonical, demote, or archive (v0.0.9+). "
-                    "Curation is non-destructive: a new engram on surface "
-                    "'curation' is created that REFERENCES the target by id. "
-                    "Original engrams are never modified. Future versions of "
-                    "the recall tools (nucleus_ask, nucleus_timeline, "
-                    "nucleus_link) can read curation overlays to re-rank or "
-                    "filter retrieval results. Use this to tell your assistant "
-                    "'this engram captures the right decision; downweight the "
-                    "noisy ones around it.' Returns the new curation "
-                    "engram's id + ts."
+                    "Mark an engram as 'canonical' (most authoritative), 'demote' "
+                    "(downweight in future recall), or 'archive' (hide from default "
+                    "views). Non-destructive: creates a curation overlay engram "
+                    "pointing at the target; original is never modified. Use this "
+                    "after the user explicitly says 'this engram is the right "
+                    "answer' or 'ignore that noisy one'. Note: overlay-aware "
+                    "recall is rolling out — see release notes for which tools "
+                    "currently consume curation overlays."
                 ),
                 inputSchema={
                     "type": "object",
@@ -729,6 +739,8 @@ def build_server(client: DaemonClient | None = None) -> Any:
             surface = str(arguments.get("surface", "")).strip()
             if not surface:
                 return [TextContent(type="text", text="error: surface required")]
+            if not arguments.get("confirm"):
+                return [TextContent(type="text", text="error: purge_engrams requires confirm=true to prevent autonomous destruction")]
             before = int(arguments.get("before", 0))
             try:
                 deleted = daemon.purge_engrams(surface=surface, before=before)
@@ -762,10 +774,10 @@ def build_server(client: DaemonClient | None = None) -> Any:
 
         if name == "insert_engram":
             surface = str(arguments.get("surface", "")).strip()
-            payload_text = str(arguments.get("payload", "")).strip()
+            payload_text = str(arguments.get("payload", ""))
             if not surface:
                 return [TextContent(type="text", text="error: surface required")]
-            if not payload_text:
+            if not payload_text.strip():
                 return [TextContent(type="text", text="error: payload required")]
             ts = int(arguments.get("ts", 0))
             meta = str(arguments.get("meta", ""))
