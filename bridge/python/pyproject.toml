@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eidetic-mcp"
-version = "0.0.8"
+version = "0.0.9"
 description = "MCP stdio server bridging eidetic-daemon's UDS API to MCP clients (Cursor, Claude Code, Cline, ...)"
 readme = "README.md"
 license = { text = "MIT" }

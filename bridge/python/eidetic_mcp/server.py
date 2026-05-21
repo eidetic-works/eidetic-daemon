@@ -652,6 +652,42 @@ def build_server(client: DaemonClient | None = None) -> Any:
                     "required": ["engram_id"],
                 },
             ),
+            Tool(
+                name="nucleus_curate",
+                description=(
+                    "Mark an engram as canonical, demote, or archive (v0.0.9+). "
+                    "Curation is non-destructive: a new engram on surface "
+                    "'curation' is created that REFERENCES the target by id. "
+                    "Original engrams are never modified. Future versions of "
+                    "the recall tools (nucleus_ask, nucleus_timeline, "
+                    "nucleus_link) can read curation overlays to re-rank or "
+                    "filter retrieval results. Use this to tell your assistant "
+                    "'this engram captures the right decision; downweight the "
+                    "noisy ones around it.' Returns the new curation "
+                    "engram's id + ts."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "engram_id": {
+                            "type": "integer",
+                            "description": "Positive integer primary key of the engram being curated.",
+                            "minimum": 1,
+                        },
+                        "action": {
+                            "type": "string",
+                            "description": "What to do with the target engram. 'canonical' = surface-first in recall; 'demote' = downweight; 'archive' = exclude from default recall.",
+                            "enum": ["canonical", "demote", "archive"],
+                        },
+                        "note": {
+                            "type": "string",
+                            "description": "Optional human-readable rationale (<=2000 chars). Stored in the curation engram's meta.note.",
+                            "maxLength": 2000,
+                        },
+                    },
+                    "required": ["engram_id", "action"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -905,6 +941,20 @@ def build_server(client: DaemonClient | None = None) -> Any:
                 return [TextContent(type="text", text=f"error: {exc}")]
             # body is already shaped with `instructions` first — no reorder
             # needed; client.link() builds the dict in the canonical order.
+            return [TextContent(type="text", text=json.dumps(body, indent=2))]
+
+        if name == "nucleus_curate":
+            raw_id = arguments.get("engram_id")
+            try:
+                engram_id = int(raw_id)
+            except (TypeError, ValueError):
+                return [TextContent(type="text", text="error: engram_id must be a positive integer")]
+            action = str(arguments.get("action", "")).strip()
+            note = str(arguments.get("note", "")).strip()
+            try:
+                body = daemon.curate(engram_id=engram_id, action=action, note=note)
+            except (DaemonError, ValueError) as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
             return [TextContent(type="text", text=json.dumps(body, indent=2))]
 
         return [TextContent(type="text", text=f"error: unknown tool {name!r}")]

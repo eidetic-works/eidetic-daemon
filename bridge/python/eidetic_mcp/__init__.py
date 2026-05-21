@@ -9,4 +9,4 @@ Usage (stdio MCP server, runs alongside the daemon):
     python -m eidetic_mcp.server        # MCP stdio server; tool calls hit UDS
 """
 
-__version__ = "0.0.8"
+__version__ = "0.0.9"

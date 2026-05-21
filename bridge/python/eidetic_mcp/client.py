@@ -574,6 +574,69 @@ class DaemonClient:
             raise DaemonError(f"expected object, got {type(body).__name__}")
         return body
 
+    def curate(
+        self,
+        engram_id: int,
+        action: str,
+        note: str = "",
+    ) -> dict:
+        """Create a curation overlay engram pointing at engram_id (v0.0.9+).
+
+        Non-destructive: original engram is untouched. A new engram on
+        surface 'curation' is inserted with a meta payload that names the
+        target engram + the action taken. Future recall tools can read
+        these overlays to re-rank retrieval.
+
+        Args:
+            engram_id: positive integer primary key of the target engram.
+            action: one of 'canonical' | 'demote' | 'archive'.
+            note: optional human-readable rationale (<=2000 chars). Stored
+                in meta.note.
+
+        Returns:
+            ``{"ok": bool, "curation_engram_id": int, "target_engram_id": int,
+            "action": str, "surface": "curation"}``
+
+        Raises:
+            ValueError: if engram_id is not a positive integer, action is
+                outside the allowed set, or note exceeds 2000 chars.
+            DaemonError: if the target engram does not exist (404) or the
+                overlay insert fails.
+        """
+        if not isinstance(engram_id, int) or engram_id < 1:
+            raise ValueError(f"engram_id must be a positive integer, got {engram_id!r}")
+        action = (action or "").strip().lower()
+        if action not in ("canonical", "demote", "archive"):
+            raise ValueError(
+                f"action must be one of 'canonical' | 'demote' | 'archive', got {action!r}"
+            )
+        if note and len(note) > 2000:
+            raise ValueError(f"note exceeds 2000-char limit (got {len(note)})")
+        target = self.get_engram_by_id(engram_id)
+        curation_meta: dict[str, object] = {
+            "target_engram_id": engram_id,
+            "target_surface": target.surface,
+            "target_ts": target.ts,
+            "action": action,
+        }
+        if note:
+            curation_meta["note"] = note
+        payload_text = f"curation: {action} engram {engram_id} (surface={target.surface})"
+        if note:
+            payload_text += f"\n\n{note}"
+        curation_id = self.insert_engram(
+            surface="curation",
+            payload=payload_text,
+            meta=json.dumps(curation_meta, separators=(",", ":")),
+        )
+        return {
+            "ok": True,
+            "curation_engram_id": curation_id,
+            "target_engram_id": engram_id,
+            "action": action,
+            "surface": "curation",
+        }
+
 
 def _parse_engram(row: object) -> Engram:
     if not isinstance(row, dict):
