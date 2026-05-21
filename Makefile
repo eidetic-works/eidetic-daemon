@@ -1,5 +1,7 @@
 .PHONY: build build-all build-darwin-arm64 build-linux-amd64 build-linux-arm64 build-windows-amd64 \
-        build-compliance test bench smoke demo-smoke tidy clean verify-cross-compile
+        build-compliance build-browse build-browse-darwin-arm64 build-browse-linux-amd64 \
+        build-browse-linux-arm64 build-browse-windows-amd64 \
+        test bench smoke demo-smoke tidy clean verify-cross-compile
 
 GO ?= go
 BIN_DIR := bin
@@ -18,6 +20,23 @@ build:
 build-compliance:
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/eideticd-compliance ./cmd/eideticd-compliance
 
+# Terminal UI for engrams.db. Separate binary so the daemon stays lean — no
+# bubbletea / lipgloss deps in the always-on hot path.
+build-browse:
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/eideticd-browse ./cmd/eideticd-browse
+
+build-browse-darwin-arm64:
+	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/eideticd-browse-darwin-arm64 ./cmd/eideticd-browse
+
+build-browse-linux-amd64:
+	GOOS=linux GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/eideticd-browse-linux-amd64 ./cmd/eideticd-browse
+
+build-browse-linux-arm64:
+	GOOS=linux GOARCH=arm64 $(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/eideticd-browse-linux-arm64 ./cmd/eideticd-browse
+
+build-browse-windows-amd64:
+	GOOS=windows GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/eideticd-browse-windows-amd64.exe ./cmd/eideticd-browse
+
 build-darwin-arm64:
 	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/eideticd-darwin-arm64 $(PKG)
 
@@ -30,7 +49,8 @@ build-linux-arm64:
 build-windows-amd64:
 	GOOS=windows GOARCH=amd64 $(GO) build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/eideticd-windows-amd64.exe $(PKG)
 
-build-all: build-darwin-arm64 build-linux-amd64 build-linux-arm64 build-windows-amd64
+build-all: build-darwin-arm64 build-linux-amd64 build-linux-arm64 build-windows-amd64 \
+           build-browse-darwin-arm64 build-browse-linux-amd64 build-browse-linux-arm64 build-browse-windows-amd64
 	@./scripts/verify-cross-compile.sh
 
 verify-cross-compile:

@@ -25,6 +25,7 @@ import (
 	"github.com/eidetic-works/eidetic-daemon/internal/api"
 	"github.com/eidetic-works/eidetic-daemon/internal/auth"
 	"github.com/eidetic-works/eidetic-daemon/internal/autotag"
+	"github.com/eidetic-works/eidetic-daemon/internal/bundle"
 	"github.com/eidetic-works/eidetic-daemon/internal/capture"
 	"github.com/eidetic-works/eidetic-daemon/internal/engram"
 	"github.com/eidetic-works/eidetic-daemon/internal/hooks"
@@ -62,6 +63,8 @@ func main() {
 	captureSurface := flag.String("surface", "", "with -capture: surface tag for the engram (e.g. kubernetes, clipboard, browser). Required.")
 	vacuumFlag := flag.Bool("vacuum", false, "run SQLite VACUUM on engrams.db to compact + reclaim space. Requires daemon to be down (write-lock). Reports before/after size.")
 	autoTagFlag := flag.String("auto-tag", "", "classify recent engrams via heuristic rules and merge tags into meta. Arg = window (24h|7d|30d). Daemon must be down (writer lock).")
+	importBundle := flag.String("import-bundle", "", "bulk-import a file of engrams. Path or '-' for stdin. Format auto-detected from content unless -bundle-format is set. Pair with -surface NAME. Daemon must be down. v0.0.61+.")
+	bundleFormat := flag.String("bundle-format", "auto", "with -import-bundle: explicit format (auto|ndjson|markdown|text). Default auto-detects from the first non-empty line.")
 	installSvc := flag.Bool("install", false, "register eideticd as a login-time service (launchd on macOS, systemd-user on Linux) and exit")
 	uninstallSvc := flag.Bool("uninstall", false, "stop + unregister the login-time service and optionally delete local data; inverse of -install")
 	uninstallPurge := flag.Bool("purge", false, "with -uninstall: skip interactive confirm and delete <dataDir> (engrams.db, state, tokens)")
@@ -186,6 +189,54 @@ func main() {
 		fmt.Println("Tag counts:")
 		for tag, n := range tagCounts {
 			fmt.Printf("  %-10s %d\n", tag, n)
+		}
+		return
+	}
+
+	// --import-bundle: parse a file (ndjson | markdown | text) into engrams and
+	// bulk-insert via store.InsertBatch. Daemon must be down (writer lock).
+	// v0.0.61+.
+	if *importBundle != "" {
+		if *captureSurface == "" {
+			log.Fatalf("import-bundle: -surface NAME required")
+		}
+		var rdr io.Reader
+		if *importBundle == "-" {
+			rdr = os.Stdin
+		} else {
+			f, err := os.Open(*importBundle)
+			if err != nil {
+				log.Fatalf("import-bundle: open %s: %v", *importBundle, err)
+			}
+			defer f.Close()
+			rdr = f
+		}
+		res, err := bundle.Parse(rdr, bundle.Format(*bundleFormat), bundle.Defaults{
+			Surface: *captureSurface,
+			BaseTS:  time.Now().UnixNano(),
+		})
+		if err != nil {
+			log.Fatalf("import-bundle: parse: %v", err)
+		}
+		if len(res.Engrams) == 0 {
+			fmt.Printf("import-bundle: detected format %q, no engrams to insert (skipped: %d)\n", res.Detected, len(res.Skipped))
+			for _, s := range res.Skipped {
+				fmt.Fprintf(os.Stderr, "  skip: %s\n", s)
+			}
+			return
+		}
+		s, err := store.Open(dbPath)
+		if err != nil {
+			log.Fatalf("import-bundle: open store: %v (is the daemon running? stop it first)", err)
+		}
+		defer s.Close()
+		if err := s.InsertBatch(context.Background(), res.Engrams); err != nil {
+			log.Fatalf("import-bundle: insert: %v", err)
+		}
+		fmt.Printf("import-bundle: inserted %d engrams (format=%s, surface=%s, skipped=%d)\n",
+			len(res.Engrams), res.Detected, *captureSurface, len(res.Skipped))
+		for _, sk := range res.Skipped {
+			fmt.Fprintf(os.Stderr, "  skip: %s\n", sk)
 		}
 		return
 	}
