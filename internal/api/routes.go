@@ -487,8 +487,18 @@ func (s *Server) handleRecent(w http.ResponseWriter, r *http.Request) {
 // right-to-export use cases: backup before uninstall, migrate to another
 // store, audit / compliance dump.
 //
-// Memory-bounded via paginated Retrieve (1000 rows per page). Safe to call
-// against a 10M-row store; the response streams as it generates.
+// Memory-bounded via paginated RetrieveAfter (1000 rows per page) using a
+// compound (ts, id) cursor. Safe to call against a 10M-row store; the
+// response streams as it generates.
+//
+// Why compound cursor: chunked-capture splitOversized() emits N chunks at
+// identical ts, and handleEngramsBatch assigns one `time.Now()` per call to
+// every item with TS==0. The prior `ts > since` cursor dropped every row
+// sharing the boundary ts — N-1 chunks per oversized record, N-1 rows per
+// API batch insert. The (ts > c.ts) OR (ts = c.ts AND id > c.id) shape
+// covers shared-ts records.
+//
+// Audit ref: CRITICAL `internal/api/routes.go:537`.
 //
 // Content-Type: application/x-ndjson (so curl users can pipe through `jq`).
 // (v0.0.42+)
@@ -511,12 +521,16 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	enc := json.NewEncoder(w)
 
 	const pageSize = 1000
-	cursor := since
+	// Compound cursor (ts, id). Start position: since acts as initial ts
+	// bound, id=0 so the first page includes any row at exactly that ts.
+	// If since == 0, both fields are 0 → no after-filter, full export.
+	cursorTS := since
+	var cursorID int64
 	total := 0
 
 	for {
 		ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
-		rows, err := s.store.Retrieve(ctx, surface, cursor, before, pageSize, true)
+		rows, err := s.store.RetrieveAfter(ctx, surface, cursorTS, cursorID, before, pageSize)
 		cancel()
 		if err != nil {
 			// Mid-stream errors can't change HTTP status — already sent 200.
@@ -533,8 +547,11 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		total += len(rows)
-		// Advance cursor past the last row (asc order → max ts is last)
-		cursor = rows[len(rows)-1].TS
+		// Advance compound cursor past the last row. Asc order → last row
+		// in the page is the new lower bound; id breaks shared-ts ties.
+		last := rows[len(rows)-1]
+		cursorTS = last.TS
+		cursorID = last.ID
 		if len(rows) < pageSize {
 			break
 		}

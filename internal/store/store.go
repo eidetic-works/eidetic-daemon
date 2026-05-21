@@ -665,6 +665,79 @@ func (s *Store) Vacuum(ctx context.Context) error {
 	return err
 }
 
+// RetrieveAfter returns up to `limit` engrams strictly after the (ts, id)
+// pair, ordered by (ts ASC, id ASC). Designed for paginated export to fix
+// the boundary-row drop bug in the prior `ts > since` cursor: chunked-
+// capture splitOversized() emits N chunks at identical ts, and
+// handleEngramsBatch assigns a single `time.Now()` to every item — those
+// shared-ts records were silently lost when the page boundary fell on
+// them.
+//
+// Semantics:
+//   - cursorTS == 0 && cursorID == 0 → start of stream (no after-filter)
+//   - WHERE (ts > cursorTS) OR (ts = cursorTS AND id > cursorID)
+//   - ORDER BY ts ASC, id ASC LIMIT ?
+//   - surface = "" → cross-surface; otherwise restricted to that surface
+//   - before > 0 → also bounded by ts < before
+//
+// Caller advances the cursor by setting cursorTS = rows[last].TS,
+// cursorID = rows[last].ID after each page.
+//
+// Audit ref: CRITICAL `internal/api/routes.go:537` — export N-1 row drop.
+func (s *Store) RetrieveAfter(ctx context.Context, surface string, cursorTS, cursorID, before int64, limit int) ([]engram.Engram, error) {
+	if limit <= 0 {
+		limit = 50
+	} else if limit > 5000 {
+		// Export wants 1000-row pages; allow up to 5000 for callers that
+		// can afford it. Above that, paginate.
+		limit = 5000
+	}
+
+	var (
+		clauses []string
+		args    []interface{}
+	)
+	if surface != "" {
+		clauses = append(clauses, "surface = ?")
+		args = append(args, surface)
+	}
+	if cursorTS > 0 || cursorID > 0 {
+		// Compound cursor. SQLite tuple-compare via OR for portability.
+		clauses = append(clauses, "(ts > ? OR (ts = ? AND id > ?))")
+		args = append(args, cursorTS, cursorTS, cursorID)
+	}
+	if before > 0 {
+		clauses = append(clauses, "ts < ?")
+		args = append(args, before)
+	}
+	args = append(args, limit)
+
+	q := `SELECT id, surface, ts, payload, COALESCE(meta, '') FROM engrams`
+	if len(clauses) > 0 {
+		q += " WHERE " + strings.Join(clauses, " AND ")
+	}
+	q += " ORDER BY ts ASC, id ASC LIMIT ?"
+
+	rows, err := s.reader.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("retrieve after query: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]engram.Engram, 0, limit)
+	for rows.Next() {
+		var e engram.Engram
+		if err := rows.Scan(&e.ID, &e.Surface, &e.TS, &e.Payload, &e.Meta); err != nil {
+			return nil, fmt.Errorf("retrieve after scan: %w", err)
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("retrieve after row iter: %w", err)
+	}
+	return out, nil
+}
+
 // UpdateMeta replaces the meta field of an engram by ID. Returns ErrNotFound
 // if the engram doesn't exist. (v0.0.60+)
 func (s *Store) UpdateMeta(ctx context.Context, id int64, meta string) error {
