@@ -89,6 +89,19 @@ Tools exposed:
     with the anchor itself filtered out of adjacent_engrams (the host
     LLM gets it once via anchor_engram).
 
+  nucleus_synth_over_engrams(query, k=8, mode="code", demo=True)
+    W4 customer-visible deliverable (v0.0.10+). Synthesis-over-engrams:
+    FTS-retrieves top-K engrams from the daemon store and POSTs them as
+    extra_context to the Third Brother /tb/turn endpoint (env: TB_URL,
+    default http://127.0.0.1:7878/tb/turn). Returns {query,
+    retrieved_engram_ids, synthesis, model_version, latency_ms,
+    demo_disclaimer?}. demo=True (default) stamps the honesty banner per
+    cc-main's 2026-05-21 W4 demo-only decision; callers explicitly pass
+    demo=False to suppress. Sovereignty=sovereign hard-forced on every
+    /tb/turn call. Graceful: if /tb/turn hangs or errors, returns FTS IDs
+    with error="tb_endpoint_unresponsive". See scripts/tb_synth.py (in
+    eidetic-works/mcp-server-nucleus repo) for the canonical reference.
+
 Run:
 
     eideticd &                          # daemon listens on UDS
@@ -112,12 +125,93 @@ Set EIDETIC_UDS_PATH to override the default UDS path.
 from __future__ import annotations
 
 import json
+import os
 import time
+import urllib.error
+import urllib.request
 from dataclasses import asdict
 from typing import Any
 
 from .client import DaemonClient, DaemonError
 from .reassemble import reassemble_chunks
+
+
+# ── nucleus_synth_over_engrams constants ─────────────────────────────────────
+# Matches scripts/tb_synth.py in the eidetic-works/mcp-server-nucleus repo.
+# Honesty disclaimer per cc-main 2026-05-21 W4 demo-only decision: v14 + RAG
+# is a concept proof, learned-judgment ships W6-7. The disclaimer MUST be
+# present in any output destined for external view; demo=True default below.
+_TB_URL_DEFAULT = "http://127.0.0.1:7878/tb/turn"
+_TB_MODEL_DEFAULT = "third-brother:latest"
+_TB_DEFAULT_TIMEOUT_S = 30
+_SYNTH_EXCERPT_CHAR_CAP = 200
+_SYNTH_DEMO_DISCLAIMER = (
+    "Concept proof — runs over TB v14 + engram-RAG; "
+    "learned-judgment capability targets W6-7 training pipeline."
+)
+
+
+def _synth_post_tb_turn(
+    query: str,
+    mode: str,
+    extra_context: str | None,
+    timeout_s: int = _TB_DEFAULT_TIMEOUT_S,
+) -> dict:
+    """POST to TB /tb/turn with sovereignty=sovereign hard-forced.
+
+    Mirrors scripts/tb_synth.py:post_tb_turn so daemon-side and CLI-side
+    surfaces stay shape-identical. Returns dict with ok, output,
+    latency_ms, and optional error/raw fields. Never raises — TB endpoint
+    failures degrade gracefully so the caller still gets FTS results.
+    """
+    tb_url = os.environ.get("TB_URL", _TB_URL_DEFAULT)
+    body = {
+        "input": query,
+        "mode": mode,
+        "sovereignty": "sovereign",
+    }
+    if extra_context:
+        body["extra_context"] = extra_context
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        tb_url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    t0 = time.perf_counter()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            raw = resp.read().decode("utf-8")
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        parsed = json.loads(raw)
+        return {
+            "ok": bool(parsed.get("ok", True)),
+            "output": parsed.get("output", ""),
+            "latency_ms": latency_ms,
+            "raw": parsed,
+        }
+    except (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+        json.JSONDecodeError,
+        Exception,  # defensive: any unexpected transport hiccup degrades gracefully
+    ) as e:
+        return {
+            "ok": False,
+            "output": "",
+            "latency_ms": int((time.perf_counter() - t0) * 1000),
+            "error": str(e),
+        }
+
+
+def _synth_format_rag_context(retrieved: list[dict]) -> str | None:
+    """Render retrieved engrams as the /tb/turn extra_context block."""
+    if not retrieved:
+        return None
+    parts = [f"[engram {r['engram_id']}] {r['excerpt']}" for r in retrieved]
+    return "\n\n[ENGRAM RAG]\n" + "\n".join(parts)
 
 
 # Stop-words filtered out of nucleus_ask questions before they hit FTS5.
@@ -665,6 +759,56 @@ def build_server(client: DaemonClient | None = None) -> Any:
                 },
             ),
             Tool(
+                name="nucleus_synth_over_engrams",
+                description=(
+                    "Synthesis over engram-RAG (v0.0.10+, W4 customer-visible "
+                    "deliverable). FTS-retrieves the top-K engrams matching `query` "
+                    "from the daemon store, formats them as the extra_context block, "
+                    "and POSTs to the Third Brother /tb/turn endpoint (TB_URL env, "
+                    "default http://127.0.0.1:7878/tb/turn). Returns "
+                    "{query, retrieved_engram_ids, synthesis, model_version, "
+                    "latency_ms, demo_disclaimer?}.\n\n"
+                    "Honesty framing: `demo` defaults to true (W4 demo-only "
+                    "contract — v14+engram-RAG is a concept proof; "
+                    "learned-judgment ships W6-7). The demo flag adds a "
+                    "disclaimer to the returned payload. Callers should "
+                    "explicitly pass demo=false ONLY for internal eval harnesses; "
+                    "Distribution-Officer-facing artifacts MUST keep demo=true "
+                    "until v15 ships and the W4 gate passes.\n\n"
+                    "Privacy: payload excerpts are capped at 200 chars each in "
+                    "the RAG context. Sovereignty=sovereign is hard-forced on "
+                    "every /tb/turn call regardless of caller arg.\n\n"
+                    "Graceful: if /tb/turn hangs or errors, the tool still returns "
+                    "the FTS retrieval result with error='tb_endpoint_unresponsive' "
+                    "so the host LLM can fall back to citing engrams directly."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural-language query to retrieve + synthesize over.",
+                        },
+                        "k": {
+                            "type": "integer",
+                            "description": "Top-K FTS retrievals to feed as RAG context (default 8, max 30).",
+                            "minimum": 1,
+                            "maximum": 30,
+                        },
+                        "mode": {
+                            "type": "string",
+                            "description": "TB routing mode. One of 'code', 'life', 'business', 'design'. Default 'code'.",
+                            "enum": ["code", "life", "business", "design"],
+                        },
+                        "demo": {
+                            "type": "boolean",
+                            "description": "If true (default), stamps the honesty disclaimer per W4 demo-only contract. Pass false ONLY for internal eval harnesses.",
+                        },
+                    },
+                    "required": ["query"],
+                },
+            ),
+            Tool(
                 name="nucleus_curate",
                 description=(
                     "Mark an engram as 'canonical' (most authoritative), 'demote' "
@@ -954,6 +1098,67 @@ def build_server(client: DaemonClient | None = None) -> Any:
             # body is already shaped with `instructions` first — no reorder
             # needed; client.link() builds the dict in the canonical order.
             return [TextContent(type="text", text=json.dumps(body, indent=2))]
+
+        if name == "nucleus_synth_over_engrams":
+            query = str(arguments.get("query", "")).strip()
+            if not query:
+                return [TextContent(type="text", text="error: query required")]
+            try:
+                k = int(arguments.get("k", 8))
+            except (TypeError, ValueError):
+                return [TextContent(type="text", text="error: k must be a positive integer")]
+            k = max(1, min(k, 30))
+            mode = str(arguments.get("mode", "code")).strip() or "code"
+            # demo defaults TRUE per cc-main 2026-05-21 W4 demo-only contract.
+            demo_arg = arguments.get("demo", True)
+            demo = bool(demo_arg) if demo_arg is not None else True
+
+            t0 = time.perf_counter()
+            # FTS retrieval goes through the daemon — same FTS5 store the CLI
+            # surface (scripts/tb_synth.py) hits directly via sqlite, but here
+            # we route via DaemonClient so the daemon's HTTP API stays the
+            # single source of truth for engram access.
+            try:
+                rows = daemon.search_engrams(q=query, surface="", limit=k)
+            except (DaemonError, ValueError) as exc:
+                return [TextContent(type="text", text=f"error: {exc}")]
+            fts_latency_ms = int((time.perf_counter() - t0) * 1000)
+
+            retrieved = [
+                {
+                    "engram_id": r.id,
+                    "surface": r.surface,
+                    "excerpt": (r.payload or "")[:_SYNTH_EXCERPT_CHAR_CAP],
+                }
+                for r in rows
+            ]
+            extra_ctx = _synth_format_rag_context(retrieved)
+            tb_res = _synth_post_tb_turn(query, mode=mode, extra_context=extra_ctx)
+            total_ms = int((time.perf_counter() - t0) * 1000)
+
+            result: dict[str, Any] = {
+                "query": query,
+                "mode": mode,
+                "k": k,
+                "retrieved_engram_ids": [r["engram_id"] for r in retrieved],
+                "n_retrieved": len(retrieved),
+                "fts_latency_ms": fts_latency_ms,
+                "tb_latency_ms": tb_res["latency_ms"],
+                "latency_ms": total_ms,
+                "model_version": os.environ.get("TB_MODEL", _TB_MODEL_DEFAULT),
+                "tool_version": "0.1.0",
+            }
+            if tb_res["ok"]:
+                result["synthesis"] = tb_res["output"]
+            else:
+                # Graceful: surface FTS retrieval even when TB endpoint hangs.
+                result["synthesis"] = ""
+                result["error"] = "tb_endpoint_unresponsive"
+                if tb_res.get("error"):
+                    result["error_detail"] = tb_res["error"]
+            if demo:
+                result["demo_disclaimer"] = _SYNTH_DEMO_DISCLAIMER
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         if name == "nucleus_curate":
             raw_id = arguments.get("engram_id")
