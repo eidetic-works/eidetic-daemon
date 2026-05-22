@@ -325,7 +325,7 @@ If a Day-3+ commit touches any of the above, refuse + escalate to operator with 
 
 ## 13. References
 
-- `docs/specs/eidetic-daemon-w1.md` @ `b3caa126` — the binding spec
+- `docs/SPEC.md` — the binding W1 spec
 - `DECISIONS.md` ADR-012 — Pre-Day-1 Go feasibility (P95 baseline)
 - `DECISIONS.md` ADR-013 — 5-guardrail conditional GO (review)
 - `DECISIONS.md` ADR-014 — 5 carry-forward patterns + 3 measurement gaps

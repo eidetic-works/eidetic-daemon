@@ -1,13 +1,13 @@
 # SHIPPED — Compression sprint catalog (2026-05-19 → 2026-05-21)
 
-Index of everything shipped during Lokesh's "finish the 80-day plan in 2 days" compression directive. ~48h of intensive parallel-agent build, 7+ surfaces shipping concurrently. Read this to know what exists; read `CHANGELOG.md` for per-version detail.
+Index of everything shipped during the operator's "finish the 80-day plan in 2 days" compression directive. ~48h of intensive parallel-agent build, 7+ surfaces shipping concurrently. Read this to know what exists; read `CHANGELOG.md` for per-version detail.
 
-**Sprint close 2026-05-21 morning IST:** All Lokesh-keyboard items resolved (5 captured + Reddit deliberately skipped per memory). All 8 workers deployed + verified. Daemon at v0.0.61.
+**Sprint close 2026-05-21 morning IST:** All operator-keyboard items resolved (5 captured + Reddit deliberately skipped per memory). All 8 workers deployed + verified. Daemon at v0.0.62.
 
 ## Quick numbers
 
-- **31 daemon versions tagged** (v0.0.32 → v0.0.61)
-- **8 MCP package versions** (eidetic-mcp 0.0.1 → 0.0.8, four published this sprint: 0.0.5 / 0.0.6 / 0.0.7 / 0.0.8)
+- **32 daemon versions tagged** (v0.0.32 → v0.0.62)
+- **10 MCP package versions** (eidetic-mcp 0.0.1 → 0.0.10; latest published 0.0.10)
 - **15 integration surfaces** (every major dev tool ecosystem)
 - **8 Cloudflare Workers** — **all live** (sync, payments, analytics, affiliate, account, Slack/Discord/Telegram chat bots)
 - **3 chat-app registrations live** (Slack `eidetic-works`, Discord app `Eidetic`, Telegram `@eideticworks_bot`)
@@ -17,7 +17,7 @@ Index of everything shipped during Lokesh's "finish the 80-day plan in 2 days" c
 
 ## Daemon (Go binary, 4 platforms, MIT)
 
-Stable at v0.0.61. Cross-compiles to darwin-arm64 + linux-amd64 + linux-arm64 + windows-amd64. Pure-Go (modernc.org/sqlite), no CGO. Tagged versions auto-publish via `release.yml`; Homebrew tap auto-updates via `HOMEBREW_TAP_PAT`.
+Stable at v0.0.62. Cross-compiles to darwin-arm64 + linux-amd64 + linux-arm64 + windows-amd64. Pure-Go (modernc.org/sqlite), no CGO. Tagged versions auto-publish via `release.yml`; Homebrew tap auto-updates via `HOMEBREW_TAP_PAT`.
 
 ### CLI flags (26 total)
 
@@ -48,10 +48,11 @@ Stable at v0.0.61. Cross-compiles to darwin-arm64 + linux-amd64 + linux-arm64 + 
 | 0.0.53-56 | Refactor textsearch + `--vacuum` + hooks + regex/status |
 | 0.0.58-60 | Meta enrichment + `nucleus_link` + auto-tag classifier + TUI |
 | 0.0.61 | `--import-bundle` universal (ndjson + markdown + text auto-detect, stdin pipe) |
+| 0.0.62 | Cursor-parser 500 MiB single-pass cap (no boot-time OOM); JSONL launchd plist XML-escape fix; generic 401 + case-insensitive Bearer + sync.json validation |
 
 ## MCP package (eidetic-mcp on PyPI)
 
-Stable at 0.0.8. 13 tools registered.
+Stable at 0.0.10. 17 tools registered.
 
 ### Recall family (the "wow" tools)
 
@@ -59,6 +60,7 @@ Stable at 0.0.8. 13 tools registered.
 - **`nucleus_digest(window)`** — RAG-shaped weekly recap (0.0.6)
 - **`nucleus_timeline(window, surfaces?)`** — cross-tool chronology (0.0.7)
 - **`nucleus_link(engram_id)`** — temporally adjacent engrams across surfaces (0.0.8)
+- **`nucleus_curate(query, limit?)`** — de-noised top-K engrams for downstream LLM context (0.0.9+)
 
 ### Operational tools
 
@@ -69,7 +71,7 @@ Stable at 0.0.8. 13 tools registered.
 | # | Surface | Path | Status |
 |---|---|---|---|
 | 1 | Daemon binary | (root) | ✅ Homebrew tap, install.sh, install.ps1 |
-| 2 | eidetic-mcp Python | `bridge/python/` | ✅ PyPI 0.0.8 |
+| 2 | eidetic-mcp Python | `bridge/python/` | ✅ PyPI 0.0.10 |
 | 3 | VS Code extension | `integrations/vscode/` | ✅ TS+esbuild, 11/11 tests |
 | 4 | JetBrains plugin | `integrations/jetbrains/` | ✅ Kotlin+Gradle v2 |
 | 5 | Raycast extension | `integrations/raycast/` | ✅ 4 commands, build clean |

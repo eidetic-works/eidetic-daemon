@@ -1,105 +1,31 @@
 # eidetic-daemon
 
-[![Release](https://img.shields.io/github/v/release/eidetic-works/eidetic-daemon?style=flat-square&color=5eead4&logo=github&label=release)](https://github.com/eidetic-works/eidetic-daemon/releases/latest)
-[![License](https://img.shields.io/github/license/eidetic-works/eidetic-daemon?style=flat-square&color=5eead4)](./LICENSE)
-[![Downloads](https://img.shields.io/github/downloads/eidetic-works/eidetic-daemon/total?style=flat-square&color=5eead4&label=downloads)](https://github.com/eidetic-works/eidetic-daemon/releases)
-[![Stars](https://img.shields.io/github/stars/eidetic-works/eidetic-daemon?style=flat-square&color=5eead4&label=stars)](https://github.com/eidetic-works/eidetic-daemon/stargazers)
-[![PyPI](https://img.shields.io/pypi/v/eidetic-mcp?style=flat-square&color=5eead4&label=mcp%20bridge)](https://pypi.org/project/eidetic-mcp/)
+**Local-first Go daemon** that captures every Claude Code / Cursor / Cowork session into a single SQLite-WAL engram store, and serves it back in <100ms P95.
 
-> **Local-first AI memory.** Always-on Go daemon that captures every Claude Code / Cursor / Cowork session into a single SQLite-WAL engram store and serves it back in <100ms P95.
+278,561 engrams. 803 sessions. 3.3 GB. Two weeks of real dogfood. Free and MIT.
 
-**278,561 engrams · 803 sessions · 3.3 GB · two weeks of real dogfood. Free + MIT.**
-
-[**eidetic.works**](https://eidetic.works) · [Pro $29/mo](https://eideticworks.gumroad.com/l/eidetic-pro) · [latest release](https://github.com/eidetic-works/eidetic-daemon/releases/latest) · [CHANGELOG](./CHANGELOG.md) · [issues](https://github.com/eidetic-works/eidetic-issues)
-
-## How it works
-
-```
-   Claude Code session  ─┐
-   Cursor session       ─┼─► fsnotify ─►  SQLite WAL          ◄── MCP tools
-   Cowork session       ─┘   watcher      engrams.db              (ask · link
-   POST /engrams        ─┘   <50ms write   ~/.eidetic/             digest · curate
-                                              │                    timeline · ...)
-                                              ▼  (opt-in)
-                                       Cloudflare R2 sync
-```
-
-Single static binary. No CGO. Cross-compiles to `darwin-arm64` + `linux-amd64` + `linux-arm64` + `windows-amd64`.
-
-## Quickstart
-
-```sh
-# 1. Install (macOS + Linux; Homebrew + Windows below)
-curl -fsSL https://eidetic.works/install.sh | sh
-
-# 2. Confirm capture is live
-eideticd --stats
-# → engrams: <growing>  ·  P95 fetch: 0.27 ms  ·  last_capture: <recent>
-
-# 3. Ask your engrams a question (works without an LLM running — just RAG retrieval)
-curl --unix-socket /tmp/eidetic-daemon.sock 'http://localhost/ask?question=what+did+I+ship+yesterday'
-```
-
-Every claim in this README has a `curl`. If a section says "do X", the next code block shows you exactly how to verify.
-
----
-
-## Why this exists
-
-Your AI tools forget the moment a session ends — and your context, decisions, and prior reasoning go with them. eidetic-daemon captures every session into one local store you own, so the next session (in any tool) can read what the last one did. Local-first because vendor cloud memory is a lock-in trap, your sessions are sensitive, and offline machines still need to remember.
-
----
-
-## Pricing at a glance
-
-| Tier  | Engrams typical          | Cloud sync               | Recall (`nucleus_ask`) | Web dashboard | Cost      |
-| :---- | :----------------------- | :----------------------- | :--------------------- | :------------ | :-------- |
-| Free  | ~10K, single surface     | BYOR2 (self-hosted)      | ✓                      | ✓             | **$0**    |
-| Pro   | ~250K, all surfaces      | Managed Cloudflare R2    | ✓                      | ✓             | **$29/mo** |
-| Team  | 250K × 5 seats, shared   | Managed Cloudflare R2    | ✓                      | ✓             | **$99/mo** |
-
-Free is forever. Pro adds zero-config cloud sync + restore-in-60s + email support; Team adds shared-team engram pooling + 12h response + features one week early. Details + checkout at [eidetic.works/pricing](https://eidetic.works/pricing).
+**→ [eidetic.works](https://eidetic.works)** · [latest release](https://github.com/eidetic-works/eidetic-daemon/releases/latest) · [CHANGELOG](./CHANGELOG.md) · [Pro $29/mo](https://eideticworks.gumroad.com/l/eidetic-pro)
 
 ---
 
 ## What it does
 
-### Engram lifecycle
-
-The core CRUD over your local engram store.
-
 - **Engram capture** — `fsnotify` watches each surface's session files; new text → engram row in <50ms of file-write.
-- **Engram insertion** — `POST /engrams` — direct API-side insert; bypasses the fsnotify capture path. Accepts `{"surface":"...","payload":"...","ts":unix-ns}`, returns `{"id": N}`. Enables injection from mobile, webhooks, relay pipelines.
 - **Engram retrieval** — `GET /engrams?[surface=X]&limit=N&since=unix-ns[&before=unix-ns][&order=asc]` over local Unix socket. P95 <100ms on 10K-row store. `surface` is optional (v0.0.23+) — omit to retrieve across all surfaces. `since`+`before` define a time window; `order=asc` returns oldest-first (default newest-first).
+- **Engram insertion** — `POST /engrams` — direct API-side insert; bypasses the fsnotify capture path. Accepts `{"surface":"...","payload":"...","ts":unix-ns}`, returns `{"id": N}`. Enables injection from mobile, webhooks, relay pipelines.
+- **Bulk insertion** — `POST /engrams/batch` — JSON array of engrams in one atomic transaction; returns `{"inserted": N}`. Efficient for relay sync, session replay, bulk import.
 - **Point lookup** — `GET /engrams/{id}` — fetch a single engram by primary key; 404 when not found. Use after a `POST /engrams` to confirm the stored row.
-- **Count** — `GET /engrams/count?[surface=X][&since=unix-ns]` — returns `{"count": N}` without fetching rows. Use for monitoring badges, health dashboards, and sync-diff checks.
 - **Point delete** — `DELETE /engrams/{id}` — surgical removal of a single engram by primary key; 404 when not found. Use to remove accidentally captured sensitive data or dedup relay noise.
+- **Count** — `GET /engrams/count?[surface=X][&since=unix-ns]` — returns `{"count": N}` without fetching rows. Use for monitoring badges, health dashboards, and sync-diff checks.
 - **Engram purge** — `DELETE /engrams?surface=X[&before=unix-ns]` — remove by surface (with optional timestamp cutoff); returns `{"deleted": N}`.
-
-### Search + recall
-
-Find engrams across surfaces. RAG retrieval ships in the box.
-
+- **Surface listing** — `GET /surfaces` — map of every active surface to its engram count; live view of what the daemon has seen.
 - **Full-text search** — `GET /search?q=...` — FTS5 keyword/phrase/boolean search over engram payloads, ranked by relevance. Answers "what did I say about X?"
 - **Recent activity** — `GET /recent?[since=unix-ns][&before=unix-ns]&limit=N` — newest engrams across all surfaces, newest-first. `since`+`before` enable sliding-window polling. Answers "what happened lately?" without a keyword or surface filter.
-- **`nucleus_ask` recall** — `GET /ask?question=<text>` (v0.0.38+) — extracts keywords from a natural-language question, FTS5-retrieves top-K engrams, returns them wrapped in answer-scaffolding for the caller's host LLM. Same semantics as the `nucleus_ask` MCP tool. LRU+TTL cache so repeat questions don't re-hit the index (v0.0.45+). Engrams never leave your machine.
-- **Surface listing** — `GET /surfaces` — map of every active surface to its engram count; live view of what the daemon has seen.
-
-### Bulk + export
-
-For relay sync, replay, and one-shot extraction.
-
-- **Bulk insertion** — `POST /engrams/batch` — JSON array of engrams in one atomic transaction; returns `{"inserted": N}`. Efficient for relay sync, session replay, bulk import.
+- **AI-powered recall** — `GET /ask?question=<text>` (v0.0.38+) — extracts keywords from a natural-language question, FTS5-retrieves top-K engrams, returns them wrapped in answer-scaffolding for the caller's host LLM. Same semantics as the `nucleus_ask` MCP tool. LRU+TTL cache so repeat questions don't re-hit the index (v0.0.45+).
 - **Bulk export** — `GET /export[?surface=X][&since=ns][&before=ns]` (v0.0.42+) — paginated NDJSON stream of every engram, asc timestamp order. `curl -O` saves as `engrams-export.ndjson`; pipe to `jq` for one-engram-per-line consumption. Memory-bounded — safe against 10M-row stores.
 - **Multi-surface mirror** — Cursor / Cowork / Claude Code all feed one canonical store, indexed `(surface, ts DESC)`. v0.0.41+: Cursor capture filters to `chatSessions/*.json` (excludes per-workspace `workspace.json` noise).
 
-### System
-
-How the binary itself is shaped.
-
-- **Single static binary** — pure-Go SQLite (`modernc.org/sqlite`), no CGO, statically linked.
-- **Cross-compile clean** — one `go build` produces `darwin-arm64`, `linux-amd64`, `linux-arm64`, `windows-amd64`.
-- **Local-only by default** — Unix-domain socket at `/tmp/eidetic-daemon.sock`; no network listener unless you opt in to `-bridge`.
+Single static binary. No CGO. Cross-compiles to darwin-arm64 + linux-amd64 + linux-arm64 + windows-amd64.
 
 ---
 
@@ -141,7 +67,7 @@ eideticd --restore
 
 **Bring your own R2 (free tier):** create an R2 bucket, deploy the sync Worker from `bridge/cloudflare/`, set `EIDETIC_API_KEY`, drop `sync.json`. No ongoing cost for personal use.
 
-**[Pro — $29/mo](https://eideticworks.gumroad.com/l/eidetic-pro):** Eidetic Works hosts the bucket. Personal API key + `sync.json` delivered within 24h. Includes `nucleus_ask` recall + web dashboard. First 50 subscribers keep this price.
+**[Pro — $29/mo](https://eideticworks.gumroad.com/l/eidetic-pro):** Eidetic Works hosts the bucket. Personal API key + `sync.json` delivered within 24h. Includes `nucleus_ask` AI recall + web dashboard. First 50 subscribers keep this price.
 
 **[Team — $99/mo](mailto:hi@eidetic.works?subject=eidetic%20Team):** 5 seats with shared-team engram pooling (v0.0.39+: `X-Team-ID` header dual-writes to `engrams/team/<team_id>/<device_id>/` for cross-seat recall).
 
@@ -170,30 +96,7 @@ claude mcp add eidetic -- python -m eidetic_mcp.server
 #   {"eidetic": {"command": "python", "args": ["-m", "eidetic_mcp.server"]}}
 ```
 
-The headline tool is **`nucleus_ask(question)`** — RAG over your local engrams: extracts keywords, retrieves top-K via FTS5, returns answer-scaffolding for the host LLM. Engrams never leave your machine.
-
-<details>
-<summary><strong>Full tool list</strong> (eidetic-mcp 0.0.5+, 13 tools)</summary>
-
-| Tool                    | What                                                        |
-| :---------------------- | :---------------------------------------------------------- |
-| `query_engrams`         | List with surface/time-window filters                       |
-| `search_engrams`        | FTS5 keyword/phrase/boolean search, ranked                  |
-| `recent_engrams`        | Newest across all surfaces                                  |
-| `count_engrams`         | Fast count with filters                                     |
-| `get_engram_by_id`      | Point lookup by primary key                                 |
-| `delete_engram_by_id`   | Surgical single-row delete                                  |
-| `insert_engram`         | API-side direct insert                                      |
-| `insert_engrams_batch`  | Atomic bulk insert                                          |
-| `purge_engrams`         | Mass delete by surface (+ optional time cutoff)             |
-| `list_surfaces`         | All surfaces and their engram counts                        |
-| `daemon_status`         | Daemon up/down, version, uptime                             |
-| `daemon_metrics`        | Full `/metrics` JSON (counts, latency, sync status)         |
-| **`nucleus_ask`**       | Plain-English question → RAG-scaffolded answer              |
-
-See [`bridge/python/README.md`](./bridge/python/README.md) for per-client config + [`docs/PROMPT.md`](./docs/PROMPT.md) for 5 integration recipes.
-
-</details>
+Tools (eidetic-mcp 0.0.10+, 17 registered): `query_engrams`, `search_engrams`, `recent_engrams`, `count_engrams`, `get_engram_by_id`, `delete_engram_by_id`, `insert_engram`, `insert_engrams_batch`, `purge_engrams`, `list_surfaces`, `daemon_status`, `daemon_metrics`, **`nucleus_ask(question)`** — RAG over your local engrams: extracts keywords, retrieves top-K via FTS5, returns answer-scaffolding for the host LLM. Your engrams never leave your machine. Plus four more recall tools: `nucleus_digest(window)` (24h/7d/30d summary), `nucleus_timeline(window, surfaces?)` (cross-tool chronology), `nucleus_link(engram_id)` (related-engram neighborhood), `nucleus_curate(query, limit?)` (de-noised top-K for downstream LLM context). See [`bridge/python/README.md`](./bridge/python/README.md) for per-client config + [`docs/PROMPT.md`](./docs/PROMPT.md) for 5 integration recipes.
 
 If the daemon is running with caller auth on (v0.0.9+, opt-in), the bridge auto-discovers the token from `<dataDir>/auth-token` (or `EIDETIC_AUTH_TOKEN` env var). No bridge config change required.
 
@@ -208,7 +111,7 @@ To verify:
 ```sh
 # See your engram stats (works whether daemon is running or not)
 eideticd --stats
-# → eideticd v0.0.45 — engram statistics
+# → eideticd v0.0.62 — engram statistics
 # →   engrams:    278561
 # →     claude_code          274203
 # →     cursor                 4135
@@ -376,7 +279,7 @@ See [docs/SPEC.md](docs/SPEC.md) for the binding W1 spec, [docs/IMPLEMENTATION_P
 
 ## Status
 
-Live at v0.0.45 (2026-05-20) — 45 releases since v0.0.2. Pro launch complete: managed Cloudflare R2 sync, Gumroad subscription product (`eideticworks.gumroad.com/l/eidetic-pro`), Team tier ($99/mo, multi-seat), web dashboard at `eidetic.works/dashboard`, recall via the `nucleus_ask` MCP tool. See `CHANGELOG.md` for per-version detail.
+Live at v0.0.62 (2026-05-21) — 62 releases since v0.0.2. Pro launch complete: managed Cloudflare R2 sync, Gumroad subscription product (`eideticworks.gumroad.com/l/eidetic-pro`), Team tier ($99/mo, multi-seat), web dashboard at `eidetic.works/dashboard`, AI-powered recall via `nucleus_ask` MCP tool. See `CHANGELOG.md` for per-version detail.
 
 ### Phase table (W1)
 
@@ -412,20 +315,6 @@ Track via `docs/IMPLEMENTATION_PLAN.md` § 11 phase sequencing.
 | 25 | `before=unix-ns` upper-bound filter on `GET /engrams` and `GET /recent` | ✅ v0.0.21 (#54) |
 | 26 | `order=asc` on `GET /engrams` — oldest-first retrieval for replay consumers | ✅ v0.0.22 (#55) |
 | 27 | `surface` optional on `GET /engrams` — cross-surface retrieval with full query power | ✅ v0.0.23 (#56) |
-
----
-
-## Contributing
-
-Bug reports and feature requests go to [eidetic-works/eidetic-issues](https://github.com/eidetic-works/eidetic-issues) — that repo holds the issue templates and tracks every public bug we triage. Code PRs against this repo welcome; open an issue first for anything larger than a typo so we can sanity-check direction.
-
-When filing a bug, please include:
-
-- `eideticd --version`
-- Output of `eideticd --check` (or the failing command's full stdout/stderr)
-- Your platform (`uname -a` or Windows version)
-
-Discussions on Discord: invite at [eidetic.works](https://eidetic.works). Security disclosures privately to `support@eidetic.works` — see [SECURITY.md](./SECURITY.md).
 
 ---
 

@@ -2,7 +2,6 @@
 
 **Target:** Engineers, founders building with Claude Code / Cursor. LinkedIn audience = more senior/professional than Twitter.
 **Tone:** founder-direct, numbers-led, no hype. Same voice as corpus samples.
-**Posted from:** Lokesh Garg personal LinkedIn
 **Status:** DRAFT — ready to post
 
 ---

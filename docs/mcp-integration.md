@@ -4,7 +4,7 @@ Connect eidetic-daemon to Claude Code, Cursor, or any other MCP-compatible AI as
 
 ## What this does
 
-Once connected, your AI assistant gets 12 new tools — `query_engrams`, `search_engrams`, `daemon_metrics`, `list_surfaces`, and more. The assistant can retrieve the engrams your daemon has been quietly capturing from Claude Code sessions, Cursor workspaces, and Cowork sessions without any manual copy-paste.
+Once connected, your AI assistant gets 17 new tools — `query_engrams`, `search_engrams`, `daemon_metrics`, `list_surfaces`, plus the recall family (`nucleus_ask`, `nucleus_digest`, `nucleus_timeline`, `nucleus_link`, `nucleus_curate`), and more. The assistant can retrieve the engrams your daemon has been quietly capturing from Claude Code sessions, Cursor workspaces, and Cowork sessions without any manual copy-paste.
 
 ```
   AI assistant  ←── stdio ──→  eidetic-mcp  ←── HTTP/UDS ──→  eideticd
