@@ -1188,6 +1188,21 @@ async def main() -> None:  # pragma: no cover
         await server.run(read, write, server.create_initialization_options())
 
 
+def cli() -> None:  # pragma: no cover
+    """Sync entry-point for the `eidetic-mcp` console script.
+
+    pyproject.toml `[project.scripts]` cannot reference `async def` directly —
+    the script wrapper would do `sys.exit(main())` which discards the coroutine
+    without awaiting it (the v0.0.10 bug: cc-main observed RuntimeWarning
+    "coroutine 'main' was never awaited" + exit 0 + MCP client "Failed to
+    connect"). Workaround was to invoke `python -m eidetic_mcp.server` which
+    hits the `if __name__ == "__main__"` block below. This wrapper makes the
+    console script work natively too.
+    """
+    import asyncio
+    asyncio.run(main())
+
+
 if __name__ == "__main__":  # pragma: no cover
     import asyncio
 
