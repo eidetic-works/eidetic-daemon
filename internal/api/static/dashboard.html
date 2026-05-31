@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex,nofollow" />
+<title>engrams — Eidetic Works</title>
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0b0d10;
+  --surface: #14171b;
+  --surface-2: #1a1e23;
+  --border: #232830;
+  --border-strong: #2c333d;
+  --accent: #5eead4;
+  --accent-bg: rgba(94, 234, 212, 0.08);
+  --accent-bg-strong: rgba(94, 234, 212, 0.16);
+  --text: #e8ecf1;
+  --text-dim: #a8b0bc;
+  --text-mute: #6c7480;
+  --warn: #fbbf24;
+  --err: #f87171;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.nav {
+  position: sticky; top: 0; z-index: 10;
+  background: rgba(11, 13, 16, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-inner {
+  max-width: 1280px; margin: 0 auto;
+  padding: 0.9rem 1.5rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1.5rem;
+}
+.logo {
+  display: inline-flex; align-items: center; gap: 0.55rem;
+  font-family: var(--font-mono); font-size: 0.78rem; font-weight: 600;
+  color: var(--text); letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.logo:hover { text-decoration: none; color: var(--accent); }
+.nav-meta {
+  display: flex; gap: 1.25rem; align-items: center;
+  font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-mute);
+}
+.live-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); margin-right: 0.4rem;
+  box-shadow: 0 0 8px var(--accent);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% {opacity:1;} 50% {opacity:0.4;} }
+.page-head {
+  max-width: 1280px; margin: 0 auto; padding: 2rem 1.5rem 1.25rem;
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem;
+  flex-wrap: wrap;
+}
+.page-head h1 { font-size: 1.85rem; font-weight: 600; letter-spacing: -0.02em; }
+.page-head h1 .acc { color: var(--accent); }
+.page-head .sub { color: var(--text-dim); margin-top: 0.35rem; font-size: 0.92rem; max-width: 620px; }
+.page-head .sub code { font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-dim); background: var(--surface); padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border); }
+.head-meta {
+  display: flex; flex-direction: column; gap: 0.25rem;
+  font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-mute);
+  text-align: right;
+}
+.head-meta .num { color: var(--text); font-size: 0.84rem; }
+.app-layout {
+  max-width: 1280px; margin: 0 auto;
+  padding: 0.5rem 1.5rem 4rem;
+  display: grid; grid-template-columns: 1fr 280px; gap: 1.75rem;
+}
+.filter-bar {
+  position: sticky; top: 56px;
+  background: rgba(11, 13, 16, 0.95); backdrop-filter: blur(8px);
+  z-index: 5;
+  display: grid; grid-template-columns: 1fr auto auto; gap: 0.75rem;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+.search input {
+  width: 100%;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); padding: 0.55rem 0.85rem;
+  font-family: var(--font-mono); font-size: 0.85rem;
+  border-radius: 3px;
+  outline: none; transition: border-color 0.15s;
+}
+.search input:focus { border-color: var(--accent); }
+.surface-chips { display: flex; gap: 0.4rem; }
+.surface-chips button {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text-dim); padding: 0.5rem 0.85rem;
+  font-family: var(--font-mono); font-size: 0.72rem;
+  cursor: pointer; transition: all 0.15s; border-radius: 3px;
+  display: inline-flex; align-items: center; gap: 0.5rem;
+}
+.surface-chips button:hover { color: var(--text); border-color: var(--border-strong); }
+.surface-chips button.on { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
+.surface-chips .count {
+  font-size: 0.66rem; color: var(--text-mute);
+  background: var(--bg); padding: 1px 6px; border-radius: 2px;
+}
+.surface-chips button.on .count { color: var(--accent); background: var(--accent-bg-strong); }
+.limit-select {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text-dim); padding: 0.55rem 0.85rem;
+  font-family: var(--font-mono); font-size: 0.74rem;
+  border-radius: 3px; cursor: pointer;
+}
+.day-divider {
+  display: flex; align-items: baseline; gap: 0.85rem;
+  padding: 0.85rem 0 0.6rem; margin-top: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.day-divider strong { color: var(--text); font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.day-divider span { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-mute); }
+.engram-card {
+  display: grid; grid-template-columns: 110px 1fr 60px;
+  align-items: start; gap: 1.25rem;
+  padding: 0.85rem 1rem; margin: 0.45rem 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 3px; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.engram-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.engram-card .ts {
+  font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-mute);
+  padding-top: 2px;
+}
+.engram-card .surface-badge {
+  display: inline-block;
+  font-family: var(--font-mono); font-size: 0.66rem;
+  background: var(--accent-bg); color: var(--accent);
+  padding: 2px 7px; border-radius: 2px;
+  text-transform: lowercase; letter-spacing: 0.03em;
+  margin-bottom: 0.45rem;
+}
+.engram-card .payload {
+  font-family: var(--font-mono); font-size: 0.82rem;
+  color: var(--text); line-height: 1.55;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.engram-card .payload .h { color: var(--accent); background: var(--accent-bg-strong); padding: 0 2px; }
+.engram-card .engram-open {
+  font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-mute);
+  text-align: right; padding-top: 4px;
+}
+.empty-state {
+  padding: 4rem 2rem; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 1rem;
+}
+.empty-state h3 { color: var(--text-dim); font-weight: 500; }
+.empty-state p { color: var(--text-mute); max-width: 480px; }
+.empty-state code {
+  font-family: var(--font-mono); font-size: 0.82rem; color: var(--accent);
+  background: var(--surface); padding: 2px 8px; border-radius: 3px;
+  border: 1px solid var(--border);
+}
+.rail {
+  position: sticky; top: 110px; align-self: start;
+  display: flex; flex-direction: column; gap: 0.75rem;
+  max-height: calc(100vh - 130px); overflow-y: auto;
+}
+.rail-card {
+  background: var(--surface); border: 1px solid var(--border);
+  padding: 1rem 1.1rem; border-radius: 3px;
+}
+.rail-card .label {
+  font-family: var(--font-mono); font-size: 0.7rem;
+  color: var(--text-mute); text-transform: uppercase; letter-spacing: 0.05em;
+  display: flex; justify-content: space-between; margin-bottom: 0.5rem;
+}
+.rail-card .label .delta { color: var(--accent); text-transform: none; letter-spacing: 0; }
+.rail-card .value {
+  font-size: 1.6rem; font-weight: 600; color: var(--text);
+  font-feature-settings: "tnum";
+}
+.rail-card .meta {
+  font-family: var(--font-mono); font-size: 0.7rem;
+  color: var(--text-mute); margin-top: 0.4rem;
+}
+.surface-list { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
+.surface-list .row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--font-mono); font-size: 0.76rem;
+}
+.surface-list .row .name { color: var(--text-dim); }
+.surface-list .row .n { color: var(--text); font-feature-settings: "tnum"; }
+.modal-bg {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100; padding: 1rem; backdrop-filter: blur(2px);
+}
+.modal {
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 4px; max-width: 880px; width: 100%;
+  max-height: 86vh; display: flex; flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+}
+.modal-head {
+  padding: 0.85rem 1.1rem; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--font-mono); font-size: 0.76rem; color: var(--text-dim);
+}
+.modal-head .left { display: flex; gap: 0.85rem; align-items: center; }
+.modal-close {
+  background: transparent; border: none; color: var(--text-dim);
+  font-size: 1.4rem; cursor: pointer; padding: 0 0.4rem;
+}
+.modal-close:hover { color: var(--accent); }
+.modal-body {
+  padding: 1.1rem; overflow-y: auto;
+  font-family: var(--font-mono); font-size: 0.78rem;
+  color: var(--text); line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+}
+.modal-foot {
+  padding: 0.6rem 1.1rem; border-top: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 0.7rem;
+  color: var(--text-mute); display: flex; justify-content: space-between;
+}
+.modal-foot button {
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-dim); padding: 4px 10px; cursor: pointer;
+  font-family: var(--font-mono); font-size: inherit; border-radius: 2px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.modal-foot button:hover { color: var(--accent); border-color: var(--accent); }
+.error-banner {
+  max-width: 1280px; margin: 1rem auto 0; padding: 0.75rem 1rem;
+  background: rgba(248, 113, 113, 0.08); border: 1px solid rgba(248, 113, 113, 0.4);
+  color: var(--err); font-family: var(--font-mono); font-size: 0.78rem;
+  border-radius: 3px;
+}
+@media (max-width: 880px) {
+  .app-layout { grid-template-columns: 1fr; padding: 0.5rem 1rem 4rem; }
+  .rail { position: static; flex-direction: row; overflow-x: auto; max-height: none; }
+  .rail-card { flex: 0 0 220px; }
+  .filter-bar { grid-template-columns: 1fr; gap: 0.45rem; top: 56px; }
+  .engram-card { grid-template-columns: 1fr; gap: 0.35rem; }
+  .engram-card .ts { font-size: 0.68rem; }
+  .engram-card .engram-open { display: none; }
+  .page-head { flex-direction: column; align-items: flex-start; }
+  .head-meta { text-align: left; flex-direction: row; flex-wrap: wrap; gap: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-inner">
+    <a href="/" class="logo">
+      <svg width="14" height="14" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+        <rect width="120" height="120" fill="#0b0d10"/>
+        <rect x="0.5" y="0.5" width="119" height="119" fill="none" stroke="#232830" strokeWidth="1"/>
+        <rect x="46" y="46" width="28" height="28" fill="#5eead4"/>
+      </svg>
+      EIDETIC WORKS
+    </a>
+    <div class="nav-meta">
+      <span><span class="live-dot"></span><span id="nav-status">connecting…</span></span>
+      <span id="nav-version"></span>
+    </div>
+  </div>
+</div>
+
+<div id="error-banner" class="error-banner" style="display:none"></div>
+
+<div class="page-head">
+  <div>
+    <h1>Your <span class="acc">engrams</span>.</h1>
+    <p class="sub">Everything the daemon has captured from your sessions. Local-first; this page talks to your daemon over <code id="origin-hint"></code>.</p>
+  </div>
+  <div class="head-meta">
+    <span><span class="num" id="total-engrams">—</span> engrams total</span>
+    <span><span class="num" id="db-size">—</span> on disk</span>
+    <span>uptime <span id="uptime">—</span></span>
+  </div>
+</div>
+
+<main class="app-layout">
+  <div>
+    <div class="filter-bar">
+      <div class="search">
+        <input id="search" type="text" placeholder='search engrams (FTS5 keywords)…' autocomplete="off" />
+      </div>
+      <div class="surface-chips" id="surface-chips">
+        <button data-surface="all" class="on">all<span class="count" id="count-all">—</span></button>
+      </div>
+      <select class="limit-select" id="limit-select">
+        <option value="20">20 engrams</option>
+        <option value="50" selected>50 engrams</option>
+        <option value="100">100 engrams</option>
+        <option value="200">200 engrams</option>
+      </select>
+    </div>
+    <div id="timeline">
+      <div class="empty-state"><h3>Loading…</h3><p>Fetching recent engrams from daemon.</p></div>
+    </div>
+  </div>
+
+  <aside class="rail">
+    <div class="rail-card">
+      <div class="label"><span>Total engrams</span><span class="delta" id="rail-newest"></span></div>
+      <div class="value" id="rail-total">—</div>
+      <div class="meta" id="rail-meta">db loading…</div>
+    </div>
+    <div class="rail-card">
+      <div class="label"><span>By surface</span></div>
+      <div class="surface-list" id="rail-surfaces"></div>
+    </div>
+    <div class="rail-card">
+      <div class="label"><span>Daemon</span></div>
+      <div class="value" style="font-size:0.95rem;"><span class="acc" id="rail-version">—</span></div>
+      <div class="meta" id="rail-skipped">capture skipped: 0</div>
+    </div>
+    <div class="rail-card">
+      <div class="label"><span>Capture pipeline</span></div>
+      <div class="meta" id="rail-pipeline" style="margin-top:0.2rem; line-height:1.7;">
+        Claude Code → fsnotify → store<br/>
+        Cursor → fsnotify → store<br/>
+        <span style="color:var(--text-mute);">More surfaces via MCP bridge</span>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div id="modal-mount"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const state = {
+  surface: 'all',
+  query: '',
+  limit: 50,
+  engrams: [],
+  metrics: null,
+  modalEngram: null,
+};
+
+function formatBytes(b) {
+  if (!b) return '—';
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  if (b < 1024*1024*1024) return (b/1024/1024).toFixed(1) + ' MB';
+  return (b/1024/1024/1024).toFixed(2) + ' GB';
+}
+function formatUptime(s) {
+  if (s === undefined) return '—';
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s/60) + 'm';
+  if (s < 86400) return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+  return Math.floor(s/86400) + 'd ' + Math.floor((s%86400)/3600) + 'h';
+}
+function formatNum(n) {
+  if (n === undefined || n === null) return '—';
+  return n.toLocaleString();
+}
+function nanoToDate(ns) { return new Date(ns / 1e6); }
+function formatTs(d) {
+  const h = d.getHours().toString().padStart(2, '0');
+  const m = d.getMinutes().toString().padStart(2, '0');
+  return `${h}:${m}`;
+}
+function formatDay(d) {
+  const today = new Date();
+  const yest = new Date(today); yest.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === yest.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function highlight(text, q) {
+  if (!q) return escapeHtml(text);
+  const esc = escapeHtml(text);
+  const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+  return esc.replace(re, '<span class="h">$1</span>');
+}
+
+// Extract a human-readable snippet from a raw engram payload (Claude Code JSONL entry, Cursor entry, etc.)
+function extractText(rawPayload) {
+  let p;
+  try { p = typeof rawPayload === 'string' ? JSON.parse(rawPayload) : rawPayload; }
+  catch { return String(rawPayload).slice(0, 400); }
+  // Claude Code: assistant message
+  if (p.message && p.message.content && Array.isArray(p.message.content)) {
+    const parts = [];
+    for (const c of p.message.content) {
+      if (c.type === 'text' && c.text) parts.push(c.text);
+      else if (c.type === 'tool_use') parts.push('[tool: ' + (c.name || '?') + ']');
+      else if (c.type === 'tool_result') {
+        const inner = typeof c.content === 'string' ? c.content : JSON.stringify(c.content);
+        parts.push('[result] ' + String(inner).slice(0, 200));
+      } else if (c.type === 'thinking') parts.push('[thinking]');
+    }
+    if (parts.length) return parts.join(' · ');
+  }
+  // User message
+  if (p.message && typeof p.message.content === 'string') return p.message.content;
+  // Summary entry
+  if (p.summary) return '[summary] ' + p.summary;
+  // Tool use root
+  if (p.type === 'user' && p.toolUseResult) {
+    const tu = typeof p.toolUseResult === 'string' ? p.toolUseResult : JSON.stringify(p.toolUseResult);
+    return '[tool-result] ' + String(tu).slice(0, 400);
+  }
+  // Fallback: short JSON
+  return JSON.stringify(p).slice(0, 400);
+}
+
+function extractSession(engram) {
+  // Real /engrams API returns `meta` as JSON string with path like
+  // .../<project>/<sessionId>.jsonl  — extract just the session UUID prefix.
+  try {
+    const meta = typeof engram.meta === 'string' ? JSON.parse(engram.meta) : engram.meta;
+    if (meta && meta.path) {
+      const m = String(meta.path).match(/([0-9a-f-]{8,36})\.jsonl/);
+      if (m) return m[1].slice(0, 8);
+    }
+  } catch {}
+  try {
+    const p = typeof engram.payload === 'string' ? JSON.parse(engram.payload) : engram.payload;
+    if (p && p.sessionId) return String(p.sessionId).slice(0, 8);
+  } catch {}
+  return '—';
+}
+
+function groupByDay(engrams) {
+  const groups = new Map();
+  for (const e of engrams) {
+    const d = nanoToDate(e.ts);
+    const day = formatDay(d);
+    if (!groups.has(day)) groups.set(day, []);
+    groups.get(day).push({ ...e, _date: d, _text: extractText(e.payload), _session: extractSession(e) });
+  }
+  return groups;
+}
+
+function renderEngrams() {
+  const tl = $('#timeline');
+  let list = state.engrams;
+  if (state.surface !== 'all') list = list.filter(e => e.surface === state.surface);
+  if (state.query) {
+    const q = state.query.toLowerCase();
+    list = list.filter(e => extractText(e.payload).toLowerCase().includes(q));
+  }
+  if (!list.length) {
+    tl.innerHTML = `<div class="empty-state"><h3>No matches.</h3><p>Try fewer filters or a broader search.</p></div>`;
+    return;
+  }
+  const groups = groupByDay(list);
+  let html = '';
+  for (const [day, items] of groups) {
+    html += `<div class="day-divider"><strong>${escapeHtml(day)}</strong><span>${items.length} engram${items.length!==1?'s':''}</span></div>`;
+    for (const e of items) {
+      html += `<div class="engram-card" data-id="${e.id}">
+        <span class="ts">${formatTs(e._date)} · ${escapeHtml(e._session)}</span>
+        <div>
+          <span class="surface-badge">${escapeHtml(e.surface)}</span>
+          <div class="payload">${highlight(e._text, state.query)}</div>
+        </div>
+        <span class="engram-open">open →</span>
+      </div>`;
+    }
+  }
+  tl.innerHTML = html;
+  tl.querySelectorAll('.engram-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const id = parseInt(card.dataset.id, 10);
+      const e = state.engrams.find(x => x.id === id);
+      if (e) openModal(e);
+    });
+  });
+}
+
+function renderRail(m) {
+  if (!m) return;
+  $('#total-engrams').textContent = formatNum(m.engram_total);
+  $('#db-size').textContent = formatBytes(m.db_size_bytes);
+  $('#uptime').textContent = formatUptime(m.uptime_seconds);
+  $('#nav-version').textContent = 'v' + (m.version || 'dev');
+  $('#nav-status').textContent = 'daemon up';
+  $('#rail-total').textContent = formatNum(m.engram_total);
+  $('#rail-meta').textContent = `${formatBytes(m.db_size_bytes)} on disk · uptime ${formatUptime(m.uptime_seconds)}`;
+  $('#rail-version').textContent = 'eideticd ' + (m.version || 'dev');
+  $('#rail-skipped').textContent = `capture skipped: ${formatNum(m.capture_skipped || 0)}`;
+  const surfaces = m.engram_by_surface || {};
+  const sl = $('#rail-surfaces');
+  sl.innerHTML = Object.entries(surfaces).sort((a,b)=>b[1]-a[1])
+    .map(([k,v]) => `<div class="row"><span class="name">${escapeHtml(k)}</span><span class="n">${formatNum(v)}</span></div>`)
+    .join('');
+  // Surface chips
+  const chipBar = $('#surface-chips');
+  let chips = `<button data-surface="all" class="${state.surface==='all'?'on':''}">all<span class="count">${formatNum(m.engram_total)}</span></button>`;
+  for (const [k,v] of Object.entries(surfaces)) {
+    chips += `<button data-surface="${escapeHtml(k)}" class="${state.surface===k?'on':''}">${escapeHtml(k)}<span class="count">${formatNum(v)}</span></button>`;
+  }
+  chipBar.innerHTML = chips;
+  chipBar.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    state.surface = b.dataset.surface;
+    fetchEngrams();
+    renderEngrams();
+    chipBar.querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.surface === state.surface));
+  }));
+}
+
+function openModal(engram) {
+  state.modalEngram = engram;
+  const d = nanoToDate(engram.ts);
+  const text = extractText(engram.payload);
+  const session = extractSession(engram);
+  const mount = $('#modal-mount');
+  mount.innerHTML = `
+    <div class="modal-bg">
+      <div class="modal">
+        <div class="modal-head">
+          <div class="left">
+            <span class="surface-badge">${escapeHtml(engram.surface)}</span>
+            <span>${d.toISOString().slice(0,19).replace('T',' ')}</span>
+            <span>·</span>
+            <span>session ${escapeHtml(session)}</span>
+          </div>
+          <button class="modal-close" aria-label="Close">×</button>
+        </div>
+        <div class="modal-body">${escapeHtml(text)}</div>
+        <div class="modal-foot">
+          <span>engram_id: ${engram.id} · captured ${formatTs(d)}</span>
+          <div style="display:flex;gap:0.5rem">
+            <button id="copy-raw">copy raw json</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  mount.querySelector('.modal-bg').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeModal();
+  });
+  mount.querySelector('.modal-close').addEventListener('click', closeModal);
+  mount.querySelector('#copy-raw').addEventListener('click', () => {
+    navigator.clipboard?.writeText(JSON.stringify(engram, null, 2));
+  });
+  document.addEventListener('keydown', escClose);
+}
+function closeModal() {
+  state.modalEngram = null;
+  $('#modal-mount').innerHTML = '';
+  document.removeEventListener('keydown', escClose);
+}
+function escClose(e) { if (e.key === 'Escape') closeModal(); }
+
+function showError(msg) {
+  const b = $('#error-banner');
+  b.textContent = msg;
+  b.style.display = 'block';
+  $('#nav-status').textContent = 'error';
+}
+
+async function fetchMetrics() {
+  try {
+    const r = await fetch('/metrics', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const m = await r.json();
+    state.metrics = m;
+    renderRail(m);
+  } catch (e) {
+    showError('Failed to fetch /metrics — ' + e.message);
+  }
+}
+
+async function fetchEngrams() {
+  // /engrams requires surface= (no cross-surface query yet). When 'all',
+  // fetch each surface in parallel and merge. Server doesn't FTS yet —
+  // q= filter is client-side over the loaded set.
+  try {
+    let surfaces;
+    if (state.surface === 'all') {
+      const m = state.metrics || {};
+      surfaces = Object.keys(m.engram_by_surface || { claude_code: 0 });
+      if (!surfaces.length) surfaces = ['claude_code'];
+    } else {
+      surfaces = [state.surface];
+    }
+    const per = Math.max(20, Math.ceil(state.limit / surfaces.length));
+    const results = await Promise.all(surfaces.map(s => {
+      const params = new URLSearchParams({ surface: s, limit: String(per) });
+      return fetch('/engrams?' + params.toString(), { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : [])
+        .catch(() => []);
+    }));
+    let merged = results.flat();
+    merged.sort((a, b) => b.ts - a.ts);
+    merged = merged.slice(0, state.limit);
+    state.engrams = merged;
+    renderEngrams();
+  } catch (e) {
+    showError('Failed to fetch /engrams — ' + e.message);
+  }
+}
+
+// Search input — debounced
+let searchTimer;
+$('#search').addEventListener('input', (e) => {
+  state.query = e.target.value;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => fetchEngrams(), 220);
+});
+$('#limit-select').addEventListener('change', (e) => {
+  state.limit = parseInt(e.target.value, 10);
+  fetchEngrams();
+});
+
+// Show origin in head
+$('#origin-hint').textContent = window.location.origin;
+
+// Initial load + auto-refresh metrics every 30s
+fetchMetrics();
+fetchEngrams();
+setInterval(fetchMetrics, 30000);
+</script>
+</body>
+</html>

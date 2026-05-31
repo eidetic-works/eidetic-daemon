@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"net"
 	"net/http"
@@ -15,6 +16,9 @@ import (
 	"github.com/eidetic-works/eidetic-daemon/internal/auth"
 	"github.com/eidetic-works/eidetic-daemon/internal/store"
 )
+
+//go:embed static/dashboard.html
+var dashboardFS embed.FS
 
 // Options configures a Server. Exactly one of UDSPath or TCPAddr must be
 // non-empty; New returns an error if the configuration is ambiguous.
@@ -131,6 +135,19 @@ func New(s *store.Store, opts Options) (*Server, error) {
 	mux.HandleFunc("/hooks", srv.handleHooks)
 	mux.HandleFunc("/healthz", srv.handleHealthz)
 	mux.HandleFunc("/metrics", srv.handleMetrics)
+	// Dashboard HTML served at "/" — embedded via go:embed.
+	// Any unmatched path under "/" falls through to 404, since "/"
+	// is special-cased by ServeMux to match everything not otherwise routed.
+	dash, _ := dashboardFS.ReadFile("static/dashboard.html")
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		_, _ = w.Write(dash)
+	})
 
 	// v0.0.9+: optional Bearer-token middleware. /healthz stays open
 	// (liveness probe, no sensitive data leaked). When opts.AuthToken
