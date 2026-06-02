@@ -454,8 +454,14 @@ func (s *Store) Search(ctx context.Context, q, surface string, limit int) ([]eng
 	// column 0 (payload) around the FTS5 match. No highlight markers — plain
 	// text with '...' ellipsis. This keeps MCP responses readable instead of
 	// dumping 10KB raw JSON blobs at the AI.
+	//
+	// e.payload is NOT selected: the snippet replaces it for /search results.
+	// Callers needing the full payload use get_engram_by_id(id). Dropping
+	// payload here bounds search response size — a moderate-specificity query
+	// returning 42 results previously cost ~71K chars (1KB-100KB payload per
+	// row × N); now bounded by snippet (~200 chars/row).
 	const base = `
-		SELECT e.id, e.surface, e.ts, e.payload, COALESCE(e.meta, ''),
+		SELECT e.id, e.surface, e.ts, COALESCE(e.meta, ''),
 		       snippet(engrams_fts, 0, '', '', '...', 20)
 		FROM engrams_fts
 		JOIN engrams e ON e.id = engrams_fts.rowid
@@ -484,7 +490,7 @@ func (s *Store) Search(ctx context.Context, q, surface string, limit int) ([]eng
 	out := make([]engram.Engram, 0, limit)
 	for rows.Next() {
 		var e engram.Engram
-		if err := rows.Scan(&e.ID, &e.Surface, &e.TS, &e.Payload, &e.Meta, &e.Snippet); err != nil {
+		if err := rows.Scan(&e.ID, &e.Surface, &e.TS, &e.Meta, &e.Snippet); err != nil {
 			return nil, fmt.Errorf("search scan: %w", err)
 		}
 		out = append(out, e)
