@@ -2,7 +2,9 @@ package store_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/eidetic-works/eidetic-daemon/internal/engram"
@@ -115,6 +117,78 @@ func TestSearchNoResults(t *testing.T) {
 	}
 	if len(rows) != 0 {
 		t.Errorf("want 0 results for impossible query, got %d", len(rows))
+	}
+}
+
+// TestSearchResponseBounded reproduces the v0.0.X+ regression caught via
+// MCP dogfood-loop 2026-06-02: search_engrams("scrubber consolidation
+// HARD_BLOCK_FLOOR brand_identity_routing", limit=5) returned 71,272 chars
+// across 42 results when the underlying corpus had large payloads, blowing
+// the MCP tool-result token budget on the consumer side.
+//
+// Root cause was that SELECT pulled BOTH e.payload (unbounded, 1KB-100KB per
+// row) AND snippet() (~200 chars/row), so callers received full payload bodies
+// even though the snippet was intended to replace them for /search.
+//
+// Fix: drop e.payload from Search()'s SELECT. Payload remains "" on returned
+// Engrams (still emitted as "payload": "" — 14 bytes/row — for JSON-shape
+// stability with /engrams response, but bounded).
+//
+// This test seeds a synthetic corpus with deliberately large payloads
+// (matching real-world cc-main session_jsonl + cowork_archive surface
+// payload sizes), runs Search, and asserts the encoded JSON response stays
+// within a bounded budget.
+func TestSearchResponseBounded(t *testing.T) {
+	s := tempStore(t)
+	ctx := context.Background()
+
+	const numResults = 50
+	const largePayloadBytes = 8 * 1024 // 8KB per row — realistic upper bound
+
+	largeBody := strings.Repeat("syntheticneedle ", largePayloadBytes/16) // ~8KB
+	for i := range numResults {
+		_, err := s.Insert(ctx, engram.Engram{
+			Surface: "synthetic_corpus",
+			TS:      int64(i + 1),
+			Payload: largeBody,
+		})
+		if err != nil {
+			t.Fatalf("insert %d: %v", i, err)
+		}
+	}
+
+	rows, err := s.Search(ctx, "syntheticneedle", "", numResults)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(rows) != numResults {
+		t.Fatalf("want %d results, got %d", numResults, len(rows))
+	}
+
+	// Pre-fix: 50 rows × 8KB = ~400KB. Bound: 50 rows × ~300 bytes (id + surface
+	// + ts + meta + ~200-char snippet + "payload": "" + framing JSON) = ~15KB.
+	// Budget 20KB to allow for snippet-length variance + JSON framing overhead.
+	const responseSizeBudget = 20 * 1024
+
+	encoded, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatalf("json encode: %v", err)
+	}
+	if len(encoded) > responseSizeBudget {
+		t.Errorf("search response %d bytes exceeds budget %d bytes (regression: payload not dropped from SELECT?)",
+			len(encoded), responseSizeBudget)
+	}
+
+	// Payload field MUST be "" on Search() returned engrams (drop-from-SELECT contract).
+	// Callers needing full payload use GetByID(id).
+	for i, r := range rows {
+		if r.Payload != "" {
+			t.Errorf("row %d Payload should be empty on Search result (snippet replaces it); got %d bytes",
+				i, len(r.Payload))
+		}
+		if r.Snippet == "" {
+			t.Errorf("row %d Snippet should be populated on Search result; got empty", i)
+		}
 	}
 }
 
