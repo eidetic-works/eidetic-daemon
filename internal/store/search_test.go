@@ -221,3 +221,68 @@ func TestSearchBackfillOnExistingDB(t *testing.T) {
 		t.Fatalf("want 1 result after reopen, got %d", len(rows))
 	}
 }
+
+// TestSearchHandlesLiteralDot covers the Bug #3 regression: literal-input
+// callers passing tokens FTS5 parses as syntax (e.g. `tb.py`, `feat/foo`)
+// previously returned `fts5: syntax error`. Search() now retries with
+// phrase-quoting on syntax error so the caller sees zero or more results,
+// not a daemon-internal SQL error.
+func TestSearchHandlesLiteralDot(t *testing.T) {
+	s := tempStore(t)
+	insertForSearch(t, s, "claude_code", `editing tb.py for the benchmark`)
+	insertForSearch(t, s, "claude_code", `unrelated session about cooking`)
+
+	rows, err := s.Search(context.Background(), "tb.py", "", 10)
+	if err != nil {
+		t.Fatalf("literal-dot query must not surface fts5 syntax error: %v", err)
+	}
+	// Result count is not asserted (depends on FTS5 tokenizer behavior on the
+	// phrase-quoted retry); the guarantee is "no SQL error escapes to caller".
+	if rows == nil {
+		t.Fatal("rows should never be nil on success")
+	}
+}
+
+// TestSearchPreservesPhraseQuerySemantics ensures the try-then-retry refactor
+// does not regress callers who already pass FTS5-syntax-aware phrase queries.
+// This is the regression that an earlier always-phrase-quote-at-entry shape
+// would have introduced — double-wrapping a phrase-quoted input changes its
+// FTS5 semantics from "phrase match" to "literal-text-including-quote-chars".
+func TestSearchPreservesPhraseQuerySemantics(t *testing.T) {
+	s := tempStore(t)
+	insertForSearch(t, s, "cursor", `Anjali meetup tomorrow at 5pm`)
+	insertForSearch(t, s, "cursor", `tomorrow we should review the PR`)
+
+	// First-try succeeds (phrase query is valid FTS5 syntax); no retry path
+	// hit. The phrase `"meetup tomorrow"` matches only the first engram.
+	rows, err := s.Search(context.Background(), `"meetup tomorrow"`, "", 10)
+	if err != nil {
+		t.Fatalf("phrase query must not be touched by retry path: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("want 1 result for phrase query (try-then-retry preserves semantics), got %d", len(rows))
+	}
+}
+
+// TestSearchPropagatesNonSyntaxErrors ensures the try-then-retry path only
+// retries on `fts5: syntax error`. Other DB errors (cancelled context, lock
+// contention, etc.) must propagate to the caller unchanged so they can be
+// mapped to the right HTTP status / surfaced for diagnosis.
+func TestSearchPropagatesNonSyntaxErrors(t *testing.T) {
+	s := tempStore(t)
+	insertForSearch(t, s, "claude_code", "any payload")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before the call — QueryContext returns context.Canceled
+
+	_, err := s.Search(ctx, "any", "", 10)
+	if err == nil {
+		t.Fatal("expected error from cancelled context")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled to propagate; got %v", err)
+	}
+	if strings.Contains(err.Error(), "fts5: syntax error") {
+		t.Fatal("non-syntax error should not be reframed as fts5 syntax error")
+	}
+}
