@@ -450,6 +450,29 @@ func (s *Store) Search(ctx context.Context, q, surface string, limit int) ([]eng
 		limit = 500
 	}
 
+	// Try q as-is first — preserves existing FTS5-syntax-aware callers (phrase
+	// queries like `"benchmark result"`, boolean AND/OR/NOT, column-qualified
+	// search). On FTS5 syntax error, retry once with phrase-quoting to handle
+	// literal-input callers passing tokens FTS5 parses as syntax operators
+	// (e.g. `tb.py`, `feat/foo`, anything containing `.` / `/` / `-`). FTS5's
+	// own "fts5: syntax error" is the discriminator — never matches transient
+	// DB errors (cancelled context, lock contention, etc.) which propagate
+	// unchanged.
+	results, err := s.doSearch(ctx, q, surface, limit)
+	if err != nil && isFTS5SyntaxError(err) {
+		// Phrase-quote: wrap in `"..."` and double any embedded `"` per FTS5's
+		// phrase-quote escape rule (`""` inside a phrase = literal `"`). Empty
+		// input is impossible here (gated by ErrEmptyQuery above).
+		sanitized := `"` + strings.ReplaceAll(q, `"`, `""`) + `"`
+		results, err = s.doSearch(ctx, sanitized, surface, limit)
+	}
+	return results, err
+}
+
+// doSearch runs the FTS5 MATCH query without input transformation. Search()
+// wraps this with the try-then-retry phrase-quote fallback; tests targeting
+// the retry path call doSearch directly to inspect the unwrapped behavior.
+func (s *Store) doSearch(ctx context.Context, q, surface string, limit int) ([]engram.Engram, error) {
 	// snippet(engrams_fts, 0, ...) extracts a ~20-token context window from
 	// column 0 (payload) around the FTS5 match. No highlight markers — plain
 	// text with '...' ellipsis. This keeps MCP responses readable instead of
@@ -499,6 +522,19 @@ func (s *Store) Search(ctx context.Context, q, surface string, limit int) ([]eng
 		return nil, fmt.Errorf("search row iter: %w", err)
 	}
 	return out, nil
+}
+
+// isFTS5SyntaxError reports whether err originates from FTS5 rejecting the
+// MATCH input as malformed (e.g. caller passed `tb.py` and FTS5 parsed `.` as
+// a syntax operator). Used by Search() to discriminate retry-with-phrase-quote
+// from genuine DB errors (cancelled context, lock contention) which must
+// propagate. Substring check works because modernc.org/sqlite surfaces FTS5
+// errors with the literal "fts5: syntax error" in the message.
+func isFTS5SyntaxError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "fts5: syntax error")
 }
 
 // ErrEmptyQuery is returned by Search when the query string is empty.
