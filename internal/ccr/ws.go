@@ -143,7 +143,6 @@ func handleWSMessage(conn *websocket.Conn, broker *Broker, msg []byte) {
 			sub := broker.Subscribe(role)
 
 			go func(id json.RawMessage, to int, s *Subscription) {
-				defer broker.Unsubscribe(s.ID)
 				select {
 				case ev := <-s.Ch:
 					b, _ := json.Marshal(ev)

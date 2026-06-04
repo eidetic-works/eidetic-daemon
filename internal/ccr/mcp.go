@@ -189,7 +189,6 @@ func handleMCPMethod(broker *Broker, req JSONRPCRequest) {
 			sub := broker.Subscribe(role)
 
 			go func(id json.RawMessage, to int, s *Subscription) {
-				defer broker.Unsubscribe(s.ID)
 				select {
 				case ev := <-s.Ch:
 					// Received wake event
