@@ -21,7 +21,7 @@
 bin/
 coverage.txt
 dist/
-eideticd
+/eideticd
 go.work
 go.work.sum
 state.json
