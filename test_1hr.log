@@ -1,0 +1,3 @@
+2026/06/04 07:28:45 ccr serve: starting Coordination Runtime
+2026/06/04 07:28:45 ccr serve: starting Unix socket server
+2026/06/04 07:28:45 ccr serve: unix socket listening at /tmp/eidetic-ccr.sock
