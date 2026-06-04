@@ -70,6 +70,11 @@ func main() {
 	uninstallPurge := flag.Bool("purge", false, "with -uninstall: skip interactive confirm and delete <dataDir> (engrams.db, state, tokens)")
 	initFlag := flag.Bool("init", false, "first-run interactive setup wizard — creates dataDir, detects surfaces, optionally registers service + pastes Pro sync.json, smoke-tests /healthz")
 	initYes := flag.Bool("yes", false, "with -init: skip prompts and accept defaults (non-interactive setup)")
+	if len(os.Args) >= 2 && os.Args[1] == "ccr" {
+		runCCR(os.Args[2:])
+		return
+	}
+
 	flag.Parse()
 
 	if *showVersion {
