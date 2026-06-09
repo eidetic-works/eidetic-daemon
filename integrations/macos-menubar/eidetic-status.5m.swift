@@ -2,7 +2,7 @@
 
 // <bitbar.title>Eidetic Daemon Status</bitbar.title>
 // <bitbar.version>v0.1.0</bitbar.version>
-// <bitbar.author>Lokesh Garg</bitbar.author>
+// <bitbar.author>Eidetic Works</bitbar.author>
 // <bitbar.author.github>eidetic-works</bitbar.author.github>
 // <bitbar.desc>Shows engram count, DB size, uptime, last sync, and update status for the eidetic-daemon.</bitbar.desc>
 // <bitbar.image>https://eidetic.works/og-eidetic-works-nucleus.svg</bitbar.image>

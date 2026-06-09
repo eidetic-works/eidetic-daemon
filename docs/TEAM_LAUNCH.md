@@ -1,8 +1,8 @@
-# Team Tier Launch — Lokesh-keyboard checklist
+# Team Tier Launch — operator-keyboard checklist
 
 eidetic-team is the 5-seat multi-user extension of Pro. $99/mo. Targets dev teams who want shared engram visibility across 3-5 engineers.
 
-Worker routing + Telegram-ping flow already scaffolded in `workers/gumroad-kit-sync/worker.js`. Two Lokesh-keyboard actions to flip the switch.
+Worker routing + Telegram-ping flow already scaffolded in `workers/gumroad-kit-sync/worker.js`. Two operator-keyboard actions to flip the switch.
 
 ---
 
@@ -86,8 +86,8 @@ A `gen_team_keys.sh` wrapper could automate this — TODO once first Team custom
 | Step | Status | Who |
 |---|---|---|
 | Worker routing logic | ✅ Done — handles `eidetic-team` permalink | cc-main |
-| `KIT_TEAM_TAG` placeholder | ⏳ Lokesh-keyboard | Lokesh |
-| Gumroad Team product | ⏳ Lokesh-keyboard | Lokesh |
+| `KIT_TEAM_TAG` placeholder | ⏳ operator-keyboard | operator |
+| Gumroad Team product | ⏳ operator-keyboard | operator |
 | Landing CTA additions | ⏳ After Gumroad | cc-main / op-assistant |
 | First Team purchase | ⏳ Waiting | — |
 | `gen_team_keys.sh` wrapper | ⏳ After first Team customer | cc-main |

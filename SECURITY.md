@@ -32,7 +32,7 @@ In scope:
 
 Out of scope:
 - DoS against R2 bucket via authenticated overage (Cloudflare's rate-limit is the safeguard; we'll handle quota issues operationally)
-- Social engineering against Lokesh or future Eidetic Works employees
+- Social engineering against operator or future Eidetic Works employees
 - Physical access to the user's machine (the threat model below assumes physical access = total trust)
 - Issues in upstream dependencies that have no Eidetic-specific impact (file an issue upstream, then cc us)
 

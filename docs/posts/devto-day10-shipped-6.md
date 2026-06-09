@@ -137,4 +137,4 @@ If you want cloud sync: there's a $29/mo Pro tier at eideticworks.gumroad.com/l/
 
 Either way, the source is at github.com/eidetic-works/eidetic-daemon. PRs welcome.
 
-— Lokesh / Eidetic Works
+— operator / Eidetic Works

@@ -30,7 +30,7 @@ export VSCE_PAT=<paste token>
 npx @vscode/vsce publish --packagePath eidetic-vscode-0.0.1.vsix
 ```
 
-Publisher (in `package.json`): `eidetic-works`. Must be claimed at https://marketplace.visualstudio.com/manage/publishers first (one-time, Lokesh-keyboard).
+Publisher (in `package.json`): `eidetic-works`. Must be claimed at https://marketplace.visualstudio.com/manage/publishers first (one-time, operator-keyboard).
 
 **Bump version:** edit `package.json#version`, re-run `npx vsce package`, re-publish.
 
@@ -45,7 +45,7 @@ zip -r dist/eidetic-chrome-0.1.0.zip . \
 ```
 
 **Publish:**
-1. https://chrome.google.com/webstore/devconsole (one-time $5 dev fee, Lokesh-keyboard)
+1. https://chrome.google.com/webstore/devconsole (one-time $5 dev fee, operator-keyboard)
 2. Click **New Item** → upload `eidetic-chrome-0.1.0.zip`
 3. Fill in: store listing, privacy practices (point at `docs/PRIVACY.md`), permissions justification (host `http://127.0.0.1:8421/*` = the local daemon)
 4. Submit for review (~1-3 business days)
@@ -62,7 +62,7 @@ gradle wrapper                    # generates gradlew if not present
 ```
 
 **Publish:**
-1. https://plugins.jetbrains.com/author/me (one-time JetBrains account, Lokesh-keyboard)
+1. https://plugins.jetbrains.com/author/me (one-time JetBrains account, operator-keyboard)
 2. Click **Upload plugin** → upload the .zip from `build/distributions/`
 3. JetBrains review (~1-3 business days)
 
@@ -79,7 +79,7 @@ npx @raycast/api@latest build      # verify it builds clean
 npx @raycast/api@latest publish    # uploads + creates PR against raycast/extensions repo
 ```
 
-Requires Raycast account (free, one-time Lokesh-keyboard). Their team reviews PRs (~1-7 days). Once merged, the extension is searchable in Raycast directly.
+Requires Raycast account (free, one-time operator-keyboard). Their team reviews PRs (~1-7 days). Once merged, the extension is searchable in Raycast directly.
 
 Commands registered (per `package.json`): `recent`, `search`, `recall`, `stats`.
 
@@ -87,7 +87,7 @@ Commands registered (per `package.json`): `recent`, `search`, `recall`, `stats`.
 
 `integrations/macos-menubar/EideticMenubar/` is a Swift scaffold. **Not in scope for this sprint** — Mac App Store distribution requires:
 
-- Apple Developer account ($99/yr, Lokesh-keyboard)
+- Apple Developer account ($99/yr, operator-keyboard)
 - App-specific bundle ID claim
 - Code signing certificate
 - Notarization workflow

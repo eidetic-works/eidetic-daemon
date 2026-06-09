@@ -129,7 +129,7 @@ Plus web dashboard PWA at eidetic.works/dashboard (installable on iPhone/Android
 | `scripts/notion-poll.sh` (in landing repo) | Local Notion DB poller |
 | `scripts/deploy-worker.sh` | One-time operator setup helper |
 
-## Lokesh-keyboard — ALL CLEARED (2026-05-21)
+## operator-keyboard — ALL CLEARED (2026-05-21)
 
 All 6 items resolved in one driven session:
 
@@ -140,7 +140,7 @@ All 6 items resolved in one driven session:
 5. **Telegram bot** — ✅ Live (`@eideticworks_bot`, webhook registered)
 6. **Reddit r/SaaS** — ❌ **Permanently skipped** per `feedback_reddit_low_yield.md` (pseudonymous accounts auto-mod-removed; not retrying)
 
-(HN Show HN skipped per Lokesh.)
+(HN Show HN skipped per operator.)
 
 ## ADRs added this sprint
 
@@ -153,7 +153,7 @@ All 6 items resolved in one driven session:
 - Real-time dashboard updates (refresh-on-poll today)
 - Multi-user per-host (single-user UDS trust model per SECURITY.md)
 - Customer-managed encryption keys (Cloudflare-managed default; needs CF Enterprise)
-- App Store / Marketplace publish: VS Code, JetBrains, Chrome, Raycast, Mac AppKit — all scaffolds ready, Lokesh-keyboard for cert/publish
+- App Store / Marketplace publish: VS Code, JetBrains, Chrome, Raycast, Mac AppKit — all scaffolds ready, operator-keyboard for cert/publish
 - HIPAA BAA signing (template documented; conditions for activation in BAA_TEMPLATE.md)
 
 ## How to navigate from here

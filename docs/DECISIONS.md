@@ -120,7 +120,7 @@ For the inverse (Pro sync ACTIVE), the same tcpdump shows exactly one POST per 6
 - nucleus-delegate v0.4+ — substrate-only
 - Pure ADR drafts on substrate topics (defer per `feedback_compounding_shape.md`)
 
-**Why this scope:** Eidetic Works compression (Lokesh directive 2026-05-20) is substantially done — 24+ daemon versions, 14 integration surfaces, 7 Workers, 7 docs, ~60 tests added in ~24h. Distribution + customer purchases are the now-blocker, and those don't consume TB cycles. TB work that creates a compounding loop (eidetic engram → TB training corpus → better recall → more eidetic value) is positive-sum and merits resumption. Pure substrate stays gated by W4 bright-line per the original ADR-011 framing.
+**Why this scope:** Eidetic Works compression (operator directive 2026-05-20) is substantially done — 24+ daemon versions, 14 integration surfaces, 7 Workers, 7 docs, ~60 tests added in ~24h. Distribution + customer purchases are the now-blocker, and those don't consume TB cycles. TB work that creates a compounding loop (eidetic engram → TB training corpus → better recall → more eidetic value) is positive-sum and merits resumption. Pure substrate stays gated by W4 bright-line per the original ADR-011 framing.
 
 **Gate triggers that re-open the rest of substrate:**
 - Day-60 hard-kill threshold from ADR-011 remains in force (2026-07-08): if <5 paid Pro Track A → broader pivot decision
@@ -129,4 +129,4 @@ For the inverse (Pro sync ACTIVE), the same tcpdump shows exactly one POST per 6
 
 **Posture:** cc-tb resumes only on items in the "what's unpaused" list above. Any cc-tb work item must self-justify the eidetic-works compounding axis before starting; if no axis exists, item stays in queue. Audit via `nucleus_sync.search_threads from:cc_tb since:2026-05-20`.
 
-**Reference:** cc-tb relay `20260520_000000_relay_tb_work_permission_request.json` (the request); ADR-011 (the original 90-day pause); `project_work_equals_training.md` (the compounding rationale this amendment activates); Lokesh delegation 2026-05-20 ("Do as recommended on my direction items").
+**Reference:** cc-tb relay `20260520_000000_relay_tb_work_permission_request.json` (the request); ADR-011 (the original 90-day pause); `project_work_equals_training.md` (the compounding rationale this amendment activates); operator delegation 2026-05-20 ("Do as recommended on my direction items").

@@ -11,7 +11,7 @@ eidetic-daemon ships in 14 places. Most are free + open-source. Pick the one tha
 | 5 | **Raycast extension** | `integrations/raycast/` | ✅ scaffolded, 4 commands | `cd integrations/raycast && npm install && npx ray dev` |
 | 6 | **Chrome extension** (MV3) | `integrations/chrome-extension/` | ✅ scaffolded, 12 files | Load unpacked at `chrome://extensions` |
 | 7 | **Mac SwiftBar plugin** | `integrations/macos-menubar/eidetic-status.5m.swift` | ✅ live-tested ("🧠 300K") | Copy to `~/Library/Application Support/SwiftBar/Plugins/` |
-| 8 | **Mac native menubar app** | `integrations/macos-menubar/EideticMenubar/` | ✅ Swift scaffold (no xcodeproj — Lokesh-keyboard for App Store) | xcodebuild + notarize |
+| 8 | **Mac native menubar app** | `integrations/macos-menubar/EideticMenubar/` | ✅ Swift scaffold (no xcodeproj — operator-keyboard for App Store) | xcodebuild + notarize |
 | 9 | **Web dashboard (PWA)** | `eidetic.works/dashboard` | ✅ live, installable on iPhone/Android | `eideticd -bridge :8421` then open dashboard |
 | 10 | **Slack `/eidetic` app** | `integrations/slack-app/` | ✅ Worker scaffolded, manifest ready | api.slack.com app + worker deploy |
 | 11 | **Discord `/eidetic` bot** | `integrations/discord-bot/` | ✅ Worker + register-commands.js | discord.com app + worker deploy |
