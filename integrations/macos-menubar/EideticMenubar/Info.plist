@@ -40,6 +40,6 @@
          SMAppService API; no Info.plist key is required for that. -->
 
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright (c) Lokesh Garg / eidetic-works</string>
+    <string>Copyright (c) Eidetic Works</string>
 </dict>
 </plist>

@@ -10,7 +10,7 @@ Both are zero-network — they talk to `/tmp/eidetic-daemon.sock` only.
 | User installs | drop into `~/Library/Application Support/SwiftBar/Plugins/` | `xcodebuild` + install `.app` |
 | Refresh cadence | every 5 min (filename suffix `.5m`) | every 5 min (`Timer.scheduledTimer`) |
 | Dependencies | SwiftBar + macOS-default `curl` | none beyond Xcode for building |
-| Signing | inherited from SwiftBar | deferred to Lokesh for App Store path |
+| Signing | inherited from SwiftBar | deferred to operator for App Store path |
 
 ---
 
@@ -77,7 +77,7 @@ swift integrations/macos-menubar/eidetic-status.5m.swift   # prints the menu ren
 **No `.xcodeproj` is checked in** — the Xcode project / Package.swift
 plumbing is too much to scaffold blindly. The intent is:
 
-1. Lokesh creates `EideticMenubar.xcodeproj` (or `Package.swift`) at his
+1. operator creates `EideticMenubar.xcodeproj` (or `Package.swift`) at his
    keyboard with proper signing identity.
 2. Drops `EideticMenubar.swift` in as the sole source file.
 3. Drops `Info.plist` in as the bundle plist (`LSUIElement=true` already
@@ -95,7 +95,7 @@ plumbing is too much to scaffold blindly. The intent is:
   signed Mac to know it works).
 - The Swift source is wire-equivalent to the SwiftBar plugin — same
   metrics fields, same menu items, same launchctl quit command.
-- Lokesh handles the signing identity + provisioning profile, which
+- operator handles the signing identity + provisioning profile, which
   cannot be safely automated.
 
 ### Mac menubar gotchas worth documenting

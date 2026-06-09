@@ -33,15 +33,15 @@ Sovereign is the *platform ethos*: your AI runs on your hardware, you control it
 ### Named tunnel
 
 ```
-Tunnel ID:  812b058f-3422-421c-ba1b-7a641c5b8bfe
+Tunnel ID:  <cf-tunnel-uuid>
 Name:       sovereign
 ```
 
 ### Config (`~/.cloudflared/config.yml`)
 
 ```yaml
-tunnel: 812b058f-3422-421c-ba1b-7a641c5b8bfe
-credentials-file: /Users/lokeshgarg/.cloudflared/812b058f-3422-421c-ba1b-7a641c5b8bfe.json
+tunnel: <cf-tunnel-uuid>
+credentials-file: /Users/example/.cloudflared/<cf-tunnel-uuid>.json
 
 ingress:
   - hostname: sovereign.eidetic.works
@@ -266,7 +266,7 @@ No CGO — `modernc.org/sqlite` pure Go, zero C toolchain requirement.
 
 ```
 Version:    v0.0.31
-Binary:     /Users/lokeshgarg/work-eidetic-daemon/work/bin/eideticd
+Binary:     /Users/example/work-eidetic-daemon/work/bin/eideticd
 Socket:     /tmp/eidetic-daemon.sock (UDS, 0600)
 DB:         ~/.eidetic/engrams.db
 Launchd:    works.eidetic.eideticd (KeepAlive=true, RunAtLoad=true)

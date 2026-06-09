@@ -1,6 +1,6 @@
 # LinkedIn Post — eidetic-daemon Day 12 (compression sprint close)
 
-**Posting account:** @eidetic_works (the LinkedIn page for the brand, NOT Lokesh's personal LinkedIn — moonlighting carve-out per `user_employment_context.md`)
+**Posting account:** @eidetic_works (the LinkedIn page for the brand, NOT operator's personal LinkedIn — moonlighting carve-out per `user_employment_context.md`)
 
 **Headline (the hook):**
 > 80 days of work, 48 hours of building, 15 integration surfaces live.

@@ -102,4 +102,4 @@ integrations/raycast/
 
 - Replace `assets/command-icon.png` placeholder with a 512×512 icon (light + dark variants supported).
 - Add per-command screenshots under `metadata/` for the store listing.
-- Wire `package.json` `author` / `publisher` to the Raycast publisher slug Lokesh registers.
+- Wire `package.json` `author` / `publisher` to the Raycast publisher slug operator registers.

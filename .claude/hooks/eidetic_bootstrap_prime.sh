@@ -9,7 +9,7 @@ set -euo pipefail
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 
 # Sibling repo: ai-mvp-backend is ../../../ai-mvp-backend relative to eidetic-daemon root
-# /Users/lokeshgarg/work-eidetic-daemon/work/ → ../../ → /Users/lokeshgarg/ → ai-mvp-backend
+# /Users/example/work-eidetic-daemon/work/ → ../../ → /Users/example/ → ai-mvp-backend
 PLAN_REPO="$(cd "$PROJECT_DIR/../.." && pwd)/ai-mvp-backend"
 PLAN_BRANCH="claude/ultraplan-setup-T3E6q"
 

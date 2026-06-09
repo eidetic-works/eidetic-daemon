@@ -1,6 +1,6 @@
 # Pro Tier Launch — W4 Prep Package
 
-Everything Lokesh needs to flip the Pro switch. Three operator actions: Gumroad product, CF Worker deploy, Kit email.
+Everything operator needs to flip the Pro switch. Three operator actions: Gumroad product, CF Worker deploy, Kit email.
 
 ---
 
@@ -80,7 +80,7 @@ Before accepting Pro subscribers, deploy the shared sync Worker.
 **Prerequisites:** Cloudflare token with `R2:Read`, `R2:Write`, `Workers:Edit` permissions.
 
 ```sh
-cd /Users/lokeshgarg/work-eidetic-daemon/work/bridge/cloudflare
+cd /Users/example/work-eidetic-daemon/work/bridge/cloudflare
 
 # 1. Create the R2 bucket (once)
 wrangler r2 bucket create eidetic-pro-sync
@@ -105,7 +105,7 @@ See § 4 below.
 
 ---
 
-## 3. Kit announcement email — READY TO SEND (Lokesh keyboard)
+## 3. Kit announcement email — READY TO SEND (operator keyboard)
 
 **Subject:** eidetic Pro is live — cloud backup for your engrams
 
@@ -236,7 +236,7 @@ eideticd --restore
 
 Reply to this email if anything doesn't work — I reply same day.
 
-— Lokesh / Eidetic Works
+— operator / Eidetic Works
 
 ---
 
@@ -286,7 +286,7 @@ You should have your sync.json by now. Quick checks + three things you might not
 
 Any of this not working? Reply — same-day response on weekdays.
 
-— Lokesh
+— operator
 ```
 
 ---
@@ -337,7 +337,7 @@ early look at what's coming after nucleus_ask).
 Hit reply with whatever's missing for you — what you want to do that the
 daemon doesn't yet support. That list IS the roadmap.
 
-— Lokesh
+— operator
 ```
 
 ---
@@ -366,12 +366,12 @@ Not shippable until usage counters land daemon-side (no telemetry leaves the mac
 | wrangler.toml patched with KV namespace ID | ✅ Done | op-assistant |
 | EIDETIC_API_KEY secret set on eidetic-sync worker | ✅ Done | op-assistant |
 | gumroad-kit-sync deployed (Telegram + Kit wired) | ✅ Done | op-assistant |
-| R2 bucket `eidetic-engrams` + eidetic-sync Worker live | ✅ Done 2026-05-20 | Lokesh + op-assistant |
-| Gumroad Pro product | ✅ Live — eideticworks.gumroad.com/l/eidetic-pro | Lokesh |
+| R2 bucket `eidetic-engrams` + eidetic-sync Worker live | ✅ Done 2026-05-20 | operator + op-assistant |
+| Gumroad Pro product | ✅ Live — eideticworks.gumroad.com/l/eidetic-pro | operator |
 | Landing CTA → Gumroad URL | ✅ Live — eidetic.works | op-assistant |
 | gen_pro_key.sh — worker URL + KV namespace ID pre-filled | ✅ Done | cc-main |
-| Kit announcement email | ⏳ **LOKESH KEYBOARD** — template ready in § 3 above | Lokesh |
-| X thread + HN + Reddit + dev.to posts | ⏳ Lokesh keyboard — files in docs/posts/ | Lokesh |
+| Kit announcement email | ⏳ **operator KEYBOARD** — template ready in § 3 above | operator |
+| X thread + HN + Reddit + dev.to posts | ⏳ operator keyboard — files in docs/posts/ | operator |
 
 **W4 target (2026-06-08):** 5 paid Pro subscriptions = $145 MRR.  
 **Worker URL:** https://eidetic-sync.morning-lake-f944.workers.dev  

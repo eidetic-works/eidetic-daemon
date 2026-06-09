@@ -175,7 +175,7 @@ SIGNED:
 Eidetic Works LLC                Covered Entity
 
 _________________________        _________________________
-Lokesh Garg, Owner               Name, Title
+Eidetic Works, Owner               Name, Title
 Date: _________________          Date: _________________
 ```
 

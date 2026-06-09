@@ -3,7 +3,7 @@
 // Native AppKit menubar app scaffold for eidetic-daemon. This is a SCAFFOLD
 // only — no Xcode project is checked in. To build, generate an
 // EideticMenubar.xcodeproj (see README), then `xcodebuild -configuration
-// Release`. Signing + notarization deferred to Lokesh for the App Store path.
+// Release`. Signing + notarization deferred to operator for the App Store path.
 //
 // Wire-equivalent to the SwiftBar plugin: poll /metrics on /tmp/eidetic-daemon.sock
 // every 5 minutes and render `🧠 <count>` in the menubar with a dropdown menu

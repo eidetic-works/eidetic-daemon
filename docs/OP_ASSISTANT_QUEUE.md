@@ -9,7 +9,7 @@ Run these in order. Each is independent once its prerequisite completes.
 
 **Status:** BLOCKED — current CLOUDFLARE_API_TOKEN is Pages-only (auth error on R2+KV+Workers APIs)
 
-**Lokesh keyboard required first:**
+**operator keyboard required first:**
 1. Go to https://dash.cloudflare.com/profile/api-tokens
 2. Create a new token (or edit the existing one) with these permissions:
    - `Workers Scripts:Edit`
@@ -23,7 +23,7 @@ Run these in order. Each is independent once its prerequisite completes.
 
 ```sh
 # From repo root
-cd /Users/lokeshgarg/work-eidetic-daemon/work/bridge/cloudflare
+cd /Users/example/work-eidetic-daemon/work/bridge/cloudflare
 
 # Step 1: Create R2 bucket (safe to run even if bucket exists)
 wrangler r2 bucket create eidetic-pro-sync
@@ -33,7 +33,7 @@ wrangler kv:namespace create EIDETIC_KEYS
 # → outputs something like: id = "abc123def456..."
 
 # Step 3: Paste that id into wrangler.toml line 14 (currently REPLACE_WITH_KV_NAMESPACE_ID)
-# File: /Users/lokeshgarg/work-eidetic-daemon/work/bridge/cloudflare/wrangler.toml
+# File: /Users/example/work-eidetic-daemon/work/bridge/cloudflare/wrangler.toml
 
 # Step 4: Set fallback API key secret
 wrangler secret put EIDETIC_API_KEY
@@ -49,7 +49,7 @@ Set EIDETIC_WORKER_URL env var for gen_pro_key.sh calls.
 
 **Commit wrangler.toml** with the real KV namespace ID (the placeholder is checked in):
 ```sh
-cd /Users/lokeshgarg/work-eidetic-daemon/work
+cd /Users/example/work-eidetic-daemon/work
 git add bridge/cloudflare/wrangler.toml
 git commit -m "chore(worker): set KV namespace ID for Pro tier"
 git push origin main
@@ -78,7 +78,7 @@ After publish, copy the Gumroad product URL (e.g. `https://app.gumroad.com/l/XXX
 
 The landing currently has a `mailto:` placeholder. Once Gumroad is live:
 
-Edit `/Users/lokeshgarg/ai-mvp-backend/landing/src/pages/index.astro` line ~100:
+Edit `/Users/example/ai-mvp-backend/landing/src/pages/index.astro` line ~100:
 
 ```html
 <!-- change href from the mailto: to the Gumroad URL -->
@@ -89,7 +89,7 @@ Edit `/Users/lokeshgarg/ai-mvp-backend/landing/src/pages/index.astro` line ~100:
 
 Then rebuild + deploy:
 ```sh
-cd /Users/lokeshgarg/ai-mvp-backend/landing
+cd /Users/example/ai-mvp-backend/landing
 npx astro build
 npx wrangler pages deploy dist --project-name=eideticworks-landing --branch=main
 ```

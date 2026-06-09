@@ -92,7 +92,7 @@ Unlocks one-line corpus import from any prior tool's export (ChatGPT, Notion, jo
 
 ### Why
 
-Before: `--capture` engrams had `meta: {"source":"cli-capture"}` — opaque. After: `meta: {"source":"cli-capture","host":"lokesh-mbp","cwd":"/Users/lokesh/projects/foo","git_branch":"feature/x","user":"lokesh"}`. Three weeks later you can ask "what did I capture from the `feature/x` branch?" and get filtered results.
+Before: `--capture` engrams had `meta: {"source":"cli-capture"}` — opaque. After: `meta: {"source":"cli-capture","host":"operator-mbp","cwd":"/Users/operator/projects/foo","git_branch":"feature/x","user":"operator"}`. Three weeks later you can ask "what did I capture from the `feature/x` branch?" and get filtered results.
 
 ---
 

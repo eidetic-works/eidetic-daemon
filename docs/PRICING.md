@@ -7,8 +7,8 @@ Three Pro variants plus Team, all served by the same `gumroad-kit-sync` Worker. 
 | Permalink | Price | Tier | Status |
 |---|---|---|---|
 | `eidetic-pro` | $29/month | Pro (monthly) | ✅ Live |
-| `eidetic-pro-annual` | $299/year | Pro (annual, ~14% off) | ⏳ Lokesh-keyboard |
-| `eidetic-pro-founder` | $499 one-time | Pro (lifetime, capped at 50) | ⏳ Lokesh-keyboard |
+| `eidetic-pro-annual` | $299/year | Pro (annual, ~14% off) | ⏳ operator-keyboard |
+| `eidetic-pro-founder` | $499 one-time | Pro (lifetime, capped at 50) | ⏳ operator-keyboard |
 | `eidetic-team` | $99/month | Team (5 seats) | ✅ Live |
 
 ## Why these three Pro variants
@@ -19,7 +19,7 @@ Three Pro variants plus Team, all served by the same `gumroad-kit-sync` Worker. 
 
 The Founder cap is the marketing lever: scarcity. The Annual is the financial lever: lock-in.
 
-## 1. Create the Gumroad products (Lokesh-keyboard, 10 min each)
+## 1. Create the Gumroad products (operator-keyboard, 10 min each)
 
 ### eidetic-pro-annual
 
@@ -44,7 +44,7 @@ The Founder cap is the marketing lever: scarcity. The Annual is the financial le
 - **Thumbnail:** og-eidetic-works.png
 - **Refund:** 30 days no-questions-asked (lifetime tier gets longest window)
 
-## 2. Create Kit tags (Lokesh-keyboard, 2 min)
+## 2. Create Kit tags (operator-keyboard, 2 min)
 
 In Kit → Subscribers → Tags → New Tag:
 - `eidetic-pro-annual` → copy ID
@@ -97,7 +97,7 @@ You get:
 - Every future Pro feature added to the tier, forever
 - "Founder" badge in our subscriber graph (so we know who funded the runway)
 - Lifetime early-access tier (features 1 week before monthly, 2 weeks before annual)
-- Direct email line to Lokesh (12h response, weekdays + weekends — vs 24h for monthly)
+- Direct email line to operator (12h response, weekdays + weekends — vs 24h for monthly)
 
 Math:
 - Pays for itself at month 18 of Pro use (vs monthly)
@@ -113,7 +113,7 @@ This is the "I'm betting on this product" tier. If eidetic-daemon becomes the AI
 
 ## 4. Verify routing (cc-main)
 
-After Lokesh creates the Gumroad products + Kit tags + redeploys:
+After operator creates the Gumroad products + Kit tags + redeploys:
 
 ```sh
 # Smoke-test the worker routing — each variant should return its product_type
@@ -156,10 +156,10 @@ The lifetime cap is the headline. Scarcity drives action; the price ladder reass
 |---|---|---|
 | Worker routing for 4 tiers | ✅ Done | cc-main |
 | Landing CTA shows annual + founder alts | ✅ Done | cc-main |
-| Gumroad eidetic-pro-annual product | ⏳ Lokesh-keyboard | Lokesh |
-| Gumroad eidetic-pro-founder product (cap 50) | ⏳ Lokesh-keyboard | Lokesh |
-| Kit eidetic-pro-annual tag → ID into worker.js | ⏳ Lokesh-keyboard | Lokesh |
-| Kit eidetic-pro-founder tag → ID into worker.js | ⏳ Lokesh-keyboard | Lokesh |
+| Gumroad eidetic-pro-annual product | ⏳ operator-keyboard | operator |
+| Gumroad eidetic-pro-founder product (cap 50) | ⏳ operator-keyboard | operator |
+| Kit eidetic-pro-annual tag → ID into worker.js | ⏳ operator-keyboard | operator |
+| Kit eidetic-pro-founder tag → ID into worker.js | ⏳ operator-keyboard | operator |
 | Worker redeploy with real tag IDs | ⏳ op-assistant (after tags exist) | op-assistant |
-| Smoke-test 4 permalinks → 4 product_types | ⏳ cc-main (after Lokesh creates) | cc-main |
-| Kit broadcast announcing 3 Pro tiers | ⏳ Lokesh-keyboard | Lokesh |
+| Smoke-test 4 permalinks → 4 product_types | ⏳ cc-main (after operator creates) | cc-main |
+| Kit broadcast announcing 3 Pro tiers | ⏳ operator-keyboard | operator |
