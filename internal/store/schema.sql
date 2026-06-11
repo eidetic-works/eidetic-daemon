@@ -34,3 +34,22 @@ END;
 CREATE TRIGGER IF NOT EXISTS engrams_ad AFTER DELETE ON engrams BEGIN
   DELETE FROM engrams_fts WHERE rowid = old.id;
 END;
+
+-- ADR-022: maintained per-surface row counter. At 541k rows / 6.2GB,
+-- COUNT(*) full scans exceed the 5s per-request deadline (api.Options.Timeout)
+-- and die with SQLITE_INTERRUPT. Triggers keep counts O(1) at read time;
+-- backfillCounts() populates on upgrade (same pattern as engrams_fts backfill).
+-- No update trigger needed — engrams are append-only; surface never mutates.
+CREATE TABLE IF NOT EXISTS engram_counts (
+  surface TEXT    PRIMARY KEY,
+  n       INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TRIGGER IF NOT EXISTS engrams_count_ai AFTER INSERT ON engrams BEGIN
+  INSERT INTO engram_counts(surface, n) VALUES (new.surface, 1)
+    ON CONFLICT(surface) DO UPDATE SET n = n + 1;
+END;
+
+CREATE TRIGGER IF NOT EXISTS engrams_count_ad AFTER DELETE ON engrams BEGIN
+  UPDATE engram_counts SET n = n - 1 WHERE surface = old.surface;
+END;

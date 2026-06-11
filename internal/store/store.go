@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -97,6 +98,13 @@ func Open(path string) (*Store, error) {
 		// that succeeds, but the daemon still works. Log is printed by caller.
 		_ = err
 	}
+	if err := st.backfillCounts(context.Background()); err != nil {
+		// Non-fatal: any failure rolls back to empty counts, so the next
+		// restart's probe passes the idempotency gate and heals. Logged
+		// because silent drift here is undetectable downstream (PR #82
+		// review).
+		log.Printf("store: backfill counts: %v", err)
+	}
 	return st, nil
 }
 
@@ -127,6 +135,38 @@ func (s *Store) backfillFTS(ctx context.Context) error {
 	)
 	if err != nil {
 		return fmt.Errorf("backfill fts insert: %w", err)
+	}
+	return nil
+}
+
+// backfillCounts populates engram_counts from the main table when the counter
+// table is empty but engrams exist (ADR-022 upgrade path). The one-time
+// GROUP BY scan runs at Open under context.Background() — deliberately NOT
+// the 5s request deadline that made live COUNT(*) scans die with
+// SQLITE_INTERRUPT at 541k rows. After backfill, the engrams_count_ai /
+// engrams_count_ad triggers keep counts in sync.
+//
+// Idempotent: if the counter table already has rows (normal startup), this
+// is a fast probe and an early return.
+func (s *Store) backfillCounts(ctx context.Context) error {
+	var counterRows int64
+	if err := s.writer.QueryRowContext(ctx, `SELECT COUNT(*) FROM engram_counts`).Scan(&counterRows); err != nil {
+		return fmt.Errorf("backfill counts probe: %w", err)
+	}
+	if counterRows > 0 {
+		return nil // counters already populated
+	}
+	// ON CONFLICT covers the rollout race: a concurrent writer (e.g. a
+	// still-running pre-ADR-022 daemon on the same DB file) can land a
+	// trigger-created row between the empty-probe above and this scan.
+	// Without it the whole statement rolls back on the PK and the
+	// counterRows>0 gate then blocks healing on every future restart.
+	_, err := s.writer.ExecContext(ctx,
+		`INSERT INTO engram_counts(surface, n) SELECT surface, COUNT(*) FROM engrams GROUP BY surface
+		 ON CONFLICT(surface) DO UPDATE SET n = excluded.n`,
+	)
+	if err != nil {
+		return fmt.Errorf("backfill counts insert: %w", err)
 	}
 	return nil
 }
@@ -307,9 +347,11 @@ func (s *Store) ExplainQuery(ctx context.Context) (string, error) {
 
 // Count returns the total engram count across all surfaces. Reader-pool
 // query — does not block writers. Used by the /metrics endpoint (v0.0.7+).
+// Reads the trigger-maintained engram_counts table (ADR-022) — O(surfaces),
+// not a full-table scan.
 func (s *Store) Count(ctx context.Context) (int64, error) {
 	var n int64
-	err := s.reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM engrams`).Scan(&n)
+	err := s.reader.QueryRowContext(ctx, `SELECT COALESCE(SUM(n), 0) FROM engram_counts`).Scan(&n)
 	if err != nil {
 		return 0, fmt.Errorf("count: %w", err)
 	}
@@ -359,13 +401,17 @@ func (s *Store) CountEngrams(ctx context.Context, surface string, since int64) (
 		query = `SELECT COUNT(*) FROM engrams WHERE surface = ? AND ts > ?`
 		args = []any{surface, since}
 	case surface != "":
-		query = `SELECT COUNT(*) FROM engrams WHERE surface = ?`
+		// Unfiltered per-surface count reads the maintained counter
+		// (ADR-022) — a surface-restricted COUNT(*) still scans every
+		// index entry for that surface, which blows the 5s deadline when
+		// one surface dominates the store.
+		query = `SELECT COALESCE((SELECT n FROM engram_counts WHERE surface = ?), 0)`
 		args = []any{surface}
 	case since > 0:
 		query = `SELECT COUNT(*) FROM engrams WHERE ts > ?`
 		args = []any{since}
 	default:
-		query = `SELECT COUNT(*) FROM engrams`
+		query = `SELECT COALESCE(SUM(n), 0) FROM engram_counts`
 	}
 	row := s.reader.QueryRowContext(ctx, query, args...)
 	var n int64
@@ -377,9 +423,11 @@ func (s *Store) CountEngrams(ctx context.Context, surface string, since int64) (
 
 // CountBySurface returns engram count grouped by surface. Reader-pool
 // query — does not block writers. Used by the /metrics endpoint to
-// surface per-surface ingest visibility.
+// surface per-surface ingest visibility. Reads the trigger-maintained
+// engram_counts table (ADR-022); surfaces whose rows were all deleted
+// (n = 0) are omitted, matching the old GROUP BY behavior.
 func (s *Store) CountBySurface(ctx context.Context) (map[string]int64, error) {
-	rows, err := s.reader.QueryContext(ctx, `SELECT surface, COUNT(*) FROM engrams GROUP BY surface`)
+	rows, err := s.reader.QueryContext(ctx, `SELECT surface, n FROM engram_counts WHERE n > 0`)
 	if err != nil {
 		return nil, fmt.Errorf("count by surface query: %w", err)
 	}
