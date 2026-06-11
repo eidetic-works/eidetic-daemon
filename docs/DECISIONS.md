@@ -130,3 +130,20 @@ For the inverse (Pro sync ACTIVE), the same tcpdump shows exactly one POST per 6
 **Posture:** cc-tb resumes only on items in the "what's unpaused" list above. Any cc-tb work item must self-justify the eidetic-works compounding axis before starting; if no axis exists, item stays in queue. Audit via `nucleus_sync.search_threads from:cc_tb since:2026-05-20`.
 
 **Reference:** cc-tb relay `20260520_000000_relay_tb_work_permission_request.json` (the request); ADR-011 (the original 90-day pause); `project_work_equals_training.md` (the compounding rationale this amendment activates); operator delegation 2026-05-20 ("Do as recommended on my direction items").
+
+## ADR-022 (2026-06-11): Trigger-maintained per-surface counter table — count-class queries off the full-table scan path
+
+**Context:** cc-tb diagnosis (relay cc-tb-20260611T054957Z): at 541k rows / 6.2GB store, count-class endpoints (`Count`, `CountEngrams` without filters, `CountBySurface`, transitively `Stats`) run full-table `COUNT(*)` scans that exceed the 5s `api.Options.Timeout`, surfacing as SQLITE_INTERRUPT failures. Counts are the health-check hot path (daemon_metrics, count_engrams MCP tool), so this breaks observability exactly when the store grows large enough to matter.
+
+**Decision:** Add `engram_counts(surface TEXT PRIMARY KEY, n INTEGER)` maintained by `AFTER INSERT` (upsert n+1) and `AFTER DELETE` (n-1) triggers on `engrams` — same pattern as the existing `engrams_ai`/`engrams_ad` FTS triggers. Backfill at `Open()` via `backfillCounts()` under `context.Background()` (not the 5s request deadline), non-fatal on error, mirroring `backfillFTS` posture. Query rewiring:
+- `Count()` → `SELECT COALESCE(SUM(n),0) FROM engram_counts`
+- `CountEngrams` surface-only → scalar subquery on `engram_counts`; no-filter → SUM(n); **since-filtered variants UNCHANGED** (they live on `idx_surface_ts`/`idx_ts` and stay bounded)
+- `CountBySurface()` → `SELECT surface, n FROM engram_counts WHERE n > 0` (matches prior GROUP-BY omit-absent semantics)
+
+SQLite fires `AFTER DELETE` per-row on bulk `DELETE`, so `Purge` is covered with no extra code. Engrams are append-only (no UPDATE path), so no UPDATE trigger.
+
+**Residuals:**
+- Since-filtered counts remain live index scans — bounded by the time window, acceptable; revisit only if a windowed-count latency report appears.
+- The running daemon must be **restarted** for the new schema/queries to take effect (long-running proc serves old code until then — ties to the pending v0.0.62 restart decision).
+
+**Reference:** cc-tb relay cc-tb-20260611T054957Z (diagnosis + fix-lane routing: cc-main owns eidetic-daemon repo); ADR-018 (meta-encoded chunking precedent for schema-conservatism); FTS trigger precedent in `internal/store/schema.sql` (engrams_ai/engrams_ad).
