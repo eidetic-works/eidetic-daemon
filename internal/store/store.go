@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -98,9 +99,11 @@ func Open(path string) (*Store, error) {
 		_ = err
 	}
 	if err := st.backfillCounts(context.Background()); err != nil {
-		// Non-fatal: counts read 0 until a restart succeeds. Same posture
-		// as backfillFTS above.
-		_ = err
+		// Non-fatal: any failure rolls back to empty counts, so the next
+		// restart's probe passes the idempotency gate and heals. Logged
+		// because silent drift here is undetectable downstream (PR #82
+		// review).
+		log.Printf("store: backfill counts: %v", err)
 	}
 	return st, nil
 }
@@ -153,8 +156,14 @@ func (s *Store) backfillCounts(ctx context.Context) error {
 	if counterRows > 0 {
 		return nil // counters already populated
 	}
+	// ON CONFLICT covers the rollout race: a concurrent writer (e.g. a
+	// still-running pre-ADR-022 daemon on the same DB file) can land a
+	// trigger-created row between the empty-probe above and this scan.
+	// Without it the whole statement rolls back on the PK and the
+	// counterRows>0 gate then blocks healing on every future restart.
 	_, err := s.writer.ExecContext(ctx,
-		`INSERT INTO engram_counts(surface, n) SELECT surface, COUNT(*) FROM engrams GROUP BY surface`,
+		`INSERT INTO engram_counts(surface, n) SELECT surface, COUNT(*) FROM engrams GROUP BY surface
+		 ON CONFLICT(surface) DO UPDATE SET n = excluded.n`,
 	)
 	if err != nil {
 		return fmt.Errorf("backfill counts insert: %w", err)

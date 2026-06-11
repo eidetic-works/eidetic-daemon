@@ -149,6 +149,66 @@ func TestCounterBackfillOnReopen(t *testing.T) {
 	}
 }
 
+// TestCounterBackfillConflictHeals covers the rollout race from the PR #82
+// review: a concurrent writer's trigger creates a partial engram_counts row
+// between backfillCounts' empty-probe and its INSERT...SELECT. The ON
+// CONFLICT clause must overwrite the partial row with scan truth — without
+// it the whole statement rolls back and the counterRows>0 gate blocks
+// healing on every future restart.
+func TestCounterBackfillConflictHeals(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "engrams.db")
+	s, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	ctx := context.Background()
+	for _, surface := range []string{"a", "a", "b"} {
+		if _, err := s.Insert(ctx, engram.Engram{Surface: surface, TS: 1, Payload: "x"}); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+	if err := s.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	raw, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("raw open: %v", err)
+	}
+	// Simulate the mid-backfill state: counter holds only the trigger row
+	// from a concurrent insert whose engram is already in the main table.
+	if _, err := raw.Exec(`DELETE FROM engram_counts`); err != nil {
+		t.Fatalf("clear counters: %v", err)
+	}
+	if _, err := raw.Exec(`INSERT INTO engram_counts(surface, n) VALUES ('a', 1)`); err != nil {
+		t.Fatalf("seed stale counter row: %v", err)
+	}
+	// The exact backfill statement from backfillCounts must heal the stale
+	// row instead of failing on the PK.
+	if _, err := raw.Exec(
+		`INSERT INTO engram_counts(surface, n) SELECT surface, COUNT(*) FROM engrams GROUP BY surface
+		 ON CONFLICT(surface) DO UPDATE SET n = excluded.n`,
+	); err != nil {
+		t.Fatalf("backfill statement against pre-existing counter row: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("raw close: %v", err)
+	}
+
+	s2, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("re-open: %v", err)
+	}
+	defer s2.Close()
+	by, err := s2.CountBySurface(ctx)
+	if err != nil {
+		t.Fatalf("count by surface: %v", err)
+	}
+	if by["a"] != 2 || by["b"] != 1 {
+		t.Errorf("CountBySurface after conflict-heal: want a=2 b=1, got %v", by)
+	}
+}
+
 func TestCounterEmptyAfterDeleteAll(t *testing.T) {
 	s := tempStore(t)
 	ctx := context.Background()

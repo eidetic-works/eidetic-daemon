@@ -144,6 +144,8 @@ SQLite fires `AFTER DELETE` per-row on bulk `DELETE`, so `Purge` is covered with
 
 **Residuals:**
 - Since-filtered counts remain live index scans — bounded by the time window, acceptable; revisit only if a windowed-count latency report appears.
-- The running daemon must be **restarted** for the new schema/queries to take effect (long-running proc serves old code until then — ties to the pending v0.0.62 restart decision).
+- The running daemon must be **restarted** for the new schema/queries to take effect (long-running proc serves old code until then — ties to the pending v0.0.62 restart decision). That very restart-lag state is what armed the backfill race below: the stale process keeps writing through the new DB-level triggers while the new binary backfills.
+- Backfill is conflict-safe under concurrent writers: the `INSERT...SELECT` carries `ON CONFLICT(surface) DO UPDATE SET n = excluded.n` (PR #82 review fold). Without it, a trigger-created row landing between the empty-probe and the backfill PK-conflicts the whole statement, and the `counterRows>0` idempotency gate then blocks healing on every future restart — permanent silent count drift.
+- First `Open()` on the production store holds the write lock for the backfill scan duration (~7s at 541k rows / 6.2GB — measured 6.88s, cc-tb relay 20260611T070643Z). `busy_timeout(5000)` is shorter than that hold, so concurrent writers may see transient SQLITE_BUSY during the one-time backfill. Accepted: once per upgrade, and visible failure beats silent drift.
 
 **Reference:** cc-tb relay cc-tb-20260611T054957Z (diagnosis + fix-lane routing: cc-main owns eidetic-daemon repo); ADR-018 (meta-encoded chunking precedent for schema-conservatism); FTS trigger precedent in `internal/store/schema.sql` (engrams_ai/engrams_ad).
