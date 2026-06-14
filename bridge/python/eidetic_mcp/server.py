@@ -136,6 +136,39 @@ from .client import DaemonClient, DaemonError
 from .reassemble import reassemble_chunks
 
 
+# ── Nucleus call-count telemetry ─────────────────────────────────────────────
+# Treatment sweep #002 carry — Server C (eidetic daemon bridge) instrumentation.
+# Same JSONL channel as Servers A + B (mcp_server_nucleus.runtime.tool_instrumentation).
+# Standalone: no cross-package import; eidetic bridge is an independent package.
+def _nucleus_emit_call(tool_name: str) -> None:
+    """Emit one JSONL line per _call_tool dispatch for call-count instrumentation.
+
+    Writes to $NUCLEUS_INSTRUMENT_PATH or ~/.brain/instrumentation/YYYYMMDD.jsonl.
+    Env knobs:
+        NUCLEUS_INSTRUMENT_DISABLED=1  — short-circuits entirely (zero overhead).
+        NUCLEUS_INSTRUMENT_PATH=<dir>  — override parent directory.
+        CC_SESSION_ROLE=<role>         — pseudonymous session tag (non-identifying).
+    Never raises — instrumentation MUST NOT break a tool call.
+    """
+    if os.environ.get("NUCLEUS_INSTRUMENT_DISABLED") == "1":
+        return
+    try:
+        from pathlib import Path
+        ts = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+        date = time.strftime("%Y%m%d", time.gmtime())
+        record: dict = {"ts": ts, "tool": tool_name, "server": "eidetic"}
+        sess = os.environ.get("CC_SESSION_ROLE")
+        if sess:
+            record["session"] = sess
+        override = os.environ.get("NUCLEUS_INSTRUMENT_PATH")
+        d = Path(override) if override else Path.home() / ".brain" / "instrumentation"
+        d.mkdir(parents=True, exist_ok=True)
+        with (d / f"{date}.jsonl").open("a") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except Exception:
+        pass
+
+
 # ── nucleus_synth_over_engrams constants ─────────────────────────────────────
 # Matches scripts/tb_synth.py in the eidetic-works/mcp-server-nucleus repo.
 # Honesty disclaimer per cc-main 2026-05-21 W4 demo-only decision: v14 + RAG
@@ -846,6 +879,7 @@ def build_server(client: DaemonClient | None = None) -> Any:
 
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict) -> list:  # type: ignore[misc]
+        _nucleus_emit_call(name)
         if name == "query_engrams":
             surface = str(arguments.get("surface", "")).strip()
             limit = int(arguments.get("limit", 50))
